@@ -1,0 +1,113 @@
+{
+  "schema_version": 1,
+  "operations": [
+    {
+      "method": "GET",
+      "path": "/api/v1/app-builds"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/app-builds"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/artifacts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/artifacts"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/ide-handoff"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/logout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/auth/me"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/auth/refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/design/logical-cases"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/design/logical-cases"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/design/logical-cases/enqueue-job"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/design/logical-cases/generate"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/v1/design/logical-cases/{param}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/design/projects/{param}/logical-cases/export"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/devices"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/jobs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/jobs/{param}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ops/ai/capabilities"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/ops/ai/codegen"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/ops/runtime-version"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/orgs"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/projects"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runners/register"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/runners/{param}/scoped-token"
+    },
+    {
+      "method": "GET",
+      "path": "/health"
+    }
+  ]
+}

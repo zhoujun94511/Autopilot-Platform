@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "runtime_version": "0.1.0",
+  "capabilities": [
+    "artifact_manifest_v1",
+    "intent_binding_status_v1",
+    "mobile_screen_record_android_v1",
+    "mobile_screen_record_ios_goios_v1",
+    "result_json_v1",
+    "runner_keep_appium_v1",
+    "runner_project_scope_v1"
+  ]
+}

@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autopilot.local/contracts/artifact_manifest.v1.json",
+  "title": "ArtifactManifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "artifact_version",
+    "project_id",
+    "sha256",
+    "required_runtime_version",
+    "required_capabilities",
+    "case_index"
+  ],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "artifact_id": { "type": "string" },
+    "artifact_version": { "type": "string" },
+    "project_id": { "type": "string" },
+    "sha256": { "type": "string", "minLength": 64, "maxLength": 64 },
+    "created_from_revision": { "type": "string" },
+    "git_commit": { "type": "string" },
+    "required_runtime_version": { "type": "string" },
+    "required_capabilities": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "entry_paths": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "bindings_glob": {
+      "type": "string",
+      "description": "Glob for intent step bindings in the artifact, e.g. bindings/*.json"
+    },
+    "intent_readiness": {
+      "type": "object",
+      "description": "IDE 打包时写入的 Intent/Binding 就绪摘要（软提示，不阻断上传）",
+      "additionalProperties": false,
+      "properties": {
+        "logical_case_count": { "type": "integer", "minimum": 0 },
+        "binding_file_count": { "type": "integer", "minimum": 0 },
+        "missing_binding_case_ids": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hint": { "type": "string" }
+      }
+    },
+    "case_index": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["relative_path"],
+        "properties": {
+          "relative_path": { "type": "string" },
+          "automation_case_id": { "type": "string" },
+          "logical_case_id": { "type": "string" },
+          "case_key": { "type": "string" }
+        }
+      }
+    },
+    "change_summary": { "type": "string" }
+  }
+}

@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autopilot.local/contracts/result.v1.json",
+  "title": "ExecutionResult",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "job_id", "status", "suite", "environment"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "job_id": { "type": "string" },
+    "execution_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["succeeded", "failed", "cancelled", "error"]
+    },
+    "artifact_id": { "type": "string" },
+    "app_build_id": { "type": "string" },
+    "project_id": { "type": "string" },
+    "runtime_version": { "type": "string" },
+    "started_at": { "type": "string", "format": "date-time" },
+    "finished_at": { "type": "string", "format": "date-time" },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "platform": { "type": "string" },
+        "backend_mode": { "type": "string" },
+        "device_udids": { "type": "array", "items": { "type": "string" } },
+        "runner_id": { "type": "string" },
+        "hostname": { "type": "string" }
+      }
+    },
+    "suite": {
+      "type": "object",
+      "required": ["name", "passed", "failed", "total", "duration_ms"],
+      "properties": {
+        "name": { "type": "string" },
+        "passed": { "type": "integer" },
+        "failed": { "type": "integer" },
+        "total": { "type": "integer" },
+        "duration_ms": { "type": "integer" },
+        "summary": { "type": "string" }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "status"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "type": "string" },
+          "duration_ms": { "type": "integer" },
+          "automation_case_id": { "type": "string" },
+          "logical_case_id": { "type": "string" },
+          "case_key": { "type": "string" },
+          "error_type": { "type": "string" },
+          "error_message": { "type": "string" },
+          "relative_path": { "type": "string" },
+          "mapping_required": { "type": "boolean" },
+          "automation_status_evidence": {
+            "type": "string",
+            "enum": [
+              "EXECUTABLE",
+              "BINDING_PARTIAL",
+              "DEBUGGING",
+              "MAPPING_REQUIRED",
+              "INTENT_READY",
+              "PENDING_VERIFY"
+            ]
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true,
+              "properties": {
+                "name": { "type": "string" },
+                "status": { "type": "string" },
+                "intent_id": { "type": "string" },
+                "binding_hit": {
+                  "type": "string",
+                  "enum": ["cache", "resolved", "healed", "failed", "rolled_back", ""]
+                },
+                "heal_applied": { "type": "boolean" },
+                "resolved_keyword_id": { "type": "string" },
+                "fail_reason": { "type": "string" },
+                "fail_reason_label": { "type": "string" },
+                "rolled_back": { "type": "boolean" },
+                "error_message": { "type": "string" },
+                "resolve_strategy": {
+                  "type": "string",
+                  "description": "cache | heuristic | accessibility | dom | heal | vision | rolled_back"
+                },
+                "candidate_count": { "type": "integer", "minimum": 0 },
+                "perception_platform": { "type": "string" },
+                "perception_element_count": { "type": "integer", "minimum": 0 },
+                "perception_used_screenshot": { "type": "boolean" },
+                "latency_ms": { "type": "integer", "minimum": 0 },
+                "vision_tokens": { "type": "integer", "minimum": 0 },
+                "verification_status": {
+                  "type": "string",
+                  "enum": ["passed", "failed", "skipped", "missing", ""]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "attachments": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "kind": { "type": "string" },
+          "path": { "type": "string" },
+          "case": { "type": "string" },
+          "case_name": { "type": "string", "description": "deprecated alias of case" },
+          "intent_id": { "type": "string" }
+        }
+      }
+    },
+    "html_report_path": { "type": "string" }
+  }
+}

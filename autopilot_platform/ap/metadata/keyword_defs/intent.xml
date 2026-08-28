@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root ver="1.0">
+	<group name="意图关键字">
+		<keyword id="intent_act">
+			<name>意图动作</name>
+			<comment>按业务意图执行一步：优先命中 Binding；channel=ui 走 Web/Mobile，channel=http 走 HTTP 关键字，channel=auto 按 Binding/文案选型。</comment>
+			<implement>IntentKeyword:intentAct</implement>
+			<show>1</show>
+			<param id="intent_id">
+				<name>意图步骤 ID</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>与逻辑用例 intent_steps.id 对应，例如 s1</comment>
+			</param>
+			<param id="action">
+				<name>动作</name>
+				<default>click</default>
+				<values>click\r\ntype\r\nassert\r\nswipe\r\nopen\r\nwait\r\ncustom</values>
+				<required>T</required>
+				<datapool/>
+				<comment>意图动作类型</comment>
+			</param>
+			<param id="target">
+				<name>目标</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>业务目标文案，例如「登录按钮」</comment>
+			</param>
+			<param id="value">
+				<name>值</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>type 等动作的输入值</comment>
+			</param>
+			<param id="text">
+				<name>展示文本</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>自然语言步骤描述（可选）</comment>
+			</param>
+			<param id="logical_case_id">
+				<name>逻辑用例 ID</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>留空则使用用例文件 schema 2.0 的 logical_case_id</comment>
+			</param>
+			<param id="revision_id">
+				<name>修订 ID</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>可选，用于 Binding 版本追踪</comment>
+			</param>
+			<param id="channel">
+				<name>通道</name>
+				<default>ui</default>
+				<values>ui\r\nhttp\r\nauto</values>
+				<required>F</required>
+				<datapool/>
+				<comment>ui=界面；http=HTTP 关键字；auto=有 HTTP Binding 或文案像 API 时走 http，否则 ui</comment>
+			</param>
+		</keyword>
+	</group>
+</root>

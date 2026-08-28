@@ -1,0 +1,2699 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root ver="1.0">
+	<group name="协议关键字">
+		<group name='XML操作'>
+			<keyword id='xml_load_xml_body'>
+				<name>加载XML报文</name>
+				<comment>读取工程中指定的xml模板文件的内容，或直接输入xml报文消息体，编辑后将报文消息体内容保存到报文文件中。加载报文文件，读取内容，将xml报文文件内容保存至输出变量。</comment>
+				<implement>XmlKeyword:loadXmlBody</implement>
+				<show>1</show>
+				<param id='template_path'>
+					<name>模板文件路径</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>模板文件相对路径，以测试工程所在目录为根目录。格式举例：/template/create.xml</comment>
+				</param>
+				<param id='xml_path'>
+					<name>报文文件名称</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>报文文件名称。报文文件保存在所属测试用例、测试套、组合关键字同级目录下。文件名格式：用例名称_tc 或 测试套名_ts 或 组合关键字名_ks + “_message_” + 唯一id。</comment>
+				</param>
+				<param id='xml'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的xml报文文件内容存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_load_xml_file'>
+				<name>加载XML文件</name>
+				<comment>读取工程中指定的XML文件内容，将文件内容保存至输出变量。</comment>
+				<implement>XmlKeyword:loadXmlFile</implement>
+				<show>1</show>
+				<param id='path'>
+					<name>文件路径</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件相对路径，以测试工程所在目录为根目录。格式举例：/template/create.xml</comment>
+				</param>
+				<param id='replace'>
+					<name>是否变量替换</name>
+					<default>否</default>
+					<values>是\r\n否</values>
+					<required>T</required>
+					<datapool/>
+					<comment>是否对xml文件内容进行变量替换。如需进行变量替换，变量的引用格式为：${变量名}，变量名的命名规范：由大小写英文字母、数字、以及 _ 和 - 组成。</comment>
+				</param>
+				<param id='xml'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的xml文件内容存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_copy'>
+				<name>复制XML文件</name>
+				<comment>复制源xml文件到目的xml文件</comment>
+				<implement>XmlKeyword:copyFile</implement>
+				<show>1</show>
+				<param id='srcPath'>
+					<name>源文件路径</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>源文件相对路径，以测试工程所在目录为根目录。格式举例：/template/create.xml</comment>
+				</param>
+				<param id='destPath'>
+					<name>目的文件路径</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目的文件相对路径，以测试工程所在目录为根目录。格式举例：/template/abc.xml</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_write'>
+				<name>写入XML文件</name>
+				<comment>将xml字符串写入并保存到目的xml文件</comment>
+				<implement>XmlKeyword:writeFile</implement>
+				<show>1</show>
+				<param id='xmlStr'>
+					<name>xml字符串</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xml字符串</comment>
+				</param>
+				<param id='destPath'>
+					<name>目的文件路径</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目的文件绝对路径，格式举例：d:/template/create.xml</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_set_xml_value'>
+				<name>修改XML元素内容</name>
+				<comment>按照指定xpath查找元素，并修改该元素的内容，重新保存至输出变量中。</comment>
+				<implement>XmlKeyword:setXmlValue</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的xml数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='value'>
+					<name>待设置的修改内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待设置的修改内容，根据实际值填写。如果期望修改为空，请填写STR.Empty</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_set_xml_attr_value'>
+				<name>修改XML元素属性</name>
+				<comment>按照指定xpath查找元素，并修改该元素的属性，重新保存至输出变量中。</comment>
+				<implement>XmlKeyword:setXmlAttrValue</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的xml数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='name'>
+					<name>待设置的属性名称</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待设置的属性名称，不可以为空。</comment>
+				</param>
+				<param id='value'>
+					<name>待设置的属性内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待设置的修改内容，根据实际值填写。如果期望修改为空，请填写STR.Empty</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_add_xml_value'>
+				<name>增加XML元素节点</name>
+				<comment>按照指定xpath查找元素，并在该元素下增加元素，重新保存至输出变量中。</comment>
+				<implement>XmlKeyword:addXmlElement</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的xml数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符，请注意输入正确格式。</comment>
+				</param>
+				<param id='position'>
+					<name>元素添加位置</name>
+					<default>中</default>
+					<values>上\r\n中\r\n下</values>
+					<required>T</required>
+					<datapool/>
+					<comment>元素添加位置，默认为‘中’。指定在XPATH定位符的上面添加元素、或下面添加元素、或里面添加元素（默认添加在指定元素中的最后一个子元素下面）。</comment>
+				</param>
+				<param id='element'>
+					<name>待增加元素名称</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待增加的元素，根据实际值填写。</comment>
+				</param>
+				<param id='value'>
+					<name>待增加元素的值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待增加元素的值，根据实际值填写。</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_get_xml_value'>
+				<name>获取XML元素内容</name>
+				<comment>按照指定xpath查找元素，并获取该元素所有的值，分隔符分隔后保存至输出变量中。</comment>
+				<implement>XmlKeyword:getXmlValue</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>XML文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待操作的XML数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='value'>
+					<name>属性值[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取XML元素的值(其中若值为空，则用STR.Empty代替返回)存入该变量并保存在上下文待引用。输入举例：VAR_VALUE</comment>
+				</param>
+				<param id='separator'>
+					<name>数据分隔符</name>
+					<default>;</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>数据分隔符，输出值会以此分隔符来间隔数据。</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_get_xml_nodeNum'>
+				<name>获取XML元素个数</name>
+				<comment>根据节点xpath，统计元素节点个数，保存变量中放入上下文待引用</comment>
+				<implement>XmlKeyword:getXmlNodeNum</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>XML文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的XML数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确xpath格式。在不确定节点具体路径时，请尽量使用//输入，如//ordNo</comment>
+				</param>
+				<param id='num'>
+					<name>输出变量[OUT]</name>
+					<default>VAR_NUM</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量，将获取的元素节点个数保存至该变量，放入上下文中待引用</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_verify_xml_value'>
+				<name>校验XML元素内容</name>
+				<comment>按照指定xpath查找所有符合定位的元素，根据分隔符校验元素内容</comment>
+				<implement>XmlKeyword:verifyXmlValue</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>XML文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的XML数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='text'>
+					<name>预期文本</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>预期文本，请根据待指定的匹配模式输入；当对应xpath的参数值为空时，期望值请输入为STR.Empty 或者STR.EMPTY</comment>
+				</param>
+				<param id='matched'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+				</param>
+				<param id='mode'>
+					<name>匹配模式</name>
+					<default>精确匹配</default>
+					<values>精确匹配\r\n模糊匹配\r\n正则表达式匹配</values>
+					<required>T</required>
+					<datapool/>
+					<comment>匹配模式，请根据实际需要选择。</comment>
+				</param>
+				<param id='separator'>
+					<name>数据分隔符</name>
+					<default>;</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>数据分隔符，输出值会以此分隔符来间隔数据。</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_verify_xml_Existed'>
+				<name>校验XML元素存在性</name>
+				<comment>判断给定的xpath元素节点是否存在，预期存在请选择true，预期不存在请选择false</comment>
+				<implement>XmlKeyword:verifyXmlIsExisted</implement>
+				<show>1</show>
+				<param id='xml'>
+					<name>XML文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的XML数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确xpath格式。在不确定节点具体路径时，请尽量使用//输入，如//ordNo</comment>
+				</param>
+				<param id='existed'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的存在结果，若期望存在，请选择true；若期望不存在，请选择false</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_verify_xml_All'>
+				<name>全量校验XML内容</name>
+				<comment>全量校验XML内容；一般实际XML报文为http_post/http_get返回的响应消息体，预期XML报文为加载预期XML模板文件后的值</comment>
+				<implement>XmlKeyword:verifyXmlAll</implement>
+				<show>1</show>
+				<param id='xml_act'>
+					<name>实际XML报文</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>实际XML报文，一般为http_post/http_get返回的响应消息体</comment>
+				</param>
+				<param id='xml_exp'>
+					<name>预期XML报文</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>预期XML报文，一般为加载预期XML模板文件后的值</comment>
+				</param>
+			</keyword>
+			<keyword id='xml_doc2_str'>
+				<name>转换XML对象为字符串</name>
+				<comment>将加载xml报文或加载xml文件生成的xml对象转换成字符串格式</comment>
+				<implement>XmlKeyword:doc2String</implement>
+				<show>1</show>
+				<param id='xml_obj'>
+					<name>XML报文对象内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>XML报文对象内容,一般为加载xml报文或加载xml文件生成的xml对象内容</comment>
+				</param>
+				<param id='xml_str'>
+					<name>输出变量[OUT]</name>
+					<default>var_xmlStr</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量，将转换成的xml字符串存入此变量，并放入上下文中供引用。输入举例：var_xmlStr</comment>
+				</param>
+			</keyword>
+		</group>
+		<group name='JSON操作'>
+			<keyword id='json_load_json_file'>
+				<name>加载JSON文件</name>
+				<comment>读取工程中指定的JSON文件内容，将文件内容保存至输出变量。</comment>
+				<implement>JSONKeyword:loadJSONFile</implement>
+				<show>1</show>
+				<param id='path'>
+					<name>文件路径</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件相对路径，以测试工程所在目录为根目录。格式举例：/template/create.json</comment>
+				</param>
+				<param id='json'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的json文件内容存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+			</keyword>
+			<keyword id='json_load_json_file_fastjson'>
+				<name>加载JSON文件(JSONPATH)</name>
+				<comment>读取工程中指定的JSON文件内容，将文件内容保存至输出变量。</comment>
+				<implement>JSONKeyword:loadJsonFileFastJson</implement>
+				<show>1</show>
+				<param id='path'>
+					<name>文件路径</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件相对路径，以测试工程所在目录为根目录。格式举例：/template/create.json</comment>
+				</param>
+				<param id='json'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的json文件内容存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+			</keyword>
+			<keyword id='json_set_json_value'>
+				<name>修改JSON元素内容</name>
+				<comment>按照指定xpath查找元素，并修改该元素的内容，重新保存至输出变量中。目前不支持//查找</comment>
+				<implement>JSONKeyword:setJsonValue</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的json对象数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。目前不支持//查找</comment>
+				</param>
+				<param id='value'>
+					<name>待设置的修改内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待设置的修改内容，根据实际值填写。</comment>
+				</param>
+				<param id='selection'>
+					<name>修改的内容是否为数值型</name>
+					<default>false</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>待修改的内容，若是数值型(例如：整型，长整型，浮点型)选择true，字符串型选择false，默认为false</comment>
+				</param>
+			</keyword>
+			<keyword id='json_set_json_value_byjsonpath'>
+				<name>修改JSON元素内容(JSONPATH)</name>
+				<comment>按照指定jsonpath查找元素，并修改该元素的内容，重新保存至输出变量中。</comment>
+				<implement>JSONKeyword:setJsonValueByJsonPath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的json对象数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JSONPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age</comment>
+				</param>
+				<param id='value'>
+					<name>待设置的修改内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待设置的修改内容，根据实际值填写。</comment>
+				</param>
+			</keyword>
+			<keyword id='json_add_json_value'>
+				<name>增加JSON元素内容</name>
+				<comment>根据输入的jsonpath增加元素内容(json对象对增加键值对/json数组增加元素)，重新保存至输出变量中. </comment>
+				<implement>JSONKeyword:addJsonElement</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的json对象数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JsonPath定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age</comment>
+				</param>
+				<param id='key'>
+					<name>待增加的元素key值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待增加的键值对的key值。1.如果需增加属性:"name":"zhangsan",key值填写 name;2.如果增加json数组的一个元素，可不用填写。</comment>
+				</param>
+				<param id='value'>
+					<name>待增加的元素value值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>字符串需要加""符号，其他类型不需要。1.如果需增加属性:"name":"zhangsan",value值填写 "zhangsan";2.如果增加json数组的一个元素，可填写例如：[{"name":"bill"},{"name":"jack"}]</comment>
+				</param>
+			</keyword>
+			<keyword id='json_delete_json_value' risk_level='irreversible'>
+				<name>删除JSON元素内容</name>
+				<comment>根据输入的jsonpath删除元素内容(json对象对删除键值对/json数组删除元素)，重新保存至输出变量中. </comment>
+				<implement>JSONKeyword:deleteJsonElement</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>待修改变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的json对象数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JsonPath定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age。</comment>
+				</param>
+			</keyword>
+			<keyword id='json_get_json_value'>
+				<name>获取JSON元素内容</name>
+				<comment>按照指定xpath查找元素，并获取该元素的值，保存至输出变量中。目前不支持//查找</comment>
+				<implement>JSONKeyword:getJsonValue</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待操作的JSON数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='value'>
+					<name>属性值[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取XML元素的值存入该变量并保存在上下文待引用。输入举例：VAR_VALUE</comment>
+				</param>
+			</keyword>
+			<keyword id='json_get_json_value_byjsonpath'>
+				<name>获取JSON元素内容(JSONPATH)</name>
+				<comment>按照指定jsonpath查找元素，并获取该元素的值，保存至输出变量中</comment>
+				<implement>JSONKeyword:getJsonValueByJsonPath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的json对象数据存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JSONPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age</comment>
+				</param>
+				<param id='value'>
+					<name>属性值[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待设置的修改内容，根据实际值填写。</comment>
+				</param>
+			</keyword>
+			<keyword id='json_get_json_values_num'>
+				<name>获取JSON属性值数</name>
+				<comment>按照指定xpath查找元素，并获取该元素的属性值的总个数，保存至输出变量中。目前不支持//查找</comment>
+				<implement>JSONKeyword:getJsonValuesNum</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待操作的JSON数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='num'>
+					<name>属性值总个数[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取Json元素的属性值的总个数存入该变量并保存在上下文待引用。输入举例：VAR_NUM</comment>
+				</param>
+			</keyword>
+			<keyword id='json_get_json_values_num_byjsonpath'>
+				<name>获取JSON属性值数(JSONPATH)</name>
+				<comment>按照指定jsonpath查找元素，并获取该元素的属性值的总个数，保存至输出变量中。</comment>
+				<implement>JSONKeyword:getJsonValuesNumByJsonPath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待操作的JSON数据信息。</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JSONPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age。</comment>
+				</param>
+				<param id='num'>
+					<name>属性值总个数[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取Json元素的属性值的总个数存入该变量并保存在上下文待引用。输入举例：VAR_NUM</comment>
+				</param>
+			</keyword>
+			<keyword id='json_get_Strs_Xkey_Value'>
+				<name>获取JSON某数组的子节点元素值</name>
+				<comment>根据路径获取某数组下与查询key=value条件的同级兄弟节点packversion的值，放入上下文中供引用</comment>
+				<implement>JSONKeyword:getStrsXkeyValue</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待操作的JSON数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='key'>
+					<name>作为查询条件的key</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>作为查询条件的key</comment>
+				</param>
+				<param id='value'>
+					<name>作为查询条件的key的值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>作为查询条件的key的值</comment>
+				</param>
+				<param id='key2'>
+					<name>作为查询结果的key</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>作为查询结果的key-数组下的属性</comment>
+				</param>
+				<param id='value2'>
+					<name>输出变量[OUT]</name>
+					<default>var_value</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取Json元素的属性的值存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+			</keyword>
+			<keyword id='json_get_Strs_Xkey_Value_ByJsonPath'>
+				<name>获取JSON某数组的子节点元素值(JSONPATH)</name>
+				<comment>根据路径获取某数组下与查询key=value条件的同级兄弟节点packversion的值，放入上下文中供引用</comment>
+				<implement>JSONKeyword:getStrsXkeyValueByJsonPath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待操作的JSON数据信息。</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JSONPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age。</comment>
+				</param>
+				<param id='key'>
+					<name>作为查询条件的key</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>作为查询条件的key</comment>
+				</param>
+				<param id='value'>
+					<name>作为查询条件的key的值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>作为查询条件的key的值</comment>
+				</param>
+				<param id='key2'>
+					<name>作为查询结果的key</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>作为查询结果的key-数组下的属性</comment>
+				</param>
+				<param id='value2'>
+					<name>输出变量[OUT]</name>
+					<default>var_value</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取Json元素的属性的值存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+				</param>
+			</keyword>
+			<keyword id='json_verify_json_value'>
+				<name>校验JSON元素内容</name>
+				<comment>按照指定xpath查找元素，校验元素内容</comment>
+				<implement>JSONKeyword:verifyJsonValue</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的JSON数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='text'>
+					<name>预期文本</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>预期文本，请根据待指定的匹配模式输入；如果期望为空，则输入STR.Empty代替</comment>
+				</param>
+				<param id='matched'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+				</param>
+			</keyword>
+			<keyword id='json_verify_json_value_ByJsonPath'>
+				<name>校验JSON元素内容(JSONPATH)</name>
+				<comment>按照指定jsonpath查找元素，校验元素内容</comment>
+				<implement>JSONKeyword:verifyJsonValueByJsonPath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的JSON数据信息。</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JSONPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age。</comment>
+				</param>
+				<param id='text'>
+					<name>预期文本</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>预期文本，请根据待指定的匹配模式输入；如果期望为空，则输入STR.Empty代替</comment>
+				</param>
+				<param id='matched'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+				</param>
+			</keyword>
+			<!-- 校验JSON串中某个节点是否存在 -->
+			<keyword id='json_exist_key'>
+				<name>判断JSON中是否存在指定节点</name>
+				<comment>判断JSON串中，执行Xpath路径下的节点是否存在?</comment>
+				<implement>JSONKeyword:jsonExistNodeByXpath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的JSON数据信息。</comment>
+				</param>
+				<param id='xpath'>
+					<name>XPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>xpath格式定位符,请注意输入正确格式。</comment>
+				</param>
+				<param id='matched'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+				</param>
+			</keyword>
+			<keyword id='json_exist_key_byjsonpath'>
+				<name>判断JSON中是否存在指定节点(JSONPATH)</name>
+				<comment>判断JSON串中，执行JsonPath路径下的节点是否存在?</comment>
+				<implement>JSONKeyword:jsonExistNodeByJsonPath</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>JSON文本内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验的JSON数据信息。</comment>
+				</param>
+				<param id='jsonpath'>
+					<name>JSONPATH定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>可参考JsonPath语法。为兼容历史格式，请将定位符首的$替换为#. 例如  #.data.array[2].age。</comment>
+				</param>
+				<param id='matched'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+				</param>
+			</keyword>
+			<keyword id='json_to_string'>
+				<name>JSON对象转字符串</name>
+				<comment>将通过‘加载JSON文件’关键字和‘修改JSON元素内容’关键字输出的Json对象，转换成字符串</comment>
+				<implement>JSONKeyword:jsonToString</implement>
+				<show>1</show>
+				<param id='json'>
+					<name>待修改变量名称[IN]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>通过‘加载JSON文件’关键字和‘修改JSON元素内容’关键字输出的存Json对象的变量名。输入举例：var_json</comment>
+				</param>
+				<param id='string'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将通过‘加载JSON文件’关键字和‘修改JSON元素内容’关键字获输出的Json对象转换成字符串，存入该变量，并保存在上下文待引用。输入举例：var_string</comment>
+				</param>
+			</keyword>
+			<keyword id='json_comp'>
+				<name>JSON全量校验</name>
+				<comment>将两个JSON字符串进行全量对比</comment>
+				<implement>JSONKeyword:jsonComppareAll</implement>
+				<show>1</show>
+				<param id='jString1'>
+					<name>JSON字符串</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment/>
+				</param>
+				<param id='jString2'>
+					<name>JSON字符串</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment/>
+				</param>
+			</keyword>
+		</group>
+		<group name='HTTP协议'>
+			<keyword id='http_post'>
+				<name>HTTP_POST请求</name>
+				<comment>发送HTTP POST请求，默认超时时间为20秒，请求消息头，消息体可设置，响应成功后将响应消息保存至输出变量。</comment>
+				<implement>HttpKeyword:doPost</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='request'>
+					<name>请求消息体</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输入请求的消息体内容,可为xml/json格式的消息体；也可为表单形式，中间用&amp;分割，其中STR.EMPTY表示空字符串，STR.NULL表示null。表单形式请求输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK\r\nGB2312</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='cache'>
+					<name>是否缓存</name>
+					<default>false</default>
+					<values>false\r\ntrue</values>
+					<required>T</required>
+					<datapool/>
+					<comment>缓存模式：缓存历史会话上下文信息 </comment>
+				</param>
+				<param id='auto_redirect'>
+					<name>是否自动重定向</name>
+					<default>true</default>
+					<values/>
+					<required>F</required>
+					<values>true\r\nfalse</values>
+					<datapool/>
+					<comment>是否自动重定向请求?默认是true，false时遇到3xx请求时，就停止请求,取出redirect_url完成</comment>
+				</param>
+				<param id='refer_proxy_var'>
+					<name>请求代理</name>
+					<default>NONE</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置本次请求的http代理，如请求外网链接，需要配置外网代理才能请求成功.</comment>
+				</param>
+				<param id='timeOut'>
+					<name>超时时间</name>
+					<default>20</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置超时时间，整型数字，单位：秒。默认20，最大值可设为60。若设置时间大于60s时程序将默认为60s.</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+				<param id='resp_body'>
+					<name>响应消息体[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息体内容存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_BODY</comment>
+				</param>
+				<param id='redirect_url'>
+					<name>重定向url[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将http请求重定向的全部url，用;分隔，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_REDIRECT_URL</comment>
+				</param>
+				<param id='response_time'>
+					<name>响应时间[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，获取接口的响应时间，单位为毫秒，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESPONSE_TIME</comment>
+				</param>
+			</keyword>
+			<keyword id='http_post_mock'>
+				<name>HTTP_POST请求(mock)</name>
+				<comment>HTTP_POST请求,用于模拟桩，查询被测系统向桩系统发送的请求报文</comment>
+				<implement>HttpKeyword:doPostAndQueryRequestMessage</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='interface'>
+					<name>接口信息</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>查询接口的服务码、操作码、埋桩关键字附加值(用于定位接口)，格式为：s=xxx,o=xxx,a=xxx;s=xxx,o=xxx,a=xxx;s=xxx,o=xxx,a=xxx</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='request'>
+					<name>请求消息体</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输入请求的消息体内容,可为xml/json格式的消息体；也可为表单形式，中间用&amp;分割，其中STR.EMPTY表示空字符串，STR.NULL表示null。表单形式请求输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK\r\nGB2312</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='mock_info'>
+					<name>输出埋桩信息[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，获取指定接口埋桩信息，存入该变量并保存在上下文待引用。非必填项。输入举例：与“接口信息”参数想对应，获取多个埋桩信息时，用;号隔开多个输出变量，格式为：VAR_MOCK_INFO1;VAR_MOCK_INFO2;VAR_MOCK_INFO3</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+				<param id='resp_body'>
+					<name>响应消息体[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息体内容存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_BODY</comment>
+				</param>
+				<param id='redirect_url'>
+					<name>重定向url[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将http请求重定向的全部url，用;分隔，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_REDIRECT_URL</comment>
+				</param>
+			</keyword>
+			<keyword id='http_get'>
+				<name>HTTP_GET请求</name>
+				<comment>发送HTTP GET请求，默认超时时间为10秒，请求消息头，消息体可设置，响应成功后将响应消息保存至输出变量。</comment>
+				<implement>HttpKeyword:doGet</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='request'>
+					<name>请求消息体</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输入请求的消息体内容,可为xml/json格式的消息体；也可为表单形式，中间用&amp;分割，其中STR.EMPTY表示空字符串，STR.NULL表示null。表单形式请求输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK\r\nGB2312</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='cache'>
+					<name>是否缓存</name>
+					<default>false</default>
+					<values>false\r\ntrue</values>
+					<required>T</required>
+					<datapool/>
+					<comment>缓存模式：缓存历史会话上下文信息 </comment>
+				</param>
+				<param id='auto_redirect'>
+					<name>是否自动重定向</name>
+					<default>true</default>
+					<values/>
+					<required>F</required>
+					<values>true\r\nfalse</values>
+					<datapool/>
+					<comment>是否自动重定向请求?默认是true，false时遇到3xx请求时，就停止请求,取出redirect_url完成</comment>
+				</param>
+				<param id='refer_proxy_var'>
+					<name>请求代理</name>
+					<default>NONE</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置本次请求的http代理，如请求外网链接，需要配置外网代理才能请求成功.</comment>
+				</param>
+				<param id='timeOut'>
+					<name>超时时间</name>
+					<default>20</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置超时时间，整型数字，单位：秒。默认20，最大值可设为60。若设置时间大于60s时程序将默认为60s.</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+				<param id='resp_body'>
+					<name>响应消息体[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息体内容存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_BODY</comment>
+				</param>
+				<param id='redirect_url'>
+					<name>重定向url[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将http请求重定向的全部url，用;分隔，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_REDIRECT_URL</comment>
+				</param>
+					<param id='response_time'>
+					<name>响应时间[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，获取接口的响应时间，单位为毫秒，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESPONSE_TIME</comment>
+				</param>
+			</keyword>
+
+			<keyword id='http_get_download'>
+				<name>HTTP_GET下载请求</name>
+				<comment>发送HTTP DOWNLOAD请求，默认超时时间为10秒，请求消息头，消息体可设置，响应成功后将响应消息保存至输出变量。</comment>
+				<implement>HttpKeyword:doGetDownload</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='request'>
+					<name>请求消息体</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输入请求的消息体内容,可为xml/json格式的消息体；也可为表单形式，中间用&amp;分割，其中STR.EMPTY表示空字符串，STR.NULL表示null。表单形式请求输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK\r\nGB2312</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+
+				<param id='file_selector'>
+					<name>文件保存位置</name>
+					<default/>
+					<values>本地\r\n工程</values>
+					<required>T</required>
+					<datapool/>
+					<comment>文件保存的位置，本地or工程，二选一</comment>
+				</param>
+				<param id='file_path'>
+					<name>保存文件路径</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将文件保存在本地路径。选择【工程】可为空，保存在工程根目录下；选择【本地】，不可以为空</comment>
+				</param>
+				<param id='download_file_path'>
+					<name>文件存储路径[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应文件地址存入该变量并保存在上下文待引用</comment>
+				</param>
+			</keyword>
+
+			<keyword id='http_put'>
+				<name>HTTP_PUT请求</name>
+				<comment>发送HTTP PUT请求，默认超时时间为20秒，请求消息头，消息体可设置，响应成功后将响应消息保存至输出变量。</comment>
+				<implement>HttpKeyword:doPut</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='request'>
+					<name>请求消息体</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输入请求的消息体内容,可为xml/json格式的消息体；也可为表单形式，中间用&amp;分割，其中STR.EMPTY表示空字符串，STR.NULL表示null。表单形式请求输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK\r\nGB2312</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='cache'>
+					<name>是否缓存</name>
+					<default>false</default>
+					<values>false\r\ntrue</values>
+					<required>T</required>
+					<datapool/>
+					<comment>缓存模式：缓存历史会话上下文信息 </comment>
+				</param>
+				<param id='auto_redirect'>
+					<name>是否自动重定向</name>
+					<default>true</default>
+					<values/>
+					<required>F</required>
+					<values>true\r\nfalse</values>
+					<datapool/>
+					<comment>是否自动重定向请求?默认是true，false时遇到3xx请求时，就停止请求,取出redirect_url完成</comment>
+				</param>
+				<param id='refer_proxy_var'>
+					<name>请求代理</name>
+					<default>NONE</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置本次请求的http代理，如请求外网链接，需要配置外网代理才能请求成功.</comment>
+				</param>
+				<param id='timeOut'>
+					<name>超时时间</name>
+					<default>20</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置超时时间，整型数字，单位：秒。默认20，最大值可设为60。若设置时间大于60s时程序将默认为60s.</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+				<param id='resp_body'>
+					<name>响应消息体[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息体内容存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_BODY</comment>
+				</param>
+				<param id='redirect_url'>
+					<name>重定向url[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将http请求重定向的全部url，用;分隔，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_REDIRECT_URL</comment>
+				</param>
+			</keyword>
+
+			<keyword id='http_delete' risk_level='irreversible'>
+				<name>HTTP_DELETE请求</name>
+				<comment>发送HTTP DELETE请求，默认超时时间为20秒，请求消息头，消息体可设置，响应成功后将响应消息保存至输出变量。</comment>
+				<implement>HttpKeyword:doDelete</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='request'>
+					<name>请求消息体</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输入请求的消息体内容,可为xml/json格式的消息体；也可为表单形式，中间用&amp;分割，其中STR.EMPTY表示空字符串，STR.NULL表示null。表单形式请求输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK\r\nGB2312</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='cache'>
+					<name>是否缓存</name>
+					<default>false</default>
+					<values>false\r\ntrue</values>
+					<required>T</required>
+					<datapool/>
+					<comment>缓存模式：缓存历史会话上下文信息 </comment>
+				</param>
+				<param id='auto_redirect'>
+					<name>是否自动重定向</name>
+					<default>true</default>
+					<values/>
+					<required>F</required>
+					<values>true\r\nfalse</values>
+					<datapool/>
+					<comment>是否自动重定向请求?默认是true，false时遇到3xx请求时，就停止请求,取出redirect_url完成</comment>
+				</param>
+				<param id='refer_proxy_var'>
+					<name>请求代理</name>
+					<default>NONE</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置本次请求的http代理，如请求外网链接，需要配置外网代理才能请求成功.</comment>
+				</param>
+				<param id='timeOut'>
+					<name>超时时间</name>
+					<default>20</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置超时时间，整型数字，单位：秒。默认20，最大值可设为60。若设置时间大于60s时程序将默认为60s.</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+				<param id='resp_body'>
+					<name>响应消息体[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息体内容存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_BODY</comment>
+				</param>
+				<param id='redirect_url'>
+					<name>重定向url[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将http请求重定向的全部url，用;分隔，存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_REDIRECT_URL</comment>
+				</param>
+			</keyword>
+
+			<keyword id='http_post_Multipart'>
+				<name>HTTP文件上传</name>
+				<comment>发送HTTP POST/PUT请求进行文件流传输-文件上传，默认超时时间为10秒，请求文件路径及其他参数可设置，响应成功后将响应消息保存至输出变量。</comment>
+				<implement>HttpKeyword:doPostMultipart</implement>
+				<show>1</show>
+				<param id='http_method'>
+					<name>上传方式</name>
+					<default>POST</default>
+					<values>POST\r\nPUT</values>
+					<required>T</required>
+					<datapool/>
+					<comment>上传方式：HTTP POST方式、HTTP PUT方式</comment>
+				</param>
+				<param id='url'>
+					<name>url地址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待请求url地址</comment>
+				</param>
+				<param id='req_cookie'>
+					<name>请求cookie</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待加入请求中的cookie或集合，一般从post/get方法获取的响应消息cookie集合，或者增加cookie方法获取的cookie集合，输入举例：${var_cookies}</comment>
+				</param>
+				<param id='header'>
+					<name>请求消息头</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>请求的消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='filePath'>
+					<name>文件路径</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>文件所在工程目录下的相对路径，输入举例：/file/123.jpg</comment>
+				</param>
+				<param id='fileKey'>
+					<name>文件参数key</name>
+					<default>file</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件参数key，举例：相当于&lt;input type=&quot;file&quot; name=&quot;file&quot;/&gt;中name属性值file，可根据实际修改</comment>
+				</param>
+				<param id='textBody'>
+					<name>其它参数</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>文件上传请求的其它参数，中间用&amp;分割；其中STR.EMPTY表示空字符串，STR.NULL表示null。输入举例：flag=1&amp;num1=STR.EMPTY&amp;num2=STR.NULL</comment>
+				</param>
+				<param id='encode'>
+					<name>响应消息编码格式</name>
+					<default>UTF-8</default>
+					<values>UTF-8\r\nGBK</values>
+					<required>T</required>
+					<datapool/>
+					<comment>服务器端返回响应消息的编码格式，默认为UTF-8，可选择为GBK；若两种编码下返回消息中文仍为乱码，请找开发询问。</comment>
+				</param>
+				<param id='resp_code'>
+					<name>响应消息码[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息码存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_CODE</comment>
+				</param>
+				<param id='resp_header'>
+					<name>响应消息头[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息头存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_HEADER</comment>
+				</param>
+				<param id='resp_cookie'>
+					<name>响应cookie集合[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将请求发送后的响应消息cookie集合存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_COOKIES</comment>
+				</param>
+				<param id='resp_body'>
+					<name>响应消息体[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>输出变量名称，将修改后的响应消息体内容存入该变量并保存在上下文待引用。非必填项。输入举例：VAR_RESP_BODY</comment>
+				</param>
+			</keyword>
+			<keyword id='http_add_header'>
+				<name>添加头域</name>
+				<comment>在指定头域信息中添加一个新的头域字段，并将修改后的头域保存至输出变量。</comment>
+				<implement>HttpKeyword:addHeader</implement>
+				<show>1</show>
+				<param id='header'>
+					<name>原始头域内容</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>原始消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='key'>
+					<name>头域名</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待添加头域名。输入举例：User-Agent</comment>
+				</param>
+				<param id='value'>
+					<name>头域内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待添加头域内容。输入举例：firefox</comment>
+				</param>
+				<param id='reference'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，修改后的头域存入该变量并保存在上下文待引用。输入举例：VAR_HEADER</comment>
+				</param>
+			</keyword>
+			<keyword id='http_remove_header'>
+				<name>删除头域</name>
+				<comment>在指定头域信息中删除一个新的头域字段，并将修改后的头域保存至输出变量。</comment>
+				<implement>HttpKeyword:removeHeader</implement>
+				<show>1</show>
+				<param id='header'>
+					<name>原始头域内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>原始消息体头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='key'>
+					<name>头域名</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待删除头域名。输入举例：User-Agent</comment>
+				</param>
+				<param id='reference'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，修改后的头域存入该变量并保存在上下文待引用。输入举例：VAR_HEADER</comment>
+				</param>
+			</keyword>
+			<keyword id='http_verify_header'>
+				<name>校验头域</name>
+				<comment>校验返回的头域内容</comment>
+				<implement>HttpKeyword:verifyHeader</implement>
+				<show>1</show>
+				<param id='header'>
+					<name>返回的头域内容</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>返回的头域信息。输入举例：User-Agent: firefox\r\nAccept: xml</comment>
+				</param>
+				<param id='key'>
+					<name>头域名</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验头域名。输入举例：User-Agent</comment>
+				</param>
+				<param id='text'>
+					<name>期望值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待校验头域的期望值。输入举例：firefox</comment>
+				</param>
+				<param id='matched'>
+					<name>预期结果</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+				</param>
+				<param id='mode'>
+					<name>匹配模式</name>
+					<default>精确匹配</default>
+					<values>精确匹配\r\n模糊匹配\r\n正则表达式匹配</values>
+					<required>T</required>
+					<datapool/>
+					<comment>匹配模式，请根据实际需要选择。</comment>
+				</param>
+			</keyword>
+			<keyword id='http_add_cookie'>
+				<name>添加cookie</name>
+				<comment>根据输入的cookie属性，添加cookie。此方法输出变量常放至HTTP post/get方法中</comment>
+				<implement>HttpKeyword:addCookie</implement>
+				<show>1</show>
+				<param id='pre_cookie'>
+					<name>原cookie集合</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>原cookie集合，向集合中添加多个cookie时使用，请输入之前使用此keyword添加的cookie变量，如${VAR_Cookie}。仅添加一个可不填写</comment>
+				</param>
+				<param id='name'>
+					<name>cookie名</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待添加的cookie的name属性值。</comment>
+				</param>
+				<param id='value'>
+					<name>cookie值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待添加的cookie的value属性值</comment>
+				</param>
+				<param id='domain'>
+					<name>cookie域</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待添加cookie的适用的域名。注意域名必须以点开始（例如.yesky.com）</comment>
+				</param>
+				<param id='path'>
+					<name>cookie路径</name>
+					<default>/</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待添加cookie的适用的路径。</comment>
+				</param>
+				<param id='secure'>
+					<name>是否加密发送</name>
+					<default>false</default>
+					<values>false\r\ntrue</values>
+					<required>T</required>
+					<datapool/>
+					<comment>待添加cookie的secure属性值。true表示浏览器通过安全协议发送cookies；false表示浏览器使用标准协议</comment>
+				</param>
+				<param id='cookie'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将添加的cookie以对象BasicClientCookie形式保存在上下文该变量中。输入举例：VAR_Cookie</comment>
+				</param>
+			</keyword>
+			<keyword id='http_getCookieValue_BycookieName'>
+				<name>获取Cookie值</name>
+				<comment>根据输入的cookie的name属性，获取其value属性值。此方法需用到从get/post方法中获取的响应cookie集合</comment>
+				<implement>HttpKeyword:getCookieValueByName</implement>
+				<show>1</show>
+				<param id='cookie'>
+					<name>cookie集合</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取value属性值的cookie集合，需用到从GET/POST方法中获取的响应消息cookie集合，如${VAR_RESP_COOKIES}。</comment>
+				</param>
+				<param id='cookieName'>
+					<name>cookie名</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>cookie的name属性值。</comment>
+				</param>
+				<param id='cookieValue'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取到的cookie的value属性值保存在上下文该变量中。输入举例：VAR_COOKIE_VALUE</comment>
+				</param>
+			</keyword>
+			<keyword id='http_setMock'>
+				<name>埋桩</name>
+				<comment>针对模拟桩对应的埋桩操作，根据serviceCode和operation确定具体对应的埋桩信息</comment>
+				<implement>HttpKeyword:setMock</implement>
+				<show>1</show>
+				<param id='serviceCode'>
+					<name>serviceCode服务码</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>所埋桩信息对应的serviceCode,RSF接口填服务契约名称</comment>
+				</param>
+				<param id='operation'>
+					<name>operation操作</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>所埋桩信息对应的operation，RSF接口填方法名</comment>
+				</param>
+				<param id='caseIdAppend'>
+					<name>埋桩关键字附加值</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>二次全校验业务，同一测试用例中埋两个相同桩：第二个埋桩需要填写此信息，格式例如：“=$”。</comment>
+				</param>
+				<param id='httpBody'>
+					<name>埋桩报文</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>埋桩报文</comment>
+				</param>
+				<param id='msg_template_path'>
+					<name>报文模板路径</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>报文模板路径地址,输入相对路径,如：/message/test.xml</comment>
+				</param>
+				<param id='isReplace'>
+					<name>报文是否需要数据替换</name>
+					<default>no</default>
+					<values>no\r\nyes</values>
+					<required/>
+					<datapool/>
+					<comment>是否对桩报文做数据替换（XML 格式）。</comment>
+				</param>
+				<param id='replaceElement'>
+					<name>需要数据替换的元素</name>
+					<default/>
+					<values>\r\ncart2No\r\nitemNo</values>
+					<required/>
+					<datapool/>
+					<comment>桩报文中待替换数据的元素名（XML 格式）。</comment>
+				</param>
+			</keyword>
+			<keyword id='http_cleanMock'>
+				<name>清除桩</name>
+				<comment>清除测试用例在mock平台上的全部埋桩数据。需要重复执行埋桩测试用例时，在埋桩之前，增加清除桩关键字，可避免历史埋桩数据对本次执行产生影响。</comment>
+				<implement>HttpKeyword:cleanMock</implement>
+				<show>1</show>
+			</keyword>
+			<!-- 设置http代理 -->
+			<keyword id='http_setproxy'>
+				<name>定义http代理</name>
+				<comment>定义http代理，如请求外网链接的测试场景</comment>
+				<implement>HttpKeyword:setHttpProxy</implement>
+				<show>1</show>
+				<param id='host'>
+					<name>代理地址</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>代理服务器IP地址</comment>
+				</param>
+				<param id='port'>
+					<name>代理端口</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>代理服务器端口</comment>
+				</param>
+				<param id='user'>
+					<name>代理认证用户名</name>
+					<default>NONE</default>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>代理认证用户名，默认为空</comment>
+				</param>
+				<param id='password'>
+					<name>代理认证用户密码</name>
+					<default>NONE</default>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>代理认证用户密码，默认为空</comment>
+				</param>
+				<param id='out_proxy'>
+					<name>输出变量[OUT]</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>代理信息输入内容，供后续请求${}使用</comment>
+				</param>
+			</keyword>
+		</group>
+		<group name='MQ操作'>
+<keyword id='MQ_get_UID'>
+				<name>获取唯一UID(48位)</name>
+				<comment>获取唯一UID，字符串长48位</comment>
+				<implement>MqKeyword:getUID</implement>
+				<show>1</show>
+				<param id='UID'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>将获取的48位UID保存至上下文中</comment>
+				</param>
+			</keyword>
+		</group>
+		<group name='WindQ操作'>
+<keyword id='es_query_log'>
+				<name>WindQ消息日志查询</name>
+				<comment>从ElasticSearch查询日志</comment>
+				<implement>ElasticSearchKeyword:queryLog</implement>
+				<show>1</show>
+				<param id='url'>
+					<name>ES地址</name>
+					<default>[dev]http://10.47.149.107:9200</default>
+					<values>[dev]http://10.47.149.107:9200\r\n[sit]http://10.47.149.108:9200,http://10.37.154.227:9200,http://10.37.154.228:9200\r\n[xgpre]http://10.242.185.211:9200,http://10.242.185.212:9200,http://10.242.185.213:9200\r\n[poc]http://10.245.38.60:9200,http://10.245.5.89:9200,http://10.245.5.90:9200</values>
+					<required>T</required>
+					<datapool/>
+				<comment>ES地址：ElasticSearch服务器查询url地址，默认为：[dev]http://10.47.149.107:9200。支持单项勾选也支持用户自定义。用户自定义时需注意输入的地址格式，具体格式请参考下拉框选项。</comment>
+				</param>
+				<param id='destination'>
+					<name>目的名称</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目的名称：处理消息的WindQ队列或主题名称</comment>
+				</param>
+				<param id='type'>
+					<name>日志类型</name>
+					<default>SEND</default>
+					<values>SEND\r\nRECEIVE</values>
+					<required>T</required>
+					<datapool/>
+					<comment>日志类型：查询发送日志或者接受日志，默认是发送日志</comment>
+				</param>
+				<param id='keyword'>
+					<name>关键字</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>过滤出含有关键字内容的报文。支持多个关键字查询，关键字间用&amp;&amp;间隔,如果关键字本身含有&amp;，请用&amp;#替换&amp;。例如:msgId&amp;&amp;me&amp;#tr ,表示关键字为msgId 和 me&amp;tr </comment>
+				</param>
+				<param id='requestNumber'>
+					<name>报文个数</name>
+					<default>1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>报文个数：可以指定返回请求报文的个数，该参数要和输出变量列表的大小一致</comment>
+				</param>
+				<param id='timeRange'>
+					<name>检索时间范围</name>
+					<default>30</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>单位：分，默认为30，表示从当前时间往前30分钟内检索。如果填-1，则检索服ES中最新的记录</comment>
+				</param>
+				<param id='request'>
+					<name>请求报文输出[OUT]</name>
+					<default>VAR_REQUEST_BODY</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称列表，将获取的ESB请求报文依次存入该变量列表中，并保存在上下文待引用。输入举例：VAR_REQUEST_BODY1, VAR_REQUEST_BODY2, VAR_REQUEST_BODY3。变量需用英文逗号隔开</comment>
+				</param>
+			</keyword>
+		</group>
+		<group name='Kafka操作'>
+			<keyword id='produceKafkaMsg'>
+				<name>发送Kafka消息(文件)</name>
+				<comment>发送Kafka消息(或指定文件内容)到指定的topic、partition(可选)</comment>
+				<implement>KafkaKeyword:produceMsg</implement>
+				<show>1</show>
+				<param id='msg'>
+					<name>发送的消息内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>如果需要发送文件内容，请先使用关键字"读取文件内容"将文件内容赋值到变量a(示例)，然后此处填写：$a，即可引用。</comment>
+				</param>
+				<param id='topic'>
+					<name>topic</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>发送时需要指定topic主题。</comment>
+				</param>
+				<param id='partition'>
+					<name>partition</name>
+					<default>-1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>默认为-1,代表不指定分区partition，随机分配。如果需要指定，注意取值范围是从0开始的整数(0,1,2…)。</comment>
+				</param>
+				<param id='hosts'>
+					<name>hosts</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>Kafka服务器集群brokers地址，格式为ip:port，如果多个机器的话请用逗号间隔。示例：172.23.8.144:9092,172.23.8.179:9092</comment>
+				</param>
+				<param id='offset'>
+					<name>返回值[OUT]</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>返回发送消息在partition中的offset值，可选</comment>
+				</param>
+			</keyword>
+			<keyword id='readHeadTailMsg'>
+				<name>读取最新/旧的Kafka消息</name>
+				<comment>读取指定topic的最新或者最旧的n条消息</comment>
+				<implement>KafkaKeyword:readHeadTailMsg</implement>
+				<show>1</show>
+				<param id='pattern'>
+					<name>最新/最旧</name>
+					<default>最新</default>
+					<values>最新\r\n最旧</values>
+					<required>T</required>
+					<datapool/>
+					<comment>模式选择，读取最新或者最旧的n条消息，默认为最新</comment>
+				</param>
+				<param id='num'>
+					<name>读取的数目</name>
+					<default>10</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>读取的消息数目。如果超出能获取的消息数目，则返回所有消息。partition为-1时，表示至少返回的消息数目。</comment>
+				</param>
+				<param id='topic'>
+					<name>topic</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>读取时需要指定topic主题。</comment>
+				</param>
+				<param id='partition'>
+					<name>partition</name>
+					<default>0</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>默认为0，读取partition0分区的内容。如果需要指定，注意取值范围是从0开始的整数(0,1,2…)。如果填-1，则从所有partition分区读取数据聚合</comment>
+				</param>
+				<param id='hosts'>
+					<name>hosts</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>Kafka服务器集群brokers地址，格式为ip:port，如果多个机器的话请用逗号间隔。示例：172.23.8.144:9092,172.23.8.179:9092</comment>
+				</param>
+				<param id='filter'>
+					<name>过滤关键字</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>对结果根据关键字进行过滤，只读取包含关键字的消息。默认为空则不过滤。</comment>
+				</param>
+				<param id='format'>
+					<name>解析编码格式</name>
+					<default>UTF-8</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>解析消息编码格式，请根据消息格式填写。默认为UTF-8，常见有：UTF-8,GBK,ASCII等</comment>
+				</param>
+				<param id='waittime'>
+					<name>查询最大等待时间</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>默认不需要填写，用于不指定partition分区的查询，表示查询重试的最长时间(单位为秒)，最多为60S</comment>
+				</param>
+				<param id='var'>
+					<name>返回值[OUT]</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>返回读取的消息内容，格式为Map &lt;Long,String&gt; 类型的字符串，其中long为offset值，String为消息</comment>
+				</param>
+			</keyword>
+			<keyword id='readKafkaMsg'>
+				<name>读取指定offset的消息</name>
+				<comment>读取指定offset的n条消息</comment>
+				<implement>KafkaKeyword:readAnyOffsetMsg</implement>
+				<show>1</show>
+				<param id='offset'>
+					<name>指定的offset</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>指定读取的开始位置</comment>
+				</param>
+				<param id='num'>
+					<name>读取的数目</name>
+					<default>10</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>读取的信息数目，如果超出队列长度则返回所有信息。</comment>
+				</param>
+				<param id='topic'>
+					<name>topic</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>读取时需要指定topic主题。</comment>
+				</param>
+				<param id='partition'>
+					<name>partition</name>
+					<default>0</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>默认为0，读取partition0分区的内容。如果需要指定，注意取值范围是从0开始的整数(0,1,2…)。</comment>
+				</param>
+				<param id='hosts'>
+					<name>hosts</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>Kafka服务器集群brokers地址，格式为ip:port，如果多个机器的话请用逗号间隔。示例：172.23.8.144:9092,172.23.8.179:9092</comment>
+				</param>
+				<param id='filter'>
+					<name>过滤关键字</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>对结果根据关键字进行过滤，只读取包含关键字的消息。默认为空则不过滤。</comment>
+				</param>
+				<param id='format'>
+					<name>编码格式</name>
+					<default>UTF-8</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件编码格式，请根据对应文件填写。常见的有：UTF-8,GBK,ASCII等</comment>
+				</param>
+				<param id='var'>
+					<name>返回值[OUT]</name>
+					<default/>
+					<values/>
+					<required/>
+					<datapool/>
+					<comment>返回读取的消息内容，格式为Map &lt; Long,String &gt; 类型的字符串，其中long为offset值，String为消息</comment>
+				</param>
+			</keyword>
+		</group>
+		<group name='Hessian操作'>
+			<keyword id='verifyHessianField'>
+				<name>校验Hessian消息体</name>
+				<comment>校验接收到的Hessian响应消息体，以map（key和value）形式比对，默认实际文本包含预期文本即比对通过</comment>
+				<implement>HessianKeyword:verifyHessianField</implement>
+				<show>1</show>
+				<param id='text'>
+					<name>实际文本</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>实际的Hessian消息文本内容，多个字段以逗号隔开格式如：accountNo=111,userId=222,userName=aaa</comment>
+				</param>
+				<param id='expect'>
+					<name>期望文本</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>期望的Hessian消息文本内容，多个字段以逗号隔开格式如：accountNo=111,userId=222,userName=aaa</comment>
+				</param>
+				<param id='mode'>
+					<name>匹配模式</name>
+					<default>模糊匹配</default>
+					<values>精确匹配\r\n模糊匹配</values>
+					<required>T</required>
+					<datapool/>
+					<comment>匹配模式，请根据实际需要选择，模糊匹配即实际文本中包含预期文本中的key和value。</comment>
+				</param>
+			</keyword>
+			<keyword id='getHessianField'>
+				<name>获取Hessian消息字段</name>
+				<comment>根据字段名获取字段值保存在输出变量中。</comment>
+				<implement>HessianKeyword:getHessianField</implement>
+				<show>1</show>
+				<param id='text'>
+					<name>实际文本</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>实际的Hessian消息文本内容，多个字段以逗号隔开格式如：accountNo=111,userId=222,userName=aaa</comment>
+				</param>
+				<param id='fieldName'>
+					<name>字段名</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>Hessian消息字段名。</comment>
+				</param>
+				<param id='varFieldValue'>
+					<name>字段值[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取字段值存入该变量并保存在上下文待引用。输入举例：varFieldValue</comment>
+				</param>
+			</keyword>
+		</group>
+		<group name='UI-Mock操作'>
+			<keyword id='http_startMockStubServer'>
+				<name>启动代理服务器</name>
+				<comment>启动UI模拟桩测试的代理服务器，需要设置代理服务器的端口号，代理模式默认为MOCK</comment>
+				<implement>MockKeyword:startMockStubServer</implement>
+				<show>1</show>
+				<param id='port'>
+					<name>端口</name>
+					<default>8585</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>代理服务端口，与浏览器、移动端设置的代理服务器端口相同</comment>
+				</param>
+				<param id='type'>
+					<name>代理类型</name>
+					<default>PC端</default>
+					<values>PC端\r\n移动端</values>
+					<required>T</required>
+					<datapool/>
+					<comment>代理器终端类型：PC端web mock测试，设置浏览器的代理器，指向代理服务；移动终端app、wap mock测试，设置无线网络代理器，指向代理服务。</comment>
+				</param>
+				<param id='exception'>
+					<name>例外情况（浏览器）</name>
+					<default>https://*;localhost</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>设置PC浏览器端不使用代理服务的地址，使用分号（;）分隔各项。</comment>
+				</param>
+				<param id='mode'>
+					<name>代理模式</name>
+					<default>MOCK</default>
+					<values>MOCK\r\nREAL</values>
+					<required>T</required>
+					<datapool/>
+					<comment>MOCK：模拟桩测试流程，REAL：真实系统测试流程。</comment>
+				</param>
+				<param id='connectTimeout'>
+					<name>HTTP连接超时</name>
+					<default>500</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>单位毫秒，代理器的转发http请求，默认连接超时为500毫秒，可自定义</comment>
+				</param>
+				<param id='timeOut'>
+					<name>HTTP请求超时</name>
+					<default>3000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>单位毫秒，代理器的转发http请求，默认请求超时为3000毫秒，可自定义</comment>
+				</param>
+			</keyword>
+			<keyword id='http_stopMockStubServer'>
+				<name>停止代理服务器</name>
+				<comment>停止UI模拟桩测试的代理服务器，需要指定代理服务的端口号</comment>
+				<implement>MockKeyword:stopMockStubServer</implement>
+				<show>1</show>
+				<param id='port'>
+					<name>端口</name>
+					<default>8585</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>代理服务端口，与浏览器、移动端设置的代理服务器端口相同</comment>
+				</param>
+				<param id='type'>
+					<name>代理类型</name>
+					<default>PC端</default>
+					<values>PC端\r\n移动端</values>
+					<required>T</required>
+					<datapool/>
+					<comment>待还原代理器设置的终端类型：PC端web mock测试结束，还原浏览器代理器设置；移动终端app、wap mock测试结束，还原无线网络代理器设置。</comment>
+				</param>
+			</keyword>
+			<keyword id='http_setMockMode'>
+				<name>设置代理模式</name>
+				<comment>设置模拟桩测试代理服务器模式，需要指定代理服务的端口号。MOCK：模拟桩测试流程，REAL：真实系统测试流程。</comment>
+				<implement>MockKeyword:setMockMode</implement>
+				<show>1</show>
+				<param id='port'>
+					<name>端口</name>
+					<default>8585</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>代理服务端口，与浏览器、移动端设置的代理服务器端口相同</comment>
+				</param>
+				<param id='mode'>
+					<name>代理模式</name>
+					<default>MOCK</default>
+					<values>MOCK\r\nREAL</values>
+					<required>T</required>
+					<datapool/>
+					<comment>MOCK：模拟桩测试流程，REAL：真实系统测试流程。</comment>
+				</param>
+			</keyword>
+			<keyword id='http_getMockMode'>
+				<name>获取代理模式</name>
+				<comment>获取模拟桩测试代理服务器的模式，需要指定代理服务的端口号。MOCK：模拟桩测试流程，REAL：真实系统测试流程。</comment>
+				<implement>MockKeyword:getMockMode</implement>
+				<show>1</show>
+				<param id='port'>
+					<name>端口</name>
+					<default>8585</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>代理服务端口，与浏览器、移动端设置的代理服务器端口相同</comment>
+				</param>
+				<param id='mode'>
+					<name>代理模式[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的代理模式存入该变量，并保存在上下文待引用。输入举例：VAR_MODE</comment>
+				</param>
+			</keyword>
+
+			<!-- HTTP Session / Auth / Assert extras -->
+			<keyword id='http_session_begin'>
+				<name>开启HTTP会话</name>
+				<comment>创建用例级 httpx 会话，跨步骤共享 cookie / 默认头 / base_url。</comment>
+				<implement>HttpKeyword:sessionBegin</implement>
+				<show>1</show>
+				<param id='base_url'><name>基址URL</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='timeout'><name>默认超时秒</name><default>20</default><values/><required>F</required><datapool/><comment/></param>
+				<param id='verify'><name>校验证书</name><default>true</default><values>true\r\nfalse</values><required>F</required><datapool/><comment/></param>
+				<param id='proxy'><name>代理</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='header'><name>默认请求头</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='follow_redirects'><name>跟随重定向</name><default>true</default><values>true\r\nfalse</values><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_session_end'>
+				<name>关闭HTTP会话</name>
+				<comment>关闭用例级 HTTP 会话并清理 cookie。</comment>
+				<implement>HttpKeyword:sessionEnd</implement>
+				<show>1</show>
+			</keyword>
+			<keyword id='http_patch'>
+				<name>HTTP_PATCH请求</name>
+				<comment>发送 HTTP PATCH。</comment>
+				<implement>HttpKeyword:doPatch</implement>
+				<show>1</show>
+				<param id='url'><name>url地址</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='header'><name>请求消息头</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='request'><name>请求消息体</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='resp_code'><name>响应消息码[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='resp_body'><name>响应消息体[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='resp_header'><name>响应消息头[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='response_time'><name>响应时间[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_head'>
+				<name>HTTP_HEAD请求</name>
+				<comment>发送 HTTP HEAD。</comment>
+				<implement>HttpKeyword:doHead</implement>
+				<show>1</show>
+				<param id='url'><name>url地址</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='resp_code'><name>响应消息码[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='resp_header'><name>响应消息头[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_options'>
+				<name>HTTP_OPTIONS请求</name>
+				<comment>发送 HTTP OPTIONS。</comment>
+				<implement>HttpKeyword:doOptions</implement>
+				<show>1</show>
+				<param id='url'><name>url地址</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='resp_code'><name>响应消息码[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='resp_header'><name>响应消息头[OUT]</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_set_auth_basic'>
+				<name>设置Basic认证</name>
+				<comment>写入会话 Authorization Basic。</comment>
+				<implement>HttpKeyword:setAuthBasic</implement>
+				<show>1</show>
+				<param id='username'><name>用户名</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='password'><name>密码</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_set_auth_bearer'>
+				<name>设置Bearer令牌</name>
+				<comment>写入会话 Authorization Bearer。</comment>
+				<implement>HttpKeyword:setAuthBearer</implement>
+				<show>1</show>
+				<param id='token'><name>令牌</name><default/><values/><required>T</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_set_auth_apikey'>
+				<name>设置API Key</name>
+				<comment>写入 header 或 query。</comment>
+				<implement>HttpKeyword:setAuthApiKey</implement>
+				<show>1</show>
+				<param id='name'><name>键名</name><default>X-API-Key</default><values/><required>T</required><datapool/><comment/></param>
+				<param id='value'><name>键值</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='location'><name>位置</name><default>header</default><values>header\r\nquery</values><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_assert_status'>
+				<name>断言HTTP状态码</name>
+				<comment>期望：200 / 200-299 / 200,201。</comment>
+				<implement>HttpKeyword:assertStatus</implement>
+				<show>1</show>
+				<param id='expected'><name>期望状态码</name><default>200</default><values/><required>T</required><datapool/><comment/></param>
+				<param id='status'><name>实际状态码</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_assert_time_lt'>
+				<name>断言响应时间小于</name>
+				<comment>单位毫秒。</comment>
+				<implement>HttpKeyword:assertTimeLt</implement>
+				<show>1</show>
+				<param id='max_ms'><name>上限毫秒</name><default>3000</default><values/><required>T</required><datapool/><comment/></param>
+				<param id='response_time'><name>实际耗时</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='json_assert_schema'>
+				<name>断言JSON Schema</name>
+				<comment>schema 为 JSON 文本或工程内文件路径。</comment>
+				<implement>HttpKeyword:assertJsonSchema</implement>
+				<show>1</show>
+				<param id='json_text'><name>JSON报文</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='schema'><name>Schema</name><default/><values/><required>T</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='http_assert_body_contains'>
+				<name>断言响应体包含</name>
+				<comment>模糊/精确/正则。</comment>
+				<implement>HttpKeyword:assertBodyContains</implement>
+				<show>1</show>
+				<param id='text'><name>期望文本</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='body'><name>实际报文</name><default/><values/><required>F</required><datapool/><comment/></param>
+				<param id='matched'><name>期望匹配</name><default>true</default><values>true\r\nfalse</values><required>F</required><datapool/><comment/></param>
+				<param id='mode'><name>匹配模式</name><default>模糊匹配</default><values>模糊匹配\r\n精确匹配\r\n正则表达式匹配</values><required>F</required><datapool/><comment/></param>
+			</keyword>
+			<keyword id='api_env_use'>
+				<name>切换API环境</name>
+				<comment>加载 api_env.yaml 的 profile。</comment>
+				<implement>HttpKeyword:apiEnvUse</implement>
+				<show>1</show>
+				<param id='profile'><name>环境名</name><default/><values/><required>T</required><datapool/><comment/></param>
+				<param id='env_file'><name>环境文件</name><default/><values/><required>F</required><datapool/><comment/></param>
+			</keyword>
+</group>
+</group>
+</root>

@@ -1,0 +1,3509 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root ver="1.0">
+	
+<group name='公用关键字'>
+		
+		
+  <group name='Redis操作'>
+	  <keyword id='redis_connect_redis'>
+			<name>打开redis连接</name>
+			<comment>输入ip地址和端口连接redis，若有密码则输入，没有可不输入</comment>
+			<implement>RedisKeyword:connectRedis</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名,若不输入则别名为空，建议输入</comment>
+			</param>
+			<param id='redisIP'>
+				<name>IP地址</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的redis的服务器地址</comment>
+			</param>
+			<param id='redisPort'>
+				<name>端口号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的redis端口号</comment>
+			</param>
+			<param id='redisPasswd'>
+				<name>密码</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>待连接的redis密码，若没有可不输入</comment>
+			</param>
+		</keyword>
+		<keyword id='redis_get_RedisVal'>
+			<name>获取redis中对应key的String值</name>
+			<comment>根据 key 获取 Redis 字符串值；key 不存在时返回 nil。</comment>
+			<implement>RedisKeyword:getRedisVal</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 <param id='redisValue'> 
+		 	<name>输出变量名称[OUT]</name> 
+		 	<default>var_redisValue</default> 
+		  <values/> 
+		  <required>T</required> 
+		  <comment>输出变量名称-将获取的redis的value值，保存至该变量并放入上下文中待引用。缺省为var_redisValue，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  </comment>
+		 </param> 
+		</keyword>
+		<keyword id='redis_get_RedisHashVal'>
+			<name>获取redis中对应key的哈希域值</name>
+			<comment>根据 key 与 field 获取 Redis 哈希字段值；不存在时返回 nil。</comment>
+			<implement>RedisKeyword:getRedisHashVal</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='field'>
+				<name>域</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>哈希结构中的域</comment>
+			</param>
+		 <param id='redisValue'> 
+		 	<name>输出变量名称[OUT]</name> 
+		 	<default>var_redisValue</default> 
+		  <values/> 
+		  <required>T</required> 
+		  <comment>输出变量名称-将获取的redis的value值，保存至该变量并放入上下文中待引用。缺省为var_redisValue，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  </comment>
+		 </param> 
+		</keyword>
+		<keyword id='redis_get_RedisSet'>
+			<name>获取redis中对应key的set集合值</name>
+			<comment>根据 key 获取 Redis 集合成员，多个值以分号分隔。</comment>
+			<implement>RedisKeyword:getRedisSet</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 <param id='redisValue'> 
+		 	<name>输出变量名称[OUT]</name> 
+		 	<default>var_redisValue</default> 
+		  <values/> 
+		  <required>T</required> 
+		  <comment>输出变量名称-将获取的redis的value值，保存至该变量并放入上下文中待引用。缺省为var_redisValue，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  </comment>
+		 </param> 
+		</keyword>
+	    <keyword id='redis_get_RedisSortedSet'>
+			<name>获取redis中对应key的有序集合值</name>
+			<comment>根据 key 获取 Redis 有序集合成员，多个值以分号分隔。</comment>
+			<implement>RedisKeyword:getRedisSortedSet</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='start'>
+				<name>start</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待查询的有序集合的起始位置</comment>
+			</param>
+			<param id='end'>
+				<name>end</name>
+				<default>-1</default>
+				<values/>
+				<required>T</required>
+				<comment>待查询的有序集合的结束位置</comment>
+			</param>
+		    <param id='redisValue'> 
+		 		<name>输出变量名称[OUT]</name> 
+		 		<default>var_redisValue</default> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>输出变量名称-将获取的redis的value值，保存至该变量并放入上下文中待引用。缺省为var_redisValue，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  		</comment>
+		 	</param>
+		</keyword>
+			  <keyword id='redis_get_RedisSortedSetScore'>
+			<name>获取redis中对应key的有序集合值的权重</name>
+			<comment>根据 key 与成员值获取有序集合中的分值。</comment>
+			<implement>RedisKeyword:getRedisSortedSetScore</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='member'>
+				<name>有序集合值</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>该key对应的有序集合中的某个值</comment>
+			</param>
+		  <param id='score'> 
+		 		<name>输出变量名称[OUT]</name> 
+		 		<default>var_score</default> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>输出变量名称-将获取的redis的score值，保存至该变量并放入上下文中待引用。缺省为var_score，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  		</comment>
+		 	</param>
+		</keyword>
+		<keyword id='redis_get_RedisList'>
+			<name>获取redis中对应key的List集合</name>
+			<comment>根据 key 获取 Redis 列表元素，多个值以分号分隔。</comment>
+			<implement>RedisKeyword:getRedisList</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='start'>
+				<name>start</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待查询的有序集合的起始位置</comment>
+			</param>
+			<param id='end'>
+				<name>end</name>
+				<default>-1</default>
+				<values/>
+				<required>T</required>
+				<comment>待查询的有序集合的结束位置</comment>
+			</param>
+		    <param id='redisValue'> 
+		 		<name>输出变量名称[OUT]</name> 
+		 		<default>var_redisValue</default> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>输出变量名称-将获取的redis的value值，保存至该变量并放入上下文中待引用。缺省为var_redisValue，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  		</comment>
+		 	</param>
+		</keyword>
+		<keyword id='redis_get_key_ttl'>
+			<name>获取redis中对应key的剩余生存时间</name>
+			<comment>查询 key 的剩余生存时间（秒）；无 key 为 -2，无过期时间为 -1。</comment>
+			<implement>RedisKeyword:getRedisKeyTtl</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='seconds'> 
+				<name>输出变量名称[OUT]</name> 
+			 	<default>var_seconds</default> 
+			  	<values/> 
+			  	<required>T</required>
+			 	<comment>输出变量名称-返回指定 key的剩余生存时间（字符串，单位为秒），保存至该变量并放入上下文中待引用。缺省为var_seconds，可随意更改。 若输入的key在redis中不存在，返回-2（字符串）；若输入的key在redis中存在，但没有设置剩余生存时间，返回-1（字符串）。
+				</comment>
+			</param> 
+		</keyword>
+	    <keyword id='redis_get_keys'>
+			<name>获取redis中匹配key</name>
+			<comment>按模式匹配 Redis 中的 key，多个结果以分号分隔。</comment>
+			<implement>RedisKeyword:getKeys</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 <param id='redisValue'> 
+		 	<name>输出变量名称[OUT]</name> 
+		 	<default>var_redisValue</default> 
+		  <values/> 
+		  <required>T</required> 
+		  <comment>输出变量名称-将获取的redis的value值，保存至该变量并放入上下文中待引用。缺省为var_redisValue，可随意更改。
+		           若输入的key在redis中不存在，则变量对应的值为nil	
+		  </comment>
+		 </param> 
+		</keyword>
+		
+		<keyword id='redis_set_RedisString'>
+			<name>新增/修改redis中key对应String类型值</name>
+			<comment>根据输入的key设置其对应的String值。若key存在则覆盖修改数据，若key不存在则添加此key</comment>
+			<implement>RedisKeyword:setRedisString</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 	<param id='redisValue'> 
+		 		<name>value</name> 
+		 		<default/> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>redis中key待修改后的value属性值</comment>
+		 	</param> 
+		</keyword>
+		<keyword id='redis_set_RedisHsh'>
+			<name>设置redis中Hash数据</name>
+			<comment>根据输入的key和field设置其对应的hash值。若key存在则覆盖修改数据，若key不存在则添加此key</comment>
+			<implement>RedisKeyword:setRedisHash</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='redisField'>
+				<name>Field域</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的域</comment>
+			</param>
+		 	<param id='redisValue'> 
+		 		<name>value</name> 
+		 		<default/> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>redis中key和field对应的value</comment>
+		 	</param> 
+		</keyword>
+		<keyword id='redis_set_RedisSet'>
+			<name>设置redis中set数据</name>
+			<comment>根据输入的key设置其对应的set值。若key不存在则添加此key</comment>
+			<implement>RedisKeyword:setRedisSet</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 	<param id='redisValue'> 
+		 		<name>value</name> 
+		 		<default/> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>redis中key对应的value，支持多个输入，中间用分号隔开，比如a;b;c</comment>
+		 	</param> 
+		</keyword>
+		
+		<keyword id='redis_set_RedisList'>
+			<name>设置redis中list数据</name>
+			<comment>根据输入的key设置其对应的list值。若key不存在则添加此key</comment>
+			<implement>RedisKeyword:setRedisList</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 	<param id='redisValue'> 
+		 		<name>value</name> 
+		 		<default/> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>redis中key对应的list value，支持多个输入，中间用分号隔开，比如a;b;c</comment>
+		 	</param> 
+		</keyword>
+		<keyword id='redis_set_ScoredSet'>
+			<name>设置redis中有序集合数据</name>
+			<comment>根据输入的key设置其对应的有序集合值。若key不存在则添加此key</comment>
+			<implement>RedisKeyword:setRedisScoredSet</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+		 	<param id='redisValue'> 
+		 		<name>value</name> 
+		 		<default/> 
+		  		<values/> 
+		  		<required>T</required> 
+		  		<comment>redis中key对应的有序集合scroed|member。同时支持多个输入，中间用分号隔开，比如8.0|element001;9.0|element002</comment>
+		 	</param> 
+		</keyword>
+		
+		<keyword id='redis_del_RedisKey' risk_level='irreversible'>
+			<name>删除redis中key数据</name>
+			<comment>支持删除单个和多个key，其中多个key之间使用分号;间隔。若存在与输入key一致的记录则删除，不存在key则不做操作</comment>
+			<implement>RedisKeyword:deleteRedisKey</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值，若删除多个则中间使用分号;间隔，单个则直接输入。当为模糊匹配时，需要输入需要匹配的key前缀，同样支持分号;间隔</comment>
+			</param>
+			<param id='delMode'>
+				<name>匹配模式</name>
+				<default>精确匹配</default>
+				<values>精确匹配\r\n模糊匹配</values>
+				<required>T</required>
+				<comment>默认精确匹配，根据输入的key精确匹配删除；模糊匹配则根据输入的key作为前缀来模糊匹配，删除所有匹配到的key</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='redis_del_RedisKey_withResult' risk_level='irreversible'>
+			<name>删除redis中key数据并返回结果</name>
+			<comment>支持删除单个和多个key，其中多个key之间使用分号;间隔。若存在与输入key一致的记录则删除，不存在key则不做操作。删除过程中出现异常则给出warn信息，同时标记结果为fail。否则为Sucess</comment>
+			<implement>RedisKeyword:deleteRedisKeyWithResult</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值，若删除多个则中间使用分号;间隔，单个则直接输入。当为模糊匹配时，需要输入需要匹配的key前缀，同样支持分号;间隔</comment>
+			</param>
+			<param id='delMode'>
+				<name>匹配模式</name>
+				<default>精确匹配</default>
+				<values>精确匹配\r\n模糊匹配</values>
+				<required>T</required>
+				<comment>默认精确匹配，根据输入的key精确匹配删除；模糊匹配则根据输入的key作为前缀来模糊匹配，删除所有匹配到的key</comment>
+			</param>
+			<param id='result'>
+				<name>输出变量[OUT]</name>
+				<default>var_result</default>
+				<values/>
+				<required>T</required>
+				<comment>输出变量，将删除redis中key数据的执行结果（Sucess or fail）保存至该变量并放入上下文中待引用。缺省为var_result，可随意更改</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='redis_del_RedisScoredSet' risk_level='irreversible'>
+			<name>删除redis中key对应的有序集合member</name>
+			<comment>根据输入的key删除其对应的有序集合中的member，支持删除多个成员，中间用;分隔。若存在与输入key一致的记录则删除，不存在key则不做操作</comment>
+			<implement>RedisKeyword:deleteRedisScoredSet</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>redis的key值</comment>
+			</param>
+			<param id='redisValue'>
+				<name>有序集合中member</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>有序集合中member。支持删除多个，中间用;分隔</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='redis_del_RedisKeyFromFile' risk_level='irreversible'>
+			<name>批量删除redis中key</name>
+			<comment>解析文件，读取key，并根据存在则删除，不存在不处理的原则大批量删除key；文件内容要求每行仅有一个key，然后换行后第2个key，依次类推...</comment>
+			<implement>RedisKeyword:deleteRedisKeyFromFile</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>key文件的相对路径，以工程目录为根目录。举例：/file/keys.txt;文件内容要求每行仅有一个key，然后换行输入第2个key，依次类推</comment>
+			</param>
+		</keyword>
+		<keyword id='redis_verify_KeysNum'>
+			<name>校验redis中匹配key个数</name>
+			<comment>校验redis中匹配key个数，对应redis中keys命令</comment>
+			<implement>RedisKeyword:verifyKeysNum</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+			<param id='dbIndex'>
+				<name>db序号</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<comment>待操作key所在的分片db序号，比如在db9中输入9；默认为0</comment>
+			</param>
+			<param id='redisKey'>
+				<name>key</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>待匹配的redis中key，可缩写，如：*abc*</comment>
+			</param>
+			<param id='num'>
+				<name>期望个数</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<comment>期望匹配的key个数</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='redis_quit_Redis'>
+			<name>退出redis连接</name>
+			<comment>退出redis连接</comment>
+			<implement>RedisKeyword:quitRedis</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>redis连接别名，若别名为空则不输入</comment>
+			</param>
+		</keyword>
+	</group>
+	<group name='HBase操作'>
+		<keyword id='hbase_connect'>
+			<name>配置HBase数据库连接</name>
+			<comment>输入Zookeeper集群的地址列表和客户端访问端口连接HBase。若有用户权限设置，则输入hadoop用户名、hadoop组名，没有可不输入。</comment>
+			<implement>HbaseKeyword:connectHbase</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>hbase连接别名,若不输入则别名为空，建议输入。</comment>
+			</param>
+			<param id='quorum'>
+				<name>Zookeeper集群的地址列表</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的Zookeeper集群的地址列表，用逗号分割。</comment>
+			</param>
+			<param id='clientPort'>
+				<name>客户端连接端口号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的ZooKeeper的客户端端口号，该端口号配置在zoo.conf中。</comment>
+			</param>
+			<param id='hadoopUser'>
+				<name>hadoop用户名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>设置用户权限，若没有可不输入。</comment>
+			</param>
+			<param id='hadoopGroup'>
+				<name>hadoop组名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>设置用户权限，若没有可不输入。</comment>
+			</param>
+		</keyword>
+		<keyword id='hbase_verify_table_existed'>
+			<name>校验HBase中表是否存在</name>
+			<comment>根据输入的tableName，判断Hbase中是否存在该表。预期存在输入true，预期不存在输入false；若预期与实际不符，则会抛出异常。</comment>
+			<implement>HbaseKeyword:verifyTableExisted</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>hbase的连接别名,若别名为空则不输入。</comment>
+			</param>
+			<param id='tableName'>
+				<name>表名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验的表名。</comment>
+			</param>
+			<param id='isExist'>
+				<name>预期存在性</name>
+				<default>true</default>
+				<values>true\r\nfalse</values>
+				<required>T</required>
+				<datapool/>
+				<comment>预期某控件存在，请选择true；预期某控件不存在，请选择false</comment>
+			</param>
+		</keyword>		
+		<keyword id='hbase_get'>
+			<name>执行HBase单行查询操作</name>
+			<comment>根据输入的tableName、rowKey，获取行键rowKey指定行的所有列族、列的最新版数据。将查询的结果存入变量，并保存在上下文待引用。</comment>
+			<implement>HbaseKeyword:getRow</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>hbase的连接别名,若别名为空则不输入。</comment>
+			</param>
+			<param id='tableName'>
+				<name>表名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待获取数据的表名。</comment>
+			</param>
+			<param id='rowKey'>
+				<name>行号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待获取数据的行号。</comment>
+			</param>
+			<param id='outResult'>
+				<name>查询结果[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将查询结果存入该变量并保存在上下文待引用。输入举例：VAR_RESULT_DATA</comment>
+			</param>
+		</keyword>
+		<keyword id='hbase_put'>
+			<name>执行HBase单行新增操作</name>
+			<comment>用来对Hbase的单个行执行添加操作，每次增加一个Cell(列族、列名、列值).</comment>
+			<implement>HbaseKeyword:putRow</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>hbase的连接别名,若别名为空则不输入。</comment>
+			</param>
+			<param id='tableName'>
+				<name>表名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待添加数据的表名。</comment>
+			</param>
+			<param id='rowKey'>
+				<name>行号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待添加数据的行号。</comment>
+			</param>
+			<param id='columnFamily'>
+				<name>列族</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待添加的列族。</comment>
+			</param>
+			<param id='column'>
+				<name>列名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待添加的列名。</comment>
+			</param>
+			<param id='value'>
+				<name>列值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待添加的列值。</comment>
+			</param>
+		</keyword>
+		<keyword id='hbase_del'>
+			<name>执行HBase单行删除操作</name>
+			<comment>根据输入的tableName、rowKey，进行整行删除，删除行键rowKey指定行的所有列族、所有列、所有版本的数据。</comment>
+			<implement>HbaseKeyword:delRow</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>别名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>hbase的连接别名,若别名为空则不输入。</comment>
+			</param>
+			<param id='tableName'>
+				<name>表名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待删除数据的表名。</comment>
+			</param>
+			<param id='rowKey'>
+				<name>行号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待删除数据的行号。</comment>
+			</param>
+		</keyword>
+		<keyword id='hbase_verify_cell_existed'>
+			<name>校验HBase单行查询结果</name>
+			<comment>用来对Hbase的单个行查询结果进行cell单元校验，校验指定 列族、列名、列值 的存在性。列值 可以为空.</comment>
+			<implement>HbaseKeyword:verifyCellExisted</implement>
+			<show>1</show>
+			<param id='resultData'>
+				<name>结果集</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验结果集，通常设置《执行HBase单行查询操作》返回的变量值。</comment>
+			</param>
+			<param id='columnFamily'>
+				<name>预期列族</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验的列族。</comment>
+			</param>
+			<param id='column'>
+				<name>预期列名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验的列名。</comment>
+			</param>
+			<param id='value'>
+				<name>预期列值</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>待校验的列值，可以为空。</comment>
+			</param>
+			<param id='isExist'>
+				<name>预期结果</name>
+				<default>true</default>
+				<values>true\r\nfalse</values>
+				<required>T</required>
+				<datapool/>
+				<comment>预期的匹配校验结果。若期望结果集中，存在预期的“列族:列名/列值”，请选择true；若期望结果集中，不存在预期的“列族:列名/列值”，请选择false。</comment>
+			</param>
+		</keyword>
+	</group>
+  <group name='数据库操作'>
+		<keyword id='database_open'>
+			<name>打开数据库连接</name>
+			<comment>根据指定的URL，用户名和密码打开数据库链接。</comment>
+			<implement>DatabaseKeyword:open</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+			<param id='type'>
+				<name>数据库类型</name>
+				<default>DB2</default>
+				<values>DB2\r\nMYSQL\r\nORACLE\r\nSYBASE\r\nHIVE\r\npostgreSQL</values>
+				<required>T</required>
+				<datapool/>
+				<comment>数据库类型：当前支持DB2，MySql，Oracle，Sybase，Hive server2、postgreSQL</comment>
+			</param>
+			<param id='url'>
+				<name>数据库URL</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据库链接URL，如对编码格式有要求，请输入编码格式。输入举例：jdbc:db2://192.168.40.100:50004/sitdb?characterEncoding=UTF8</comment>
+			</param>
+			<param id='username'>
+				<name>数据库用户名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据库链接用户名。</comment>
+			</param>
+			<param id='password'>
+				<name>数据库密码</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据库链接密码。</comment>
+			</param>
+			<!-- 20180614 chengpf 增加mysql不同版本的兼容支持 -->
+			<param id='mysqlversion'>
+				<name>MySQL版本</name>
+				<default>MySQL5</default>
+				<values>MySQL6\r\nMySQL5</values>
+				<required>T</required>
+				<datapool/>
+				<comment>MySQL版本高低版本的兼容，默认是Mysql5</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='database_query'>
+			<name>执行SQL查询</name>
+			<comment>执行指定的SQL语句，将查询的结果集存入变量并保存在上下文待引用。</comment>
+			<implement>DatabaseKeyword:query</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+	 		<param id='sql'>
+				 <name>SQL语句</name>
+				 <default/>
+				 <values/>
+				 <required>T</required>
+				 <datapool/>
+				 <comment>待执行的一条SQL语句，可输入sql语句或sql文件(支持语句换行)地址。
+				 文件地址请以  file: 开头，路径为以测试工程所在目录为根目录的相对路径。示例： file:/SqlFiles/a.sql</comment>
+			</param>
+			<param id='maxTimeOut'>
+				<name>查询超时时间(ms)</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>查询超时时间，单位为毫秒。防止出现诸如新增操作数据入库需要一段时间，在入库前即查询为空的场景，当查询为空时等待1s循环查询，直到设置的超时时间为止</comment>
+			</param>
+			<param id='data_set'>
+				<name>查询结果集[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将查询结果集存入该变量并保存在上下文待引用。输入举例：VAR_DATA_SET</comment>
+			</param>
+		</keyword>		
+		<keyword id='database_non_query'>
+			<name>执行SQL新增/修改/删除</name>
+			<comment>执行指定的SQL-INSERT/UPDATE/DELETE等非返回结果的语句</comment>
+			<implement>DatabaseKeyword:executeNonResultSql</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+			<param id='sql'>
+				<name>SQL语句</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待执行的插入、修改、删除等非输出结果的SQL语句，输入举例：INSERT INTO table_name (列1, 列2,...) VALUES (值1, 值2,....)</comment>
+			</param>
+		</keyword>
+		<keyword id='database_non_query_FromFile'>
+			<name>批量执行SQL</name>
+			<comment>解析.sql文件，批量执行INSERT/UPDATE/DELETE等非返回结果的语句</comment>
+			<implement>DatabaseKeyword:executeNonResultSqlFromFile</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+			<param id='path'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>文件相对路径，以测试工程所在目录为根目录。格式举例：/sqlFile/abc.sql</comment>
+			</param>
+		</keyword>
+		<keyword id='database_executeNoneQueSQL_HIVE'>
+			<name>执行非查询SQL(Hive)</name>
+			<comment>(仅针对HIVE库)执行指定的非查询的SQL语句，比如加载数据，创建表，删除表等</comment>
+			<implement>DatabaseKeyword:executeNonQueSqlForHive</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+			<param id='sql'>
+				<name>SQL语句</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待执行的SQL语句，输入举例：drop table abc</comment>
+			</param>
+		</keyword>
+		<keyword id='database_executeQueSQL_HIVE'>
+			<name>执行查询SQL并获取结果内容(Hive)</name>
+			<comment>(仅针对HIVE库)执行指定的查询的SQL语句，并获取结果集某1行某1列的值</comment>
+			<implement>DatabaseKeyword:executeSqlForHive</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+			<param id='sql'>
+				<name>SQL语句</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待执行的SQL语句，输入举例：SELECT * FROM DatebaseName.TableName WHERE KeyName ='xxx';</comment>
+			</param>
+			<param id='rowIndex'>
+				<name>行号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验数据行编号，从1开始计数，输入举例：1</comment>
+			</param>
+			<param id='colName'>
+				<name>列名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验某个数据列名称</comment>
+			</param>
+			<param id='value'>
+				<name>列值输出数据[OUT]</name>
+				<default>VAR_VALUE</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将数据集中对应的某行的某列值存入该变量并保存在上下文待引用。若值为null，则返回"STR.NULL",若值为空，则返回"STR.EMPTY"。输入举例：VAR_VALUE</comment>
+			</param>
+		</keyword>
+	    <keyword id='database_executeQueSQL_GETCOUNT_HIVE'>
+			<name>执行查询SQL并获取行数(Hive)</name>
+			<comment>(仅针对HIVE库)执行指定的查询的SQL语句，并获取结果集行数</comment>
+			<implement>DatabaseKeyword:executeSqlAndGetCountForHive</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+			<param id='sql'>
+				<name>SQL语句</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待执行的SQL语句，输入举例：SELECT * FROM DatebaseName.TableName WHERE KeyName ='xxx';</comment>
+			</param>
+			<param id='rowCount'>
+				<name>行数输出数据[OUT]</name>
+				<default>VAR_COUNT</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将数据集的行数存入该变量并保存在上下文待引用。输入举例：VAR_COUNT；</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='database_verify_data'>
+			<name>校验数据库结果集</name>
+			<comment>校验数据库结果集的正确性。</comment>
+			<implement>DatabaseKeyword:verifyData</implement>
+			<show>1</show>
+			<param id='data_set'>
+				<name>结果集</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验结果集，通常设置《执行SQL查询》返回的变量值。</comment>
+			</param>
+			<param id='row'>
+				<name>行号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验数据行编号，从1开始计数，输入举例：1，当校验结果集时候，该选项填写ALL</comment>
+			</param>
+			<param id='column'>
+				<name>列名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验某数据列名称。</comment>
+			</param>
+			<param id='text'>
+				<name>预期文本</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>预期文本，请根据待指定的匹配模式根据分隔符输入。若预期数据库字段值为空，此处填写STR.EMPTY；若预期为null，此处填写STR.Null。</comment>
+			</param>
+			<param id='matched'>
+				<name>预期结果</name>
+				<default>true</default>
+				<values>true\r\nfalse</values>
+				<required>T</required>
+				<datapool/>
+				<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+			</param>
+			<param id='mode'>
+				<name>匹配模式</name>
+				<default>精确匹配</default>
+				<values>精确匹配\r\n模糊匹配\r\n正则表达式匹配</values>
+				<required>T</required>
+				<datapool/>
+				<comment>匹配模式，请根据实际需要选择。</comment>
+			</param>
+			<param id='separator'>
+				<name>数据分隔符</name>
+				<default>;</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据分隔符，输出值会以此分隔符来间隔数据。</comment>
+			</param>
+		</keyword>
+		<keyword id='database_verify_rowCount'>
+			<name>校验数据库结果行数</name>
+			<comment>校验数据库查询结果的行数</comment>
+			<implement>DatabaseKeyword:verifyRowCount</implement>
+			<show>1</show>
+			<param id='data_set'>
+				<name>结果集</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验结果集，通常设置《执行SQL查询》返回的变量值。</comment>
+			</param>
+			<param id='mode'>
+				<name>匹配模式</name>
+				<default>等于</default>
+				<values>大于\r\n等于\r\n小于\r\n不等于\r\n大于等于\r\n小于等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>匹配模式，实际行数与期望行数的比较</comment>
+			</param>
+			<param id='rowCount_exp'>
+				<name>期望行数</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>期望的行数</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='database_get_data'>
+			<name>获取数据库结果集内容</name>
+			<comment>获取数据库结果集的数据。支持单行单列1个变量、单行N列1个变量，单行N列N个变量，支持ALL行单列1个变量，支持ALL行N列1个变量</comment>
+			<implement>DatabaseKeyword:getData</implement>
+			<show>1</show>
+			<param id='data_set'>
+				<name>结果集</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验结果集，通常设置《执行SQL查询》返回的变量值。</comment>
+			</param>
+			<param id='row'>
+				<name>行号</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验数据行编号，从1开始计数，输入举例：1，当想获取全集时，输入ALL</comment>
+			</param>
+			<param id='column'>
+				<name>列名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验某个数据列名称，或多个数据列名称，中间使用分隔符分隔</comment>
+			</param>
+			<param id='value'>
+				<name>输出数据[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将数据集中对应的值存入该变量并保存在上下文待引用。输入举例：VAR_VALUE；当单行N列时亦支持N个一一对应的输出变量，中间用分隔符分隔；若数据库字段值为null，则返回字符串STR.Null；若返回为空，则返回字符串STR.Empty</comment>
+			</param>
+			<param id='separator'>
+				<name>数据分隔符</name>
+				<default>;</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据分隔符，输出值会以此分隔符来间隔数据。</comment>
+			</param>
+		</keyword>
+		<keyword id='database_get_rowcount'>
+			<name>获取数据库结果集行数</name>
+			<comment>获取数据库结果集的行数</comment>
+			<implement>DatabaseKeyword:getRowCount</implement>
+			<show>1</show>
+			<param id='data_set'>
+				<name>结果集</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验结果集，通常设置《执行SQL查询》返回的变量值。</comment>
+			</param>
+			<param id='value'>
+				<name>输出数据[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将数据集行数存入该变量并保存在上下文待引用。输入举例：VAR_VALUE</comment>
+			</param>
+		</keyword>
+		<keyword id='database_close'>
+			<name>关闭数据库连接</name>
+			<comment>关闭数据库链接。</comment>
+			<implement>DatabaseKeyword:close</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>数据库链接名</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>用于区分打开的多个数据库链接，若仅需打开一个链接，别名可不输入</comment>
+			</param>
+		</keyword>
+	</group>
+	
+	<group name='Linux/Sftp操作'>
+		<keyword id='linux_ssh_connect'>
+			<name>通过ssh协议连接linux服务器</name>
+			<comment>通过ssh协议方式连接linux服务器。默认校验 known_hosts；未知主机须 allow_unknown_host=true</comment>
+			<implement>SshKeyword:connectSSH</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>Linux连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>为将进行的linux连接起的别名</comment>
+			</param>
+			<param id='IP'>
+				<name>Linux服务器IP</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的LINUX服务器的IP</comment>
+			</param>
+			<param id='port'>
+				<name>Linux连接端口</name>
+				<default>22</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的LINUX服务器的连接端口，默认为SSH协议的端口22</comment>
+			</param>
+			<param id='user'>
+				<name>Linux连接登录名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的LINUX服务器的连接登录用户名</comment>
+			</param>
+			<param id='passwd'>
+				<name>Linux连接登录密码</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>待连接的LINUX服务器的连接登录密码,没有可不输入</comment>
+			</param>
+			<param id='allow_unknown_host'>
+				<name>允许未知主机</name>
+				<default>0</default>
+				<values>0|1</values>
+				<required>F</required>
+				<datapool/>
+				<comment>默认0：拒绝不在 known_hosts 的主机（防MITM）。仅调试/实验室可设1；亦可用环境变量 AUTOPILOT_SSH_ALLOW_UNKNOWN_HOST=1</comment>
+			</param>
+			<param id='known_hosts'>
+				<name>known_hosts路径</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>可选；额外加载的 known_hosts 文件。空则使用系统默认（如 ~/.ssh/known_hosts）</comment>
+			</param>
+		</keyword>
+		<keyword id='linux_ssh_runCmd_WithoutResult' risk_level='irreversible'>
+			<name>执行Linux命令_无返回结果</name>
+			<comment>执行Linux命令，多用于不返回结果或对返回结果不做处理的命令</comment>
+			<implement>SshKeyword:runCmdWithoutResult</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>Linux连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>Linux连接的别名</comment>
+			</param>
+			<param id='cmd'>
+				<name>Linux命令</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待执行的Linux命令。支持单个命令，也支持多个命令组合(命令之间用;间隔)。</comment>
+			</param>
+		</keyword>
+		<keyword id='linux_ssh_runCmd_WithResult' risk_level='irreversible'>
+			<name>执行Linux命令_需返回结果</name>
+			<comment>执行Linux命令，多用于返回结果或需对返回结果做处理的命令</comment>
+			<implement>SshKeyword:runCmdWithResult</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>Linux连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>linux连接的别名</comment>
+			</param>
+			<param id='cmd'>
+				<name>Linux命令</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待执行的Linux命令。支持单个命令，也支持多个命令组合(命令之间用;间隔),如 cd bin/logs;pwd</comment>
+			</param>
+			<param id='result'>
+				<name>输出结果变量[OUT]</name>
+				<default>VAR_CmdResult</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将返回的Linux命令结果存入该变量并保存在上下文待引用。输入举例：VAR_CmdResult </comment>
+			</param>
+		</keyword>
+		<keyword id='linux_ssh_sftp_fileUpload' risk_level='irreversible'>
+			<name>SFTP文件上传</name>
+			<comment>打开sftp通道，进行sftp文件上传</comment>
+			<implement>SshKeyword:fileUpload</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>Linux连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>linux连接的别名</comment>
+			</param>
+			<param id='srcPosition'>
+				<name>上传文件位置</name>
+				<default>工程</default>
+				<values>本地\r\n工程</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待上传文件的本地位置：本地 or 工程。默认工程，即待上传文件放置在脚本工程下；本地表示在本机的盘符中</comment>
+			</param>
+			<param id='srcFile'>
+				<name>待上传文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>本地待上传文件路径及文件名；输入举例：工程- /file/123.txt; 本地- C:\123.txt</comment>
+			</param>
+			<param id='dstFile'>
+				<name>服务器文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>上传至目标服务器的路径及文件名；输入举例：/home/123.txt</comment>
+			</param>
+		</keyword>
+		<keyword id='linux_ssh_sftp_fileDownload' risk_level='irreversible'>
+			<name>SFTP文件下载</name>
+			<comment>打开sftp通道，进行sftp文件下载</comment>
+			<implement>SshKeyword:fileDownload</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>Linux连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>linux连接的别名</comment>
+			</param>
+			<param id='srcFile'>
+				<name>待下载文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>服务器待下载文件路径及文件名；输入举例：/home/123.txt;</comment>
+			</param>
+			<param id='dstPosition'>
+				<name>下载文件位置</name>
+				<default>工程</default>
+				<values>本地\r\n工程</values>
+				<required>T</required>
+				<datapool/>
+				<comment>文件下载后放置位置：本地 or 工程。默认工程，即待下载文件放置在脚本工程下；本地表示在放置在本机的盘符中</comment>
+			</param>
+			<param id='dstFile'>
+				<name>本地文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>下载至本地的路径及文件名；输入举例：工程- /file/123.txt; 本地- C:\123.txt</comment>
+			</param>
+		</keyword>
+		<keyword id='linux_ssh_close'>
+			<name>关闭Linux连接</name>
+			<comment>关闭Linux连接</comment>
+			<implement>SshKeyword:closeSSH</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>Linux连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>为将进行的linux连接起的别名</comment>
+			</param>
+		</keyword>
+		
+	</group>
+	<group name="FTP操作">
+	    <keyword id='ftp_ftpclient_connect'>
+			<name>FTP连接打开</name>
+			<comment>连接ftp服务器</comment>
+			<implement>FtpKeyword:connectFtp</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>FTP连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>为将进行的ftp连接起的别名</comment>
+			</param>
+			<param id='host'>
+				<name>FTP服务器IP</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的LINUX服务器的IP-host</comment>
+			</param>
+			<param id='port'>
+				<name>FTP连接端口</name>
+				<default>21</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的FTP服务器的连接端口，默认为FTP协议的端口21</comment>
+			</param>
+			<param id='user'>
+				<name>FTP连接登录名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的FTP服务器的连接登录用户名</comment>
+			</param>
+			<param id='pwd'>
+				<name>FTP连接登录密码</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待连接的FTP服务器的连接登录密码</comment>
+			</param>
+			<param id='path'>
+				<name>FTP跳转目录</name>
+				<default/>
+				<values/>
+				<required>F</required>
+				<datapool/>
+				<comment>待连接的FTP服务器的跳转目录，比如/temp,可不输入</comment>
+			</param>
+		</keyword>
+	    <keyword id='ftp_ftpclient_uploadFile'>
+			<name>FTP文件上传</name>
+			<comment>ftp文件上传,将工程或者本机硬盘下的文件上传至服务器</comment>
+			<implement>FtpKeyword:uploadFile</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>FTP连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>ftp连接的别名</comment>
+			</param>
+			<param id='localFilePosition'>
+				<name>上传文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待上传文件存放本地的位置：工程或者本地；默认为工程，即当前用例工程目录下</comment>
+			</param>
+			<param id='localFile'>
+				<name>本地文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待上传的本地文件。文件位置为工程,输入举例：/file/123.txt;文件位置为本地，输入举例：C:\123.txt</comment>
+			</param>
+			<param id="remoteFile">
+				<name>远程文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>文件上传后的路径及名称，输入举例：/temp/1.txt</comment>
+			</param>
+		</keyword>
+	    <keyword id='ftp_ftpclient_downloadFile'>
+			<name>FTP文件下载</name>
+			<comment>ftp文件下载，将远程文件下载至本地工程或者本地硬盘下</comment>
+			<implement>FtpKeyword:downloadFile</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>FTP连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>为将进行的ftp连接起的别名</comment>
+			</param>
+			<param id="remoteFile">
+				<name>远程文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待下载的文件远程路径及名称，输入举例：/temp/1.txt</comment>
+			</param>
+			<param id='localFilePosition'>
+				<name>下载文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>下载后的文件存放本地的位置：工程或者本地；默认为工程，即当前用例工程目录下</comment>
+			</param>
+			<param id='localFile'>
+				<name>本地文件</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>下载后的本地文件路径及名称。文件位置为工程时,输入举例：/file/123.txt;文件位置为本地时，输入举例：C:\123.txt</comment>
+			</param>
+		</keyword>
+	    <keyword id='ftp_ftpclient_closeFtp'>
+			<name>FTP连接关闭</name>
+			<comment>ftp连接关闭</comment>
+			<implement>FtpKeyword:closeFtp</implement>
+			<show>1</show>
+			<param id='alias'>
+				<name>FTP连接别名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>为将进行的ftp连接起的别名</comment>
+			</param>
+		</keyword>
+		
+	</group>
+	
+<group name='执行控制操作'>
+	    
+		<keyword id='exec_control_if_end'>
+			<name>if(单分支条件控制：if-end)</name>
+			<comment>控制测试步骤执行顺序。如果判断条件为true，执行if-end中的测试步骤。</comment>
+			<implement>ExecControlKeyword:conditionalControl</implement>
+			<show>1</show>
+			<param id='param1'>
+				<name>判断条件-参数1</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>参数类型支持：整数、浮点数、字符串。字符串特例：若期望文本为null，可输入String.Null；若期望文本为空字符串""，可输入String.Empty。</comment>
+			</param>
+			<param id='param2'>
+				<name>判断条件-参数2</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>参数类型支持：整数、浮点数、字符串、多值数组（数值数组、字符串数组）。字符串特例：若期望文本为null，可输入String.Null；若期望文本为空字符串""，可输入String.Empty。多值数组格式举例：多个值之间用英文 , 分隔，例如：123, 88.6, 您好, abc。</comment>
+			</param>
+			<param id='expResult'>
+				<name>判断条件-期望结果</name>
+				<default>等于(精确匹配)</default>
+				<values>等于(精确匹配)\r\n模糊匹配(字符串)\r\n多值匹配\r\n大于\r\n小于\r\n大于等于\r\n小于等于\r\n不等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>两个参数之间预期的运算结果。举例说明：“等于(精确匹配)”——判断 参数1=参数2；“模糊匹配(字符串)”——参数1中包含参数2； “多值匹配”——判断 参数1的值 等于 参数2中多个值中的任一个。</comment>
+			</param>
+		</keyword>
+		<keyword id='exec_control_if_else_end'>
+			<name>if(双分支条件控制：if-else-end)</name>
+			<comment>控制测试步骤执行顺序。如果判断条件为true，执行if中的测试步骤；否则，执行else中的测试步骤。</comment>
+			<implement>ExecControlKeyword:conditionalControl</implement>
+			<show>1</show>
+			<param id='param1'>
+				<name>判断条件-参数1</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>参数类型支持：整数、浮点数、字符串。字符串特例：若期望文本为null，可输入String.Null；若期望文本为空字符串""，可输入String.Empty。</comment>
+			</param>
+			<param id='param2'>
+				<name>判断条件-参数2</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>参数类型支持：整数、浮点数、字符串、多值数组（数值数组、字符串数组）。字符串特例：若期望文本为null，可输入String.Null；若期望文本为空字符串""，可输入String.Empty。多值数组格式举例：多个值之间用英文 , 分隔，例如：123, 88.6, 您好, abc。</comment>
+			</param>
+			<param id='expResult'>
+				<name>判断条件-期望结果</name>
+				<default>等于(精确匹配)</default>
+				<values>等于(精确匹配)\r\n模糊匹配(字符串)\r\n多值匹配\r\n大于\r\n小于\r\n大于等于\r\n小于等于\r\n不等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>两个参数之间预期的运算结果。举例说明：“等于(精确匹配)”——判断 参数1=参数2；“模糊匹配(字符串)”——参数1中包含参数2；“多值匹配”——判断 参数1的值 等于 参数2中多个值中的任一个。</comment>
+			</param>
+		</keyword>
+		<!-- 逻辑关键字：loop开始 -->
+		<keyword id='keyword_loop_start'>
+			<name>循环执行(Loop_Start)</name>
+			<comment>框架逻辑关键字，循环执行，根据数据源excel或者其他的，多数据行循环。</comment>
+			<implement>LogicKeyword:LoopStart</implement>
+			<show>1</show>
+			<param id='datapool_source_type'>
+				<name>数据源</name>
+				<default>Excel</default>
+				<values>Excel\r\nJSONArray\r\n无</values>
+				<required>T</required>
+				<datapool/>
+				<comment>数据源类型，支持Excel、JSONArray</comment>
+			</param>
+			<param id='datapool_source_path'>
+				<name>数据地址</name>
+				<default/>
+				<values/>
+				<required/>
+				<datapool/>
+				<comment>数据类型Excel时，数据位置为相对excel路径，如果为JSONArray，则为内存中数据${}</comment>
+			</param>
+			<param id='cycle_times'>
+				<name>循环次数</name>
+				<default/>
+				<values/>
+				<required/>
+				<datapool/>
+				<comment>指定循环次数，并且当存在数据源时，循环次数必须小于等于数据源中数据的组数。</comment>
+			</param>
+			<param id='loop_failure_strategy'>
+				<name>循环失败策略</name>
+				<default>break</default>
+				<values>break\r\ncontinue</values>
+				<required>T</required>
+				<datapool/>
+				<comment>循环失败策略，break:跳出循环体，contine:忽略失败，继续执行下一个循环体</comment>
+			</param>
+			<param id='loop_keyword_failure_strategy'>
+				<name>循环关键字失败策略</name>
+				<default>break</default>
+				<values>break\r\ncontinue</values>
+				<required>T</required>
+				<datapool/>
+				<comment>循环关键字失败策略，break:跳出执行步骤，contine:继续执行后续步骤</comment>
+			</param>
+		</keyword>
+		<!-- loop_end -->
+		<keyword id='keyword_loop_end'>
+			<name>循环执行结束(Loop_End)</name>
+			<comment>框架逻辑关键字，循环执行结束标示</comment>
+			<implement>LogicKeyword:LoopEnd</implement>
+			<show>1</show>
+		</keyword>
+	</group>
+	<group name="图片操作">
+		<keyword id="compare_ImageXY">
+            <name>图片对比</name>
+            <comment>比较指定坐标范围内的图片内容</comment>
+            <implement>CommonKeyword:compareImageXY</implement>
+            <show>1</show>
+            <param id="imgPath1">
+                <name>预期图片路径</name>
+                <default/>
+                <values/>
+                <required>T</required>
+                <comment>预期图片的完整路径，eg：E:\img\123.png 或者 使用自定义变量</comment>
+            </param>
+            <param id="imgPath2">
+                <name>实际图片路径</name>
+                <default/>
+                <values/>
+                <required>T</required>
+                <comment>实际图片的完整路径，eg：E:\img\123.png 或者 使用自定义变量</comment>
+            </param>
+            <param id="imgStartX">
+                <name>起始x坐标</name>
+                <default>0</default>
+                <values/>
+                <required>T</required>
+                <comment>起始x坐标（左上角）</comment>
+            </param>
+            <param id="imgStartY">
+                <name>起始Y坐标</name>
+                <default>0</default>
+                <values/>
+                <required>T</required>
+                <comment>起始Y坐标（左上角）</comment>
+            </param>
+            <param id="imgEndX">
+                <name>结束X坐标</name>
+                <default>0</default>
+                <values/>
+                <required>T</required>
+                <comment>结束X坐标（右下角）</comment>
+            </param>
+            <param id="imgEndY">
+                <name>结束Y坐标</name>
+                <default>0</default>
+                <values/>
+                <required>T</required>
+                <comment>结束Y坐标（右下角）</comment>
+            </param>
+            <param id="expectSimilarity">
+                <name>预期相似率</name>
+                <default>100</default>
+                <values/>
+                <required>T</required>
+                <comment>填写预期相似率，内容为整数，例90，代表90%相似</comment>
+            </param>
+        </keyword>
+	</group>
+	<group name='字符串操作'>
+		<keyword id='common_verify_String'>
+			<name>字符串校验</name>
+			<comment>校验字符串，比如控件的文本内容，数字也可以用此方法校验</comment>
+			<implement>CommonKeyword:verifyString</implement>
+			<show>1</show>
+			<param id='text'>
+				<name>文本内容</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>想要校验的文本内容</comment>
+			</param>
+			<param id='expect'>
+				<name>期望值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>期望文本的值,除特例外均正常输入。特例：若期望文本为null，可输入String.Null;若期望文本为空字符串""，可输入String.Empty；若期望多值匹配，多个值之间用英文 , 分隔，例如：您好, abc, ABC。</comment>
+			</param>
+			<param id='matched'>
+				<name>预期结果</name>
+				<default>true</default>
+				<values>true\r\nfalse</values>
+				<required>T</required>
+				<datapool/>
+				<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+			</param>
+			<param id='mode'>
+				<name>匹配模式</name>
+				<default>精确匹配</default>
+				<values>精确匹配\r\n模糊匹配\r\n多值匹配\r\n正则表达式匹配\r\n大于\r\n小于\r\n大于等于\r\n小于等于\r\n忽略大小写</values>
+				<required>T</required>
+				<datapool/>
+				<comment>匹配模式，请根据实际需要选择。说明： “多值匹配”——判断 文本内容  等于 期望值中输入的多个值中的任一个。</comment>
+			</param>
+		</keyword>
+		<keyword id='common_sreplace_Str'>
+			<name>字符串替换</name>
+			<comment>替换给出字符串中的某个或某多个字符组合得出新的字符串，如abcdefgh，使用a替换ef，将得到abcdagh</comment>
+			<implement>CommonKeyword:replaceStr</implement>
+			<show>1</show>
+			<param id='fromStr'>
+				<name>原字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待替换的原字符串</comment>
+			</param>
+			<param id='oldChar'>
+				<name>待被替换的字符/组合</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>原字符串中待被替换的字符/字符组合，空格可以使用STR.EMPTY表示</comment>
+			</param>
+			<param id='newChar'>
+				<name>替换成的字符/组合</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>原字符串中将被替换成的字符/字符组合，空格可以使用STR.EMPTY表示</comment>
+			</param>
+			<param id='toStr'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_repValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将已被替换过的字符串存入该变量并保存在上下文待引用。输入举例：var_repValue</comment>
+			</param>
+		</keyword>
+		<keyword id='common_trim_str'>
+			<name>字符串截空</name>
+			<comment>去除字符串左右两端的空格</comment>
+			<implement>CommonKeyword:trimStr</implement>
+			<show>1</show>
+			<param id='fromStr'>
+				<name>原字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待去除两端空格的原字符串</comment>
+			</param>
+			<param id='toStr'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_trimValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将去除两端空格的字符串，存入该变量并保存在上下文待引用。输入举例：var_trimValue</comment>
+			</param>
+		</keyword>
+		<keyword id='common_create_RandomNum'>
+			<name>字符串随机生成</name>
+			<comment>生成一个英文字母a~z和数字0~9组合的随机字符串</comment>
+			<implement>CommonKeyword:creatRandomNum</implement>
+			<show>1</show>
+			<param id='length'>
+				<name>字符长度</name>
+				<default>20</default>
+				<values/>
+				<required>T</required>
+				<comment>生成一个由字母加数字的随机字符串</comment>
+			</param>
+			<param id='randomNum'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_randomNum</default>
+				<values/>
+				<required>T</required>
+				<comment>输出变量名称-将获取的需要长度的随机字符串，保存至该变量并放入上下文中待引用。格式：var_randomNum</comment>
+			</param>	
+		</keyword>
+		<keyword id='common_generate_empty_str'>
+			<name>生成指定长度空字符串</name>
+			<comment>按照指定长度，生成一个空字符串</comment>
+			<implement>CommonKeyword:generateEmptyStr</implement>
+			<show>1</show>
+			<param id='length'>
+				<name>长度</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>指定空字符串的长度</comment>
+			</param>
+			<param id='reference'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，修改后的头域存入该变量并保存在上下文待引用。输入举例：VAR_EMPTY_STR</comment>
+			</param>
+		</keyword>
+		<keyword id='common_subString_BetweenBeginAndEnd'>
+			<name>截取从指定开始位至结束位间的字符串</name>
+			<comment>截取从指定位开始至指定位之间的字符串，开始位从0开始计数，截取的字符串包含开始位但不包含结束位字符。如abcdefgh，开始截取位1，结束截取位4，结果为bcd。</comment>
+			<implement>CommonKeyword:subStringBetweenBeginAndEnd</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>待截取字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的字符串</comment>
+			</param>
+			<param id='beginIndex'>
+				<name>截取开始位</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的开始位，字符串从0开始计数，且截取的字符串包含开始位字符</comment>
+			</param>
+			<param id='endIndex'>
+				<name>截取结束位</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的结束位，从0开始计数，但截取的字符串不包含结束位字符</comment>
+			</param>
+			<param id='sepValue'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_sepValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将截取的字符串存入该变量并保存在上下文待引用。输入举例：var_sepValue</comment>
+			</param>
+		</keyword>
+		<keyword id='common_subString_ByLength'>
+			<name>截取从指定位开始及长度的字符串</name>
+			<comment>截取从指定位开始及指定长度的字符串，开始位从0开始计数，截取的字符串包含开始位。如abcdefgh，开始截取位1，结束截取位4，结果为bcde。</comment>
+			<implement>CommonKeyword:subStringByLength</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>待截取字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的字符串</comment>
+			</param>
+			<param id='beginIndex'>
+				<name>截取开始位</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的开始位，字符串从0开始计数，且截取的字符串包含开始位字符</comment>
+			</param>
+			<param id='length'>
+				<name>截取长度</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的字符串长度</comment>
+			</param>
+			<param id='sepValue'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_sepValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将截取的字符串存入该变量并保存在上下文待引用。输入举例：var_sepValue</comment>
+			</param>
+		</keyword>
+		<keyword id='common_subString_ByBegin'>
+			<name>截取从指定位开始至末尾的全部字符</name>
+			<comment>截取从指定位开始至末尾的的全部字符，开始位从0开始计数，截取的字符串包含开始位。如abcdefgh，开始截取位1，结果为bcdefgh。</comment>
+			<implement>CommonKeyword:subStringByBegin</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>待截取字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的字符串</comment>
+			</param>
+			<param id='beginIndex'>
+				<name>截取开始位</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待截取的开始位，字符串从0开始计数，且截取的字符串包含开始位字符</comment>
+			</param>
+			<param id='sepValue'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_sepValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将截取的字符串存入该变量并保存在上下文待引用。输入举例：var_sepValue</comment>
+			</param>
+		</keyword>
+		<keyword id='common_split_AndGetLength'>
+			<name>分割字符串并获取长度</name>
+			<comment>分割某字符串，并获取分割后的数组长度</comment>
+			<implement>CommonKeyword:splitAndGetLength</implement>
+			<show>1</show>
+			<param id='sourceStr'>
+				<name>源字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待分割的字符串</comment>
+			</param>
+			<param id='splitStr'>
+				<name>分割符</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>分割符，诸如| * . + ||，或者其他字符串或特殊字符，如果使用空格分割，请输入\s+</comment>
+			</param>
+			<param id='length'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_length</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将分割后的数组长度转化为字符型存入该变量并保存在上下文待引用。输入举例：var_length</comment>
+			</param>
+		</keyword>
+		<keyword id='common_split_AndGetValue'>
+			<name>分割字符串并获取列值</name>
+			<comment>分割某字符串，并根据输入的列数获取分割后的数组中该列值</comment>
+			<implement>CommonKeyword:splitAndGetValue</implement>
+			<show>1</show>
+			<param id='sourceStr'>
+				<name>源字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待分割的字符串</comment>
+			</param>
+			<param id='splitStr'>
+				<name>分割符</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>分割符，诸如| * . + ||，或者其他字符串或特殊字符,如果使用空格分割，请输入\s+</comment>
+			</param>
+			<param id='col'>
+				<name>列</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待获取分割后数组中某列的位置，从1开始计数；默认为1</comment>
+			</param>
+			<param id='value'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_value</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将获取的分割后的数组中某列的值存至该变量并放在上下文待引用。输入举例：var_value</comment>
+			</param>
+		</keyword>
+		<keyword id='common_get_str_length'>
+			<name>获取字符串长度</name>
+			<comment>获取字符串长度</comment>
+			<implement>CommonKeyword:getStrLength</implement>
+			<show>1</show>
+			<param id='str'>
+				<name>字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待获取长度的字符串</comment>
+			</param>
+			<param id='length'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_length</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将字符串长度，存入该变量并保存在上下文待引用。输入举例：var_length</comment>
+			</param>
+		</keyword>
+		<keyword id='common_string_case_transform'>
+			<name>字符串大小写转换</name>
+			<comment>根据设置转换字符串大小写</comment>
+			<implement>CommonKeyword:caseTransform</implement>
+			<show>1</show>
+			<param id='str'>
+				<name>字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待处理的字符串</comment>
+			</param>
+			<param id='type'>
+				<name>转换类型</name>
+				<default>UP</default>
+				<values>UP\r\nlow</values>
+				<required>T</required>
+				<datapool/>
+				<comment>转换类型：UP代表转换为大写，low表示转换为小写</comment>
+			</param>
+			<param id='value'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_value</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将转换后的字符串存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+			</param>
+		</keyword>
+		<keyword id='common_compare_str_length'>
+			<name>校验字符串长度</name>
+			<comment>校验字符串长度</comment>
+			<implement>CommonKeyword:compareStrLength</implement>
+			<show>1</show>
+			<param id='str'>
+				<name>字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验长度的字符串</comment>
+			</param>
+			<param id='length'>
+				<name>比较数值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>用此数值与字符串长度进行比较</comment>
+			</param>
+			<param id='expResult'>
+				<name>期望结果</name>
+				<default>等于</default>
+				<values>大于\r\n等于\r\n小于\r\n大于等于\r\n小于等于\r\n不等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>字符串与数值进行比较。eg：“大于”表示（字符串长度 > 比较数值）</comment>
+			</param>
+		</keyword>
+		<keyword id='common_get_url_element'>
+			<name>获取URL元素内容</name>
+			<comment>根据url中的key值找到其对应元素</comment>
+			<implement>CommonKeyword:geturlelement</implement>
+			<show>1</show>
+			<param id='url'>
+				<name>url地址</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>url地址</comment>
+			</param>
+			<param id='key'>
+				<name>key值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>url中的key值</comment>
+			</param>
+			<param id='value'>
+					<name>属性值[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取url中的元素值存入该变量并保存在上下文待引用。输入举例：VAR_VALUE</comment>
+				</param>
+		</keyword>
+		<keyword id='form_compare'>
+			<name>校验URL元素内容</name>
+			<comment>在URL中根据key值校验value值</comment>
+			<implement>CommonKeyword:formcompare</implement>
+			<show>1</show>
+			<param id='str'>
+				<name>字符串</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验的url字符串</comment>
+			</param>
+			<param id='key'>
+					<name>key值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment/>
+				</param>
+			<param id='expvalue'>
+				<name>预期值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>预期的value值</comment>
+			</param>
+		</keyword>
+	</group>
+	<group name='数据仓库'>
+	    <keyword id='df_define_metadata'>
+			<name>定义业务元数据</name>
+			<comment>用键值对形式定义业务元数据</comment>
+			<implement>CommonKeyword:defineDfMetadata</implement>
+			<show>1</show>
+			<param id='metadataName'>
+				<name>元数据名称</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>测试平台->功能测试->数据仓库管理->数据看板->数据表格列名</comment>
+			</param>
+			<param id='metadataValue'>
+				<name>元数据值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>测试平台->功能测试->数据仓库管理->数据看板->数据表格列值</comment>
+			</param>
+		</keyword>
+	</group>
+	<group name='其它通用操作'>
+		<keyword id='read_file'>
+			<name>读取文件内容</name>
+			<comment>输入文件路径，将文件内容存入到输出变量中</comment>
+			<implement>CommonKeyword:readFile</implement>
+			<show>1</show>
+			<param id='path'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>比如文件a.json在脚本工程里的file文件夹下，则填写：file/a.json</comment>
+			</param>
+			<param id='format'>
+				<name>编码格式</name>
+				<default>UTF-8</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>文件编码格式，请根据对应文件填写。常见的有：UTF-8,GBK,ASCII等</comment>
+			</param>
+			<param id='out'>
+				<name>文件输出</name>
+				<default>out</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>读取的文件内容存于此变量中供下文调用</comment>
+			</param>
+		</keyword>
+	
+		<keyword id='web_common_sleep'>
+			<name>等待时间</name>
+			<comment>在进行下一操作前，等待一段时间（单位：毫秒，例如：等待5秒请输入5000）</comment>
+			<implement>CommonKeyword:sleep</implement>
+			<show>1</show>
+			<param id='millis'>
+				<name>等待时间</name>
+				<default>1000</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>等待时间（毫秒），例如：等待5秒，请输入5000。默认 1000（1 秒），可自行修改</comment>
+			</param>
+		</keyword>
+		<keyword id='common_generate_timestamp'>
+			<name>生成当前时间戳字符</name>
+			<comment>按照指定格式生成当前时间戳字符</comment>
+			<implement>CommonKeyword:generateTimestamp</implement>
+			<show>1</show>
+			<param id='format'>
+				<name>格式定义</name>
+				<default>yyyy-MM-dd HH:mm:ss</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>格式定义</comment>
+			</param>
+			<param id='year'>
+				<name>年</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入正/负数字分别表示当前时间N年后/前时间，如1，-1</comment>
+			</param>
+			<param id='month'>
+				<name>月</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入正/负数字分别表示当前时间N月前/后时间，如1，-1</comment>
+			</param>
+			<param id='day'>
+				<name>日</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入正/负数字分别表示当前时间N日后/前时间，如1，-1</comment>
+			</param>
+			<param id='hour'>
+				<name>时</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入正/负数字分别表示当前时间N小时后/前时间，如1，-1</comment>
+			</param>
+			<param id='minute'>
+				<name>分钟</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入正/负数字分别表示当前时间N分钟后/前时间，如1，-1</comment>
+			</param>
+			<param id='second'>
+				<name>秒</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入正/负数字分别表示当前时间N秒后/前时间，如1，-1</comment>
+			</param>
+			<param id='reference'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，生成的当前时间戳存入该变量并保存在上下文待引用。输入举例：VAR_REF</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='common_get_timestamp'>
+			<name>生成指定时间戳字符串</name>
+			<comment>按照指定格式生成时间戳字符</comment>
+			<implement>CommonKeyword:getTimestamp</implement>
+			<show>1</show>
+			<param id='format'>
+				<name>格式定义</name>
+				<default>yyyy-MM-dd HH:mm:ss</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>格式定义</comment>
+			</param>
+			<param id='time'>
+				<name>时间</name>
+				<default>2018-04-24 00:00:00</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入时间，格式为yyyy-MM-dd HH:mm:ss</comment>
+			</param>
+			<param id='reference'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，生成的当前时间戳存入该变量并保存在上下文待引用,引用需要注意，时间戳精确到秒，不是毫秒，转毫秒需要*1000。输入举例：VAR_REF</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='common_get_timestamp_ms'>
+			<name>生成指定时间戳字符串(支持毫秒)</name>
+			<comment>按照指定格式生成时间戳字符(支持毫秒)</comment>
+			<implement>CommonKeyword:getTimestampForMS</implement>
+			<show>1</show>
+			<param id='format'>
+				<name>格式定义</name>
+				<default>yyyy-MM-dd HH:mm:ss:SSS</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>格式定义</comment>
+			</param>
+			<param id='time'>
+				<name>时间</name>
+				<default>2018-04-24 12:20:05:123</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入时间，格式为yyyy-MM-dd HH:mm:ss:SSS</comment>
+			</param>
+			<param id='reference'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，生成的当前时间戳存入该变量并保存在上下文待引用,引用需要注意，时间戳精确到毫秒。输入举例：VAR_REF</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='common_get_timestamp_fromDate'>
+			<name>从Date格式字符串生成Date数据</name>
+			<comment>形如：Fri Sep 07 14:21:43 CST 2018，返回Date变量</comment>
+			<implement>CommonKeyword:getDateFromDateString</implement>
+			<show>1</show>
+			<param id='format'>
+				<name>格式定义</name>
+				<default>EEE MMM dd HH:mm:ss zzz yyyy</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>可选两种：EEE MMM dd HH:mm:ss zzz yyyy 对应 Fri Sep 07 14:21:43 CST 2018;  EEE MMM dd HH:mm:ss:SSS zzz yyyy对应Fri Sep 07 14:21:43:123 CST 2018</comment>
+			</param>
+			<param id='time'>
+				<name>时间</name>
+				<default>Fri Sep 07 14:21:43 CST 2018</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输入时间，格式为EEE MMM dd HH:mm:ss(:SSS) zzz yyyy.  E:星期  S:毫秒 z:时区</comment>
+			</param>
+			<param id='reference'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，生成的java.util.date类型变量存入该变量并保存在上下文待引用。输入举例：VAR_REF</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='common_convert_time_format'>
+			<name>时间格式转换</name>
+			<comment>根据时间字符串及格式，转换成用户需要的时间格式字符串</comment>
+			<implement>CommonKeyword:convertTimeFormat</implement>
+			<show>1</show>
+			<param id='format_bef'>
+				<name>源时间格式</name>
+				<default>yyyy-MM-dd HH:mm:ss</default>
+				<values>yyyy-MM-dd HH:mm:ss\r\nyyyy-MM-dd HH:mm:ss:SSS\r\n时间戳字符串（秒）\r\n时间戳字符串（毫秒）</values>
+				<required>T</required>
+				<datapool/>
+				<comment>源时间字符串的格式</comment>
+			</param>
+			<param id='time'>
+				<name>源时间</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待转换的源时间格式字符串</comment>
+			</param>
+			<param id='format_aft'>
+				<name>目标格式</name>
+				<default>yyyy-MM-dd HH:mm:ss</default>
+				<values>yyyy-MM-dd HH:mm:ss\r\nyyyy-MM-dd HH:mm:ss:SSS\r\n时间戳字符串（秒）\r\n时间戳字符串（毫秒）</values>
+				<required>T</required>
+				<datapool/>
+				<comment>需要转换成的目标格式</comment>
+			</param>
+			<param id='outVar'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，转换过格式的时间字符串存入该变量并保存在上下文待引用。输入举例：var_time</comment>
+			</param>
+		</keyword>
+		<!-- 获取当前系统毫秒时间戳，无格式 -->
+		<keyword id='common_get_current_millis'>
+			<name>获取当前毫秒时间戳</name>
+			<comment>System.currentTimeMillis()方式获取</comment>
+			<implement>CommonKeyword:getCurrentTimeMillis</implement>
+			<show>1</show>
+			<param id='timeMillis'>
+				<name>时间戳输出[OUT]</name>
+				<default>VAR_VALUE</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，用户存放当前毫秒时间戳</comment>
+			</param>
+		</keyword>
+		<keyword id='common_get_LocalHost_IPAddress'>
+			<name>获取本机IP地址</name>
+			<comment>获取本机IP地址</comment>
+			<implement>CommonKeyword:getLocalHostIPAddress</implement>
+			<show>1</show>
+			<param id='localIP'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_localIP</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将获取的本机IP地址存入该变量并保存在上下文待引用。输入举例：VAR_LOCALIP</comment>
+			</param>
+		</keyword>
+		<keyword id='common_get_EmailAddress'>
+			<name>邮箱地址随机生成</name>
+			<comment>随机生成邮箱地址，可用来注册，形如：auto_(0-9)(0-9)(0-9)(0-9)(0-9)(0-9)@example.com</comment>
+			<implement>CommonKeyword:getEmailAddress</implement>
+			<show>1</show>
+			<param id='internet'>
+				<name>邮箱网址</name>
+				<default>@example.com</default>
+				<values/>
+				<required>T</required>
+				<comment>待生成邮箱地址的网址，默认为@example.com,可根据需要修改</comment>
+			</param>
+			<param id='email'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_email</default>
+				<values/>
+				<required>T</required>
+				<comment>输出变量名称-将获取的邮箱地址，保存至该变量并放入上下文中待引用。格式：var_email</comment>
+			</param>	
+		</keyword>
+		<keyword id='common_get_TelephoneNumber'>
+			<name>手机号码随机生成</name>
+			<comment>随机生成手机号码，可用来注册，形如：1(0-2)0000(0-9)(0-9)(0-9)(0-9)(0-9)</comment>
+			<implement>CommonKeyword:getTelephoneNumber</implement>
+			<show>1</show>
+			<param id='phone'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_phone</default>
+				<values/>
+				<required>T</required>
+				<comment>输出变量名称-将获取的手机号码，保存至该变量并放入上下文中待引用。格式：var_phone</comment>
+			</param>	
+		</keyword>
+		<keyword id='common_data_calc'>
+			<name>数值计算</name>
+			<comment>根据给出的计算方式，将2个整型/浮点型数值进行加减乘除的计算，并将计算结果保存在上下文变量中</comment>
+			<implement>CommonKeyword:dataCalc</implement>
+			<show>1</show>
+			<param id='data1'>
+				<name>数值1</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据1，可以理解为被加数/被减数/被乘数/被除数，必须为整型/浮点型字符串</comment>
+			</param>
+			<param id='data2'>
+				<name>数值2</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据2，可以理解为加数/减数/乘数/除数，必须为整型/浮点型字符串</comment>
+			</param>
+			<param id='data3'>
+				<name>保留小数位</name>
+				<default>0</default>
+				<values>0\r\n1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9</values>
+				<required>T</required>
+				<datapool/>
+				<comment>保留小数位，仅在除运算中</comment>
+			</param>
+			<param id='Decimal_range'>
+				<name>小数位作用域</name>
+				<default>除不尽场景</default>
+				<values>除不尽场景\r\n除法计算</values>
+				<required>T</required>
+				<datapool/>
+				<comment>默认只作用于除不尽场景，选择除法运算则作用于除运算所有场景</comment>
+			</param>
+			<param id='operator'>
+				<name>计算方式</name>
+				<default>加</default>
+				<values>加\r\n减\r\n乘\r\n除\r\n取余</values>
+				<required>T</required>
+				<datapool/>
+				<comment>2个数据之间的计算方式</comment>
+			</param>
+			<param id='targetData'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_calcValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将计算的最终结果的字符串存入该变量并保存在上下文待引用。输入举例：var_calcValue</comment>
+			</param>
+		</keyword>
+		<keyword id='common_data_compare'>
+			<name>数值比较</name>
+			<comment>校验2个整型/浮点型数值比较结果是否与期望结果一致，不一致则抛出错误</comment>
+			<implement>CommonKeyword:compareToData</implement>
+			<show>1</show>
+			<param id='data1'>
+				<name>数值1</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据1，必须为整型/浮点型字符串</comment>
+			</param>
+			<param id='data2'>
+				<name>数值2</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数据2，必须为整型/浮点型字符串</comment>
+			</param>
+			<param id='expResult'>
+				<name>期望结果</name>
+				<default>大于</default>
+				<values>大于\r\n等于\r\n小于\r\n大于等于\r\n小于等于\r\n不等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>2个数据之间的期望大小。eg：“大于”表示（数据1 > 数据2）</comment>
+			</param>
+		</keyword>
+		<keyword id='common_data_between'>
+			<name>数值范围校验</name>
+			<comment>校验1个整型/浮点型数值的范围，结果是否与期望结果一致，不一致则抛出错误</comment>
+			<implement>CommonKeyword:dataBetween</implement>
+			<show>1</show>
+			<param id='data'>
+				<name>数值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>数值，必须为整型/浮点型字符串</comment>
+			</param>
+			<param id='expResult1'>
+				<name>校验条件1</name>
+				<default>大于</default>
+				<values>大于\r\n等于\r\n小于\r\n大于等于\r\n小于等于\r\n不等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>比较数值与边界值大小。eg：“大于”表示（数值 > 期望值）</comment>
+			</param>
+			<param id='boundary1'>
+				<name>边界值1</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>边界值1，必须为整型/浮点型字符串</comment>
+			</param>
+			<param id='expResult2'>
+				<name>校验条件2</name>
+				<default>小于</default>
+				<values>大于\r\n等于\r\n小于\r\n大于等于\r\n小于等于\r\n不等于</values>
+				<required>T</required>
+				<datapool/>
+				<comment>比较数值与边界值大小。eg：“小于”表示（数值  ＜ 期望值）</comment>
+			</param>
+			<param id='boundary2'>
+				<name>边界值2</name>
+				<default>0</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>边界值2，必须为整型/浮点型字符串</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='roundValue'>
+			<name>四舍五入</name>
+			<comment>输入小数位0-9，可以进行四舍五入保留小数</comment>
+			<implement>CommonKeyword:roundValue</implement>
+			<show>1</show>
+			<param id='value'>
+				<name>变量值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待设置的变量值</comment>
+			</param>
+			<param id='length'>
+				<name>保留小数位</name>
+				<default>0</default>
+				<values>0\r\n1\r\n2\r\n3\r\n4\r\n5\r\n6\r\n7\r\n8\r\n9</values>
+				<required>T</required>
+				<datapool/>
+				<comment>保留小数位，根据小数位进行四舍五入运算</comment>
+			</param>
+			<param id='targetData'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_calcValue</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将计算的最终结果的字符串存入该变量并保存在上下文待引用。输入举例：var_calcValue</comment>
+			</param>
+		</keyword>
+		
+		<keyword id='setVariable'>
+			<name>自定义变量</name>
+			<comment>通过自定义变量的方法设置变量值，如果需要变量作用域在单个用例级有效，需要在用例后处理加上"删除自定义变量"；也可以通过该方法修改全局变量值（但是无法删除全局变量）</comment>
+			<implement>CommonKeyword:setVariable</implement>
+			<show>1</show>
+			<param id='varName'>
+				<name>变量名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待设置的变量名称</comment>
+			</param>
+			<param id='varValue'>
+				<name>变量值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>设置变量的取值</comment>
+			</param>
+		</keyword>
+	  <!--
+		<keyword id='removeVariable'>
+			<name>删除自定义变量</name>
+			<comment>删除自定义变量，删除之后该变量失效(现在已经不需要，局部变量在用例执行结束时统一清理)</comment>
+			<implement>CommonKeyword:removeVariable</implement>
+			<show>1</show>
+			<param id='varName'>
+				<name>变量名</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待删除的变量名称</comment>
+			</param>	
+		</keyword>
+		-->
+		<keyword id='logPrint'>
+			<name>日志打印</name>
+			<comment>通过自定义内容打印日志信息</comment>
+			<implement>CommonKeyword:logPrint</implement>
+			<show>1</show>
+			<param id='logLevel'>
+				<name>日志级别</name>
+				<default>info</default>
+				<values>info\r\ndebug\r\nwarn\r\nerror</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待设置的日志级别</comment>
+			</param>
+			<param id='message'>
+				<name>日志内容</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待打印的日志内容</comment>
+			</param>
+		</keyword>
+		<keyword id='getMd5'>
+			<name>MD5加密</name>
+			<comment>通过MD5加密方法实现字符串加密，将加密后的密文字符串输出变量</comment>
+			<implement>CommonKeyword:getMd5</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>待加密明文</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待加密明文字符串，如：123456abc</comment>
+			</param>
+			<param id='result'>
+				<name>加密密文[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出加密后的密文为变量</comment>
+			</param>
+		</keyword>
+		<keyword id='base64加密'>
+			<name>base64加密</name>
+			<comment>通过base64加密方法实现字符串加密，将加密后的密文字符串输出变量</comment>
+			<implement>CommonKeyword:base64Encode</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>待加密明文</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待加密明文字符串，如：123456abc</comment>
+			</param>
+			<param id='charset'>
+				<name>编码格式</name>
+				<default>GB18030</default>
+				<values>GB18030\r\nUTF-8</values>
+				<required>T</required>
+				<datapool/>
+				<comment>设置待加密明文的编码格式</comment>
+			</param>
+			<param id='result'>
+				<name>加密密文[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出加密后的密文为变量</comment>
+			</param>
+		</keyword>
+		<keyword id='base64解密'>
+			<name>base64解密</name>
+			<comment>通过base64解密方法实现字符串加密，将加密后的密文字符串输出变量</comment>
+			<implement>CommonKeyword:base64Decode</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>待解密密文</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待解密密文字符串，如：123456abc</comment>
+			</param>
+			<param id='charset'>
+				<name>编码格式</name>
+				<default>GB18030</default>
+				<values>GB18030\r\nUTF-8</values>
+				<required>T</required>
+				<datapool/>
+				<comment>设置解密后明文的编码格式</comment>
+			</param>
+			<param id='result'>
+				<name>明文[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出解密后的明文为变量</comment>
+			</param>
+		</keyword>
+		<keyword id='URLcode'>
+			<name>URL编码/解码</name>
+			<comment>对输入的字符串根据选择的编码方式进行url的编解码，将处理后的字符串输出变量</comment>
+			<implement>CommonKeyword:urlCode</implement>
+			<show>1</show>
+			<param id='string'>
+				<name>原内容</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待处理字符串，如：6mhmYg</comment>
+			</param>
+				<param id='type'>
+				<name>编解码格式</name>
+				<default>解码</default>
+				<values>解码\r\n编码</values>
+				<required>T</required>
+				<datapool/>
+				<comment>URL编解码格式</comment>
+			</param>
+			<param id='charset'>
+				<name>编解码格式</name>
+				<default>UTF-8</default>
+				<values>UTF-8\r\nGBK</values>
+				<required>T</required>
+				<datapool/>
+				<comment>URL编解码格式</comment>
+			</param>
+			<param id='result'>
+				<name>输出变量名称[OUT]</name>
+				<default>var_CodedUrl</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出处理后的字符串</comment>
+			</param>
+		</keyword>
+		<keyword id='id_card_creat'>
+			<name>生成身份证号</name>
+			<comment>生成省市区编号固定的18位身份证号</comment>
+			<implement>CommonKeyword:idCardCreat</implement>
+			<show>1</show>
+			<param id='idCardNum'>
+				<name>身份证号</name>
+				<default>var_idCardNum</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，将生成的18位身份证号存入该变量并保存在上下文待引用。输入举例：var_idCardNum</comment>
+			</param>
+		</keyword>
+		<keyword id='ommon_pic_checkPicIsExisted'>
+			<name>获取页面图片原址请求响应码</name>
+			<comment>获取某页面所有图片的原址的请求响应消息码存储上下文中。前提需打开要验证此功能的页面</comment>
+			<implement>CommonKeyword:checkPicIsExisted</implement>
+			<show>1</show>
+			<param id='errorURL'>
+				<name>输出变量名称[OUT]</name>
+				<default>VAR_RespCode</default>
+				<values/>
+				<required>T</required>
+				<comment>输出变量名称-将图片原址请求响应消息码，保存至该变量并放入上下文中待引用。缺省为VAR_RespCode，可更改。配合通用方法生成CSV文件使用。内容格式形如：1,http://www.sdfsdfsdf,状态:200|2,http://www.sdfsdfsdf,状态:404</comment>
+			</param>
+	    </keyword>
+		<keyword id='common_CSVFile_create'>
+			<name>生成并保存数据至CSV文件</name>
+			<comment>生成CSV文件至本地或工程目录下，并保存其表头及数据至该CSV文件中</comment>
+			<implement>CommonKeyword:createCSVToSaveData</implement>
+			<show>1</show>
+			<param id='FilePosition'>
+				<name>文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待生成CSV文件的位置，默认为工程路径下，可选择为本地</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待生成文件的路径及文件名。当文件位置选择为工程时，路径格式举例：/File/CsvData.csv,其中File目录必须存在;当文件位置选择本地时，路径格式举例：C:\CsvData.csv</comment>
+			</param>
+			<param id='tableHead'>
+				<name>表头</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待保存数据的表头，单元格之间请用英文逗号,隔开。举例: 商品编码,商品名称,备注</comment>
+			</param>
+			<param id='tableData'>
+				<name>表数据</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待保存数据的内容，单元格之间用英文逗号隔开，数据行与行之间使用|隔开；
+        举例1-1行数据：104009760,商品001,自动化测试用
+        举例2-2行数据：104009760,商品001,自动化测试|104009761,商品002,手工测试用</comment>
+			</param>
+		</keyword>
+	    <keyword id='common_get_36UID'>
+			<name>获取uuid(36位)</name>
+			<comment>获取唯一UUID，字符串长36位</comment>
+			<implement>CommonKeyword:getUUID</implement>
+			<show>1</show>
+			<param id='uuid_36'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>将获取的36位UID保存至上下文中</comment>
+			</param>
+		</keyword>
+		<keyword id='common_excel_editCellValue'>
+			<name>修改excel单元格值</name>
+			<comment>根据文件名，修改excel文件中某sheet下某单元格的值</comment>
+			<implement>CommonKeyword:editExcelCellValue</implement>
+			<show>1</show>
+			<param id='filePosition'>
+				<name>文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待修改xls文件的位置，默认为工程路径下，可选择为本地</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待修改excel（支持xls、xlsx格式）文件的路径及文件名。当文件位置选择为工程时，路径格式举例：/File/abc.xls,其中abc.xls文件必须存在;当文件位置选择本地时，路径格式举例：C:\abc.xls</comment>
+			</param>
+			<param id='sheetIndex'>
+				<name>工作表号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>excel文件的工作表Index，从1开始</comment>
+			</param>
+			<param id='rowIndex'>
+				<name>行号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待修单元格的行号，从1开始</comment>
+			</param>
+			<param id='colIndex'>
+				<name>列号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待修单元格的列号，从1开始</comment>
+			</param>
+			<param id='value'>
+				<name>值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>修改后的单元格值</comment>
+			</param>
+		</keyword>
+		<keyword id='common_excel_writeCellValue'>
+			<name>excel单元格写入值</name>
+			<comment>根据文件名，向excel文件中某sheet下某单元格写入值（支持xls、xlsx）</comment>
+			<implement>CommonKeyword:writeExcelCellValue</implement>
+			<show>1</show>
+			<param id='filePosition'>
+				<name>文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待写入excel文件的位置，默认为工程路径下，可选择为本地</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待写入excel（支持xls、xlsx格式）文件的路径及文件名。当文件位置选择为工程时，路径格式举例：/File/abc.xls,其中abc.xls文件必须存在;当文件位置选择本地时，路径格式举例：C:\abc.xls</comment>
+			</param>
+			<param id='sheetIndex'>
+				<name>工作表号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>excel文件的工作表Index，从1开始</comment>
+			</param>
+			<param id='rowIndex'>
+				<name>行号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待写入单元格的行号，从1开始</comment>
+			</param>
+			<param id='colIndex'>
+				<name>列号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待写入单元格的列号，从1开始</comment>
+			</param>
+			<param id='value'>
+				<name>值</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待写入单元格的值</comment>
+			</param>
+		</keyword>
+		<keyword id='common_excel_readCellValue'>
+			<name>读取excel单元格值</name>
+			<comment>根据文件名，读取excel文件中某sheet下某单元格的值（支持xls、xlsx）</comment>
+			<implement>CommonKeyword:readExcelCellValue</implement>
+			<show>1</show>
+			<param id='filePosition'>
+				<name>文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取excel文件的位置，默认为工程路径下，可选择为本地</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取excel（支持xls、xlsx格式）文件的路径及文件名。当文件位置选择为工程时，路径格式举例：/File/abc.xls,其中abc.xls文件必须存在;当文件位置选择本地时，路径格式举例：C:\abc.xls</comment>
+			</param>
+			<param id='sheetIndex'>
+				<name>工作表号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>excel文件的工作表Index，从1开始</comment>
+			</param>
+			<param id='rowIndex'>
+				<name>行号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取单元格的行号，从1开始</comment>
+			</param>
+			<param id='colIndex'>
+				<name>列号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取单元格的列号，从1开始</comment>
+			</param>
+			<param id='value'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>将获取的单元格值保存至上下文中带引用</comment>
+			</param>
+		</keyword>
+		<keyword id='common_excel_delRow'>
+			<name>删除excel中某行</name>
+			<comment>根据文件名，删除excel文件下某sheet页中的某行数据（支持xls、xlsx）</comment>
+			<implement>CommonKeyword:delExcelRow</implement>
+			<show>1</show>
+			<param id='filePosition'>
+				<name>文件位置</name>
+				<default>工程</default>
+				<values>工程\r\n本地</values>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取excel文件的位置，默认为工程路径下，可选择为本地</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取excel（支持xls、xlsx格式）文件的路径及文件名。当文件位置选择为工程时，路径格式举例：/File/abc.xls,其中abc.xls文件必须存在;当文件位置选择本地时，路径格式举例：C:\abc.xls</comment>
+			</param>
+			<param id='sheetIndex'>
+				<name>工作表号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>excel文件的工作表Index，从1开始</comment>
+			</param>
+			<param id='rowIndex'>
+				<name>行号</name>
+				<default>1</default>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待读取单元格的行号，从1开始</comment>
+			</param>
+			<param id='delType'>
+				<name>删除类型</name>
+				<default>删除行内容且下行上移</default>
+				<values>删除行内容且下行上移\r\n删除行内容保留行位置</values>
+				<required>T</required>
+				<datapool/>
+				<comment>删除类型：删除行内容且下行上移 or 删除行内容保留行位置</comment>
+			</param>
+		</keyword>
+		<keyword id='common_verify_file_existed'>
+			<name>校验文件是否存在</name>
+			<comment>校验文件是否存在，预期存在输入true，预期不存在输入false；若预期与实际不符，则会抛出异常</comment>
+			<implement>CommonKeyword:verifyFileExisted</implement>
+			<show>1</show>
+			<param id='filePosition'>
+				<name>文件位置</name>
+				<default>本地</default>
+				<values>本地\r\n工程</values>
+				<required>T</required>
+				<datapool/>
+				<comment>本地or工程，二选一。默认为“本地”</comment>
+			</param>
+			<param id='filePath'>
+				<name>文件路径</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>待校验的预期文件。该参选择本地请填写完整的绝对路径,如 E:\file\123.txt；选择工程请填写正确的相对路径,如 file/123.txt</comment>
+			</param>
+			<param id='isExisted'>
+				<name>预期存在状态</name>
+				<default>true</default>
+				<values>true\r\nfalse</values>
+				<required>T</required>
+				<datapool/>
+				<comment>预期文件为存在状态，请选择true; 预期文件为不存在状态，请选择false</comment>
+			</param>
+		</keyword>	
+		<keyword id='common_set_terminal_Type'>
+			<name>测试终端类型手工设置</name>
+			<comment>手动设置某一段测试步骤的测试终端类型：PC端、Mobile端。</comment>
+			<implement>CommonKeyword:setTerminalType</implement>
+			<show>1</show>
+			<param id='terminalType'>
+				<name>测试终端类型</name>
+				<default>PC</default>
+				<values>PC\r\nMobile</values>
+				<required>T</required>
+				<datapool/>
+				<comment>PC or Mobile，二选一，默认为PC。</comment>
+			</param>
+		</keyword>
+		<keyword id='common_reset_terminal_Type'>
+			<name>取消测试终端类型设置</name>
+			<comment>手动设置的测试终端类型失效，而后继续由工具执行器自动识别测试脚本的测试终端类型。</comment>
+			<implement>CommonKeyword:resetTerminalType</implement>
+			<show>1</show>
+		</keyword>
+		
+		<!-- 多结果校验 -->
+		<keyword id='exec_control_multiple'>
+			<name>多结果校验(与)</name>
+			<comment>多个结果值的判断，所有结果变量进行与操作。如果和预期结果不同，将抛异常。配合pc保存校验结果的关键字使用</comment>
+			<implement>CommonKeyword:multiVariableVerify</implement>
+			<show>1</show>
+			<param id='multiParam'>
+				<name>判断条件-多变量</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>参数类型：变量名前不要加美元符号，变量之间以&amp;&amp;进行分割。参数举例：var1&amp;&amp;var2</comment>
+			</param>
+			<param id='expResult'>
+				<name>预期可见状态</name>
+				<default>true</default>
+				<values>true\r\nfalse</values>
+				<required>T</required>
+				<datapool/>
+				<comment/>
+			</param>
+		</keyword>
+		
+		<keyword id='exec_set_control_multiple'>
+			<name>获取与结果</name>
+			<comment>多个结果值的判断，所有结果变量进行与操作。</comment>
+			<implement>CommonKeyword:setMultiVariableVerifyStatus</implement>
+			<show>1</show>
+			<param id='multiParam'>
+				<name>判断条件-多变量</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>参数类型：变量名前不要加美元符号，变量之间以&amp;&amp;进行分割。参数举例：var1&amp;&amp;var2</comment>
+			</param>
+			<param id='outVar'>
+				<name>输出变量名称[OUT]</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>输出变量名称，多变量校验，以true/false存入该变量并保存在上下文待引用。输入举例：var_text;</comment>
+			</param>
+		</keyword>
+	</group>
+	<!-- ES查询 -->
+	<group name='ElasticSearch操作'>
+		<keyword id='es_query_dsl'>
+			<name>ES查询:QueryDSL</name>
+			<comment>ElasticSearch DSL查询方式</comment>
+			<implement>ElasticSearchKeyword:queryDsl</implement>
+			<show>1</show>
+			<param id='url'>
+				<name>ES查询地址</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>ElasticSearch服务器查询url地址,如:http://xxxx:9200/index/type</comment>
+			</param>
+			<param id='dsl'>
+				<name>查询DSL语句</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>QueryDSL语句，符合json规范</comment>
+			</param>
+			<param id='result_out_var'>
+				<name>[OUT]查询结果变量定义</name>
+				<default/>
+				<values/>
+				<required>T</required>
+				<datapool/>
+				<comment>将查询出来的结果，存放到此变量中，供后续业务使用</comment>
+			</param>
+		</keyword>
+	</group>
+
+</group>
+	</root>

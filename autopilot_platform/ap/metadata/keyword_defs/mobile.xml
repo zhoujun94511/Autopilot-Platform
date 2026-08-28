@@ -1,0 +1,2152 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<root ver="1.0">
+<group name="移动端关键字">
+
+    	<group name="执行控制操作">
+    	    <keyword id='mobile_loop_start'>
+				<name>移动端循环开始(Mobile_Loop_Start)</name>
+				<comment>移动端框架逻辑关键字，循环执行开始(请注意不能与步骤集同时使用)</comment>
+				<implement>LogicKeyword:MobileLoopStart</implement>
+				<show>1</show>
+				<param id='loopCount'>
+					<name>循环次数</name>
+					<default>2</default>
+					<required>F</required>
+					<comment>范围 [2,3000]</comment>
+				</param>
+				<param id='failStrategy'>
+					<name>循环失败策略</name>
+					<default>break</default>
+					<values>break\r\ncontinue</values>
+					<required>T</required>
+					<datapool/>
+					<comment>循环失败策略，break:跳出循环体，continue: 执行容错后，继续执行下一个循环体。</comment>
+				</param>
+			</keyword>
+
+			<keyword id='mobile_loop_end'>
+				<name>移动端循环结束(Mobile_Loop_End)</name>
+				<comment>移动端框架逻辑关键字，循环执行结束标识。</comment>
+				<implement>LogicKeyword:MobileLoopEnd</implement>
+				<show>1</show>
+			</keyword>
+    	</group>
+
+		<group name="设备操作">
+				<keyword id="appium_start">
+					<name>[公用]启动appium服务</name>
+					<comment>启动移动自动化服务，支持 Android、iOS。</comment>
+					<implement>MobileCommKeyword:startAppium</implement>
+					<show>1</show>
+				</keyword>
+				<keyword id="appium_stop">
+					<name>[公用]停止appium服务</name>
+					<comment>停止移动自动化服务，支持 Android、iOS。</comment>
+					<implement>MobileCommKeyword:stopAppium</implement>
+					<show>1</show>
+				</keyword>
+				<keyword id="mobile_app_install_and_open">
+					<name>[公用]安装并启动被测应用</name>
+					<comment>在真机上安装并打开被测应用。Android 可选保留旧数据；iOS 已安装时会先卸载再装。</comment>
+					<implement>MobileCommKeyword:appInstallAndOpen</implement>
+					<show>1</show>
+					<param id="type">
+						<name>终端类型</name>
+						<default>android</default>
+						<values>android\r\nios</values>
+						<required>F</required>
+						<datapool/>
+						<comment>用于选择应用终端类型（android / ios）；需要强制指定平台时再选。</comment>
+					</param>
+					<param id="appFile">
+						<name>待测试的应用程序位置</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待测安装包路径：Android 为 .apk/.apex/.xapk，iOS 为 .ipa；应用包名由安装包自动解析。</comment>
+					</param>
+					<param id="keepData">
+						<name>已安装时是否保留旧数据</name>
+						<default>是</default>
+						<values>是\r\n否</values>
+						<required>F</required>
+						<datapool/>
+						<comment>Android 已安装时：是=覆盖重装保留数据，否=先卸载再装。</comment>
+					</param>
+					<param id="backendMode">
+						<name>iOS后端模式</name>
+						<default>auto</default>
+						<values>auto\r\nappium\r\nwda</values>
+						<required>F</required>
+						<datapool/>
+						<comment>仅 iOS 生效。auto=自动选择；其余选项供特殊环境使用。</comment>
+					</param>
+				</keyword>
+
+				<keyword id="mobile_app_open_and_jump" platforms="android">
+					<name>启动被测应用并跳转到指定界面</name>
+					<comment>启动被测应用并跳转到指定界面。需先完成装包与启动步骤。仅支持 Android。</comment>
+					<implement>MobileCommKeyword:appOpenAndJump</implement>
+					<show>1</show>
+					<param id="packageName">
+						<name>应用包名</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>用于跳转前清理此应用进程，否则会跳转失败</comment>
+					</param>
+					<param id="route">
+						<name>跳转路由</name>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>app启动后，跳转的路由，例如：app://m.example.com/index?adTypeCode=1</comment>
+					</param>
+				</keyword>
+
+				<keyword id="mobile_app_get_package_and_activity">
+					<name>解析安装包信息</name>
+					<comment>解析本地 APK/IPA，写入 app_package、app_activity</comment>
+					<implement>MobileCommKeyword:appGetPackageAndActivity</implement>
+					<show>1</show>
+					<param id="appFile">
+						<name>待测试的应用程序位置</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>安装包路径（.apk/.apex/.xapk 或 .ipa）。执行成功后变量 app_package、app_activity 可在后续步骤用 ${app_package} 引用</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_app_start">
+					<name>启动被测应用(已安装)</name>
+					<comment>启动被测应用，该应用已经安装,准备测试</comment>
+					<implement>MobileCommKeyword:startApp</implement>
+					<show>1</show>
+					<param id="type">
+						<name>终端类型</name>
+						<default>android</default>
+						<values>android\r\nios</values>
+						<required>F</required>
+						<datapool/>
+						<comment>用于选择应用终端类型（android / ios）；需要强制指定平台时再选。</comment>
+					</param>
+					<param id="packageName">
+						<name>应用包名</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>用于选择待操作的应用包名</comment>
+					</param>
+					<param id="activityName">
+						<name>入口activity名称</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>用于启动被测应用的activity入口</comment>
+					</param>
+					<param id="backendMode">
+						<name>iOS后端模式</name>
+						<default>auto</default>
+						<values>auto\r\nappium\r\nwda</values>
+						<required>F</required>
+						<datapool/>
+						<comment>仅 iOS 生效。auto=自动选择；其余选项供特殊环境使用。</comment>
+					</param>
+				</keyword>
+				<keyword id="boolean_app_isInstalled">
+	            	<name>获取应用是否已经安装(mobile)</name>
+	            	<comment>判断应用是否已安装，返回结果至上下文变量中供if判断使用</comment>
+	            	<implement>MobileCommKeyword:appIsInstalled</implement>
+	            	<show>1</show>
+	            	<param id="packageName">
+						<name>应用包名</name>
+	                	<default/>
+	                	<values/>
+	                	<required>T</required>
+						<comment>待检测应用的包名，举例：com.example.mobile.app</comment>
+	            	</param>
+	            	<param id='outVar'>
+						<name>输出变量名称[OUT]</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>输出变量名称，将获取的控件可见性YES/NO存入该变量并保存在上下文待引用。输入举例：var_text;</comment>
+					</param>
+	        	</keyword>
+				<keyword id="mobile_get_current_activity" platforms="android">
+					<name>获取当前Activity</name>
+					<comment>获取当前前台 Activity。支持 Android。</comment>
+					<implement>AndroidMobileKeyword:androidGetCurrentActivity</implement>
+					<show>1</show>
+					<param id="outVar">
+						<name>输出变量名称[OUT]</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>输出变量名称，将获取activity存入该变量并保存在上下文待引用。输入举例：var_activity</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_start_activity" platforms="android">
+					<name>启动Activity</name>
+					<comment>启动指定 Activity。支持 Android。</comment>
+					<implement>AndroidMobileKeyword:androidStartActivity</implement>
+					<show>1</show>
+					<param id="packageName">
+						<name>应用包名</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待启动应用的包名</comment>
+					</param>
+					<param id="activityName">
+						<name>待启动应用activity名</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待启动应用指定页面activity名</comment>
+					</param>
+				</keyword>
+
+				<keyword id="mobile_app_close">
+					<name>关闭应用</name>
+					<comment>关闭应用，结束测试，关闭后可再打开应用，区别于卸载应用</comment>
+					<implement>MobileCommKeyword:closeApp</implement>
+					<show>1</show>
+				</keyword>
+				<keyword id="mobile_app_reset">
+					<name>重启应用</name>
+					<comment>重启应用（先关闭再启动）</comment>
+					<implement>MobileCommKeyword:resetApp</implement>
+					<show>1</show>
+				</keyword>
+				<keyword id="mobile_app_reset_saveinfo" platforms="android" risk_level="irreversible">
+					<name>重启被测应用(保存用户信息)</name>
+					<comment>强制停止后重新拉起被测应用，保留登录等用户数据。支持 Android。</comment>
+					<implement>MobileCommKeyword:resetAppSaveInfo</implement>
+					<show>1</show>
+					<param id="type">
+						<name>终端类型</name>
+						<default>android</default>
+						<values>android\r\nios</values>
+						<required>F</required>
+						<datapool/>
+						<comment>用于选择应用终端类型（android / ios）；需要强制指定平台时再选。</comment>
+					</param>
+					<param id="packageName">
+						<name>应用包名</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>用于选择待操作的应用包名</comment>
+					</param>
+					<param id="activityName">
+						<name>入口activity名称</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>用于启动被测应用的activity入口</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_app_adb_uninstall" risk_level="irreversible">
+					<name>卸载移动应用</name>
+					<comment>卸载设备上的被测应用。无需先启动自动化服务。支持 Android、iOS。</comment>
+					<implement>MobileCommKeyword:uninstallADB</implement>
+					<show>1</show>
+					<param id="type">
+						<name>终端类型</name>
+						<default>android</default>
+						<values>android\r\nios</values>
+						<required>F</required>
+						<datapool/>
+						<comment>用于选择应用终端类型（android / ios）；需要强制指定平台时再选。</comment>
+					</param>
+					<param id="packageName">
+						<name>应用包名</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>用于选择待操作的应用包名</comment>
+					</param>
+					<param id="cacheSave">
+						<name>是否保存缓存</name>
+						<default>否</default>
+						<values>是\r\n否</values>
+						<required>T</required>
+						<datapool/>
+						<comment>卸载时是否保留应用数据与缓存。</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_set_network" platforms="android">
+					<name>设置网络连接状态</name>
+					<comment>设置网络连接状态包括:飞行模式、wifi连接、数据流量</comment>
+					<implement>MobileCommKeyword:mobileSetNetwork</implement>
+					<show>1</show>
+					<param id="airplaneMode">
+						<name>设置飞行模式</name>
+						<default>false</default>
+						<values>false\r\ntrue</values>
+						<required>T</required>
+						<datapool/>
+						<comment>设置飞行模式，默认关闭</comment>
+					</param>
+					<param id="wifi">
+						<name>设置wifi连接</name>
+						<default>false</default>
+						<values>false\r\ntrue</values>
+						<required>T</required>
+						<datapool/>
+						<comment>设置wifi连接，默认关闭</comment>
+					</param>
+					<param id="data">
+						<name>设置数据流量</name>
+						<default>true</default>
+						<values>false\r\ntrue</values>
+						<required>T</required>
+						<datapool/>
+						<comment>设置数据流量，默认打开</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_presskey">
+					<name>物理按键</name>
+					<comment>物理按键</comment>
+					<implement>MobileCommKeyword:mobilePressKey</implement>
+					<show>1</show>
+					<param id="oKeys">
+						<name>物理按键</name>
+						<default>home</default>
+						<values>home\r\nback\r\nmenu\r\nenter</values>
+						<required>T</required>
+						<datapool/>
+						<comment>物理按键，String类型，请注意输入格式，格式举例：home</comment>
+					</param>
+					<param id="count">
+						<name>操作次数</name>
+						<default>1</default>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>模拟物理按键点击次数，默认1次</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_get_deviceinfo">
+					<name>获取设备参数信息</name>
+					<comment>获取设备参数信息</comment>
+					<implement>AndroidMobileKeyword:androidGetDeviceInfo</implement>
+					<show>1</show>
+					<param id="deviceInfo">
+						<name>选择参数</name>
+						<default>AndroidVersion</default>
+						<values>AndroidVersion\r\nversion\r\nplatformVersion\r\nsdk\r\nmodel\r\nip\r\nscreenSize\r\nwdaVersion</values>
+						<required>T</required>
+						<datapool/>
+						<comment>可获取系统版本、型号、IP、屏幕尺寸等设备信息；在 iOS 上“AndroidVersion”对应系统版本。</comment>
+					</param>
+					<param id="outVar">
+						<name>输出变量名称[OUT]</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>输出变量名称，将获取的参数结果存入该变量并保存在上下文待引用。输入举例：var_value</comment>
+					</param>
+				</keyword>
+				<keyword id="installUtf7Ime" platforms="android">
+					<name>安装中文输入法</name>
+					<comment>安装专用中文输入法，便于在终端输入中文。支持 Android。</comment>
+					<implement>MobileCommKeyword:installUtf7Ime</implement>
+					<show>1</show>
+				</keyword>
+				<keyword id="installAdbkeyboard" platforms="android">
+					<name>安装adbkeyboard输入法</name>
+					<comment>安装专用中文输入法，便于在终端输入中文。支持 Android。</comment>
+					<implement>MobileCommKeyword:installAdbkeyboard</implement>
+					<show>1</show>
+				</keyword>
+
+		</group>
+		<group name="控件操作">
+			<keyword id="mobile_longclick">
+				<name>[公用]长按操作</name>
+				<comment>长按操作，根据从填入不同的参数，可选择使用坐标方式或是控件定位方式 按下，只能二选一，若两种方式参数都填写，则默认使用控件方式（Android/iOS 通用）</comment>
+				<implement>MobileCommKeyword:mobileLongClick</implement>
+				<show>1</show>
+				<param id="locator">
+					<name>locator</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择使用控件定位方式长按，待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id="x">
+					<name>x坐标</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择使用坐标方式长按，待点击位置的x坐标（选择控件定位方式时可不填）</comment>
+				</param>
+				<param id="y">
+					<name>y坐标</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择使用坐标方式长按，待点击位置的y坐标（选择控件定位方式时可不填）</comment>
+				</param>
+				<param id="duration">
+					<name>长按时间</name>
+					<default>1000</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择长按控件的持续时间,单位为毫秒,默认为1000毫秒。最大长按时间为60000毫秒，超过60000毫秒按照60000毫秒计算。</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_shift_click'>
+				<name>[公用]控件点击+偏移量(mobile)</name>
+				<comment>根据定位符查找控件，并模拟真实点击该控件的偏移位置,该关键字建议通过录制工具自动生成步骤。（Android/iOS 通用）</comment>
+				<implement>MobileElementKeyword:elementShiftClick</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='horizontal'>
+					<name>横坐标偏移百分比</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>偏移百分比，从1~99</comment>
+				</param>
+				<param id='vertical'>
+					<name>纵坐标偏移百分比</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>偏移百分比，从1~99</comment>
+				</param>
+				<param id='tapStabilTime'>
+					<name>点击时间</name>
+					<default>5</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为5毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_swipe'>
+				<name>[公用]控件内滑动(mobile)</name>
+				<comment>根据定位符查找控件，并按方向滑动该控件（Android/iOS 通用）</comment>
+				<implement>MobileElementKeyword:elementSwipe</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values>LEFT\r\nWEB</values>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id="direction">
+					<name>滑动方向</name>
+					<default>右</default>
+					<values>上\r\n下\r\n左\r\n右\r\n</values>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动方向</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_swipe_direction">
+				<name>[公用]按方向滑屏</name>
+				<comment>触摸滑屏，可按上、下、左、右方向滑动（Android/iOS 通用）</comment>
+				<implement>MobileCommKeyword:mobileSwipeDirection</implement>
+				<show>1</show>
+				<param id="direction">
+					<name>滑动方向</name>
+					<default>上</default>
+					<values>上\r\n下\r\n左\r\n右\r\n</values>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动方向</comment>
+				</param>
+				<param id="size">
+					<name>滑动尺度</name>
+					<default>全屏</default>
+					<values>全屏\r\n半屏\r\n微屏</values>
+					<required>T</required>
+					<datapool/>
+					<comment>开始点至结束点划过屏幕大小，分为全屏，半屏，微屏（滑动尺度约1/4屏幕）</comment>
+				</param>
+				<param id="count">
+					<name>滑动次数</name>
+					<default>1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动次数，默认1次，输入整数</comment>
+				</param>
+				<param id="duration">
+					<name>滑动的间隔时间</name>
+					<default>1000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>连续滑动间的间隔，单位为毫秒，默认1000毫秒</comment>
+				</param>
+				<param id="strategy">
+					<name>滑屏策略(iOS)</name>
+					<default>auto</default>
+					<values>auto\r\nscrollview\r\nxctest\r\nw3c</values>
+					<required>F</required>
+					<datapool/>
+					<comment>仅 iOS 分页滑动策略；Android 可忽略。auto=自动，其余选项供特殊场景使用。</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_define_slip_for_element">
+				<name>[公用]自定义滚动屏幕至目标控件</name>
+				<comment>滚动屏幕至目标控件，可按上、下、左、右方向滚动（Android/iOS 通用）</comment>
+				<implement>MobileCommKeyword:mobileDefineSlipScreenWaitForElement</implement>
+				<show>1</show>
+				<param id="locator">
+					<name>目标控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目标控件定位符</comment>
+				</param>
+				<param id="direction">
+					<name>滑动方向</name>
+					<default>上</default>
+					<values>上\r\n下\r\n左\r\n右\r\n</values>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动方向</comment>
+				</param>
+				<param id="localStationX">
+					<name>起始位置(整屏X轴)</name>
+					<default>0.5</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>自定义设置自上到下屏幕的比例为滑动初始位置(0-1之间)</comment>
+				</param>
+				<param id="localStationY">
+					<name>起始位置(整屏Y轴)</name>
+					<default>0.5</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>自定义设置自上到下屏幕的比例为滑动初始位置(0-1之间)</comment>
+				</param>
+				<param id="size">
+					<name>滑动尺度(屏)</name>
+					<default>0.25</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>自定义初始位置处开始滑动至结束的滑动幅度(0-1之间)</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_slip_for_element">
+				<name>[公用]滚动屏幕至目标控件</name>
+				<comment>滚动屏幕至目标控件，可按上、下、左、右方向滚动（Android/iOS 通用）</comment>
+				<implement>MobileCommKeyword:mobileSlipScreenWaitForElement</implement>
+				<show>1</show>
+				<param id="direction">
+					<name>滑动方向</name>
+					<default>上</default>
+					<values>上\r\n下\r\n左\r\n右\r\n</values>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动方向</comment>
+				</param>
+				<param id="size">
+					<name>滑动尺度</name>
+					<default>半屏</default>
+					<values>全屏\r\n半屏\r\n微屏</values>
+					<required>T</required>
+					<datapool/>
+					<comment>开始点至结束点划过屏幕大小，分为全屏，半屏，微屏（滑动尺度约1/4屏幕）</comment>
+				</param>
+				<param id="times">
+					<name>滑动次数</name>
+					<default>10</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>最大滑动次数</comment>
+				</param>
+				<param id="locator">
+					<name>目标控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目标控件定位符</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_tap">
+				<name>点击某个坐标(mobile)</name>
+				<comment>点击(x,y)处或locator控件处 按下，默认重复1次，5ms后松开，若两种方式参数都填写，则默认使用坐标方式</comment>
+				<implement>MobileCommKeyword:mobileTap</implement>
+				<show>1</show>
+				<param id="x">
+					<name>x坐标</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择使用坐标方式点击，待点击位置的x坐标（选择控件定位方式时可不填）</comment>
+				</param>
+				<param id="y">
+					<name>y坐标</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择使用坐标方式点击，待点击位置的y坐标（选择控件定位方式时可不填）</comment>
+				</param>
+				<param id="locator">
+					<name>locator</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>选择使用控件定位方式点击，待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='tapStabilTime'>
+					<name>点击时间</name>
+					<default>5</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为5毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_get_device_ip">
+				<name>获取设备 WIFI IP(mobile)</name>
+				<comment>获取设备当前 Wi‑Fi IP 地址，支持 Android、iOS。</comment>
+				<implement>MobileCommKeyword:getDeviceIp</implement>
+				<show>1</show>
+				<param id='outVar'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的控件文本内容存入该变量并保存在上下文待引用。输入举例：var_text</comment>
+				</param>
+
+			</keyword>
+			<keyword id="mobile_tap_auto">
+				<name>坐标兼容点击(mobile)</name>
+				<comment>按照屏幕分辨率比例点击（x,y)，默认重复1次，5ms后松开</comment>
+				<implement>MobileCommKeyword:mobileTapAuto</implement>
+				<show>1</show>
+				<param id="x">
+					<name>x坐标</name>
+					<values />
+					<required>T</required>
+					<datapool />
+					<comment>选择使用坐标方式点击，待点击位置的x坐标</comment>
+				</param>
+				<param id="y">
+					<name>y坐标</name>
+					<default />
+					<values />
+					<required>T</required>
+					<datapool />
+					<comment>选择使用坐标方式点击，待点击位置的y坐标</comment>
+				</param>
+				<param id="screen_width">
+					<name>屏幕宽度</name>
+					<values />
+					<required>T</required>
+					<datapool />
+					<comment>屏幕宽度（逻辑像素）。支持 Android。</comment>
+				</param>
+				<param id="screen_height">
+					<name>屏幕高度</name>
+					<default />
+					<values />
+					<required>T</required>
+					<datapool />
+					<comment>屏幕高度（逻辑像素）。支持 Android。</comment>
+				</param>
+				<param id='tapStabilTime'>
+					<name>点击时间</name>
+					<default>5</default>
+					<values />
+					<required>F</required>
+					<datapool />
+					<comment>时间单位为毫秒，默认等待超时时间为5毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_continuous_click'>
+				<name>控件连续点击(mobile)</name>
+				<comment>根据定位符查找控件，并模拟鼠标连续点击该控件</comment>
+				<implement>MobileElementKeyword:elementContinuousClick</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+				<param id='count'>
+					<name>点击次数</name>
+					<default>1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>点击控件的次数，输入整数，默认为1</comment>
+				</param>
+				<param id='duration'>
+					<name>间隔时间</name>
+					<default>100</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>连续两次点击之间的间隔时间，单位(毫秒)</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_text_input_adb' platforms="android">
+				<name>adb输入法文本框文本输入(mobile/wap)</name>
+				<comment>使用专用输入法向文本框输入内容，适用于普通输入无效时。支持 Android。</comment>
+				<implement>MobileElementKeyword:textInputByAdb</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>文本框控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文本框控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='text'>
+					<name>待输入的文字</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待输入的文字</comment>
+				</param>
+				<param id='type'>
+					<name>文本框类型</name>
+					<default>text</default>
+					<values>text\r\nusername\r\npassword</values>
+					<required>F</required>
+					<datapool/>
+					<comment>文本框类型：普通文本框，用户名文本框、密码文本框，用户名文本框和密码文本框支持多机并行账户互踢。</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_adb_input_text' platforms="android">
+				<name>adb命令文本框文本输入(mobile)</name>
+				<comment>向文本框输入 ASCII 文本（不支持中文）。支持 Android。</comment>
+				<implement>MobileElementKeyword:adbInputCmd</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>文本框控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文本框控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='text'>
+					<name>待输入的文字</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待输入的文字，特殊场景说明：在输入银行卡号时，每4位中间有一个空格，需要在输入的时候加上空格，例如：1234 1234 1234</comment>
+				</param>
+				<param id='type'>
+					<name>文本框类型</name>
+					<default>text</default>
+					<values>text\r\nusername\r\npassword</values>
+					<required>F</required>
+					<datapool/>
+					<comment>文本框类型：普通文本框，用户名文本框、密码文本框，用户名文本框和密码文本框支持多机并行账户互踢</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_combo_select'>
+				<name>下拉列表选择(mobile)</name>
+				<comment>根据控件定位符查找该下拉列表，模拟下拉列表的选择。下拉列表默认以内容值作为选择条件；若以索引为选择条件，则输入选择项所在的位置。如0,1,2,3...</comment>
+				<implement>MobileElementKeyword:comboSelect</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>下拉列表的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='type'>
+					<name>选择类型</name>
+					<default>内容</default>
+					<values>内容\r\n索引</values>
+					<required>T</required>
+					<datapool/>
+					<comment>选择类型，下拉列表以何类型为选择条件</comment>
+				</param>
+				<param id='value'>
+					<name>属性值</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>选择类型的属性值，需要在勾选选择类型后，根据选择类型填值。类型为"内容"，请输入下拉列表文本内容；类型为索引，请输入文本所在位置值，如0,1...</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_radio_click'>
+				<name>单选框点击(mobile)</name>
+				<comment>根据控件定位符查找某单选框。若期望为true，单选框被更新为勾选状态；若期望为false，则多选框更新为未勾选状态</comment>
+				<implement>MobileElementKeyword:radioClick</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的单选框控件定位符，请注意输入格式，格式举例：xpath:://abc/input</comment>
+				</param>
+				<param id='isSelected'>
+					<name>勾选状态</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>期望的勾选状态。期望勾选，请选择true；期望不勾选，请选择false</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_check_select'>
+				<name>多选框点击(mobile)</name>
+				<comment>根据控件定位符查找多选框。若期望为true，多选框被更新为勾选状态；若期望为false，则多选框更新为未勾选状态</comment>
+				<implement>MobileElementKeyword:checkSelect</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的多选框控件定位符，请注意输入格式，格式举例：xpath:://abc/input</comment>
+				</param>
+				<param id='isSelected'>
+					<name>勾选状态</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>期望的勾选状态。期望勾选，请选择true；期望不勾选，请选择false</comment>
+				</param>
+			</keyword>
+	        <keyword id="swipe_login">
+				<name>滑动登录（若存在）</name>
+				<comment>判断滑动按钮可见性，如果可见，则滑动登录</comment>
+				<implement>MobileElementKeyword:swipeLogin</implement>
+				<show>1</show>
+				<param id="type">
+					<name>终端类型</name>
+					<default>android</default>
+					<values>android\r\nios</values>
+					<required>F</required>
+					<datapool/>
+					<comment>用于选择应用终端类型（android / ios）；需要强制指定平台时再选。</comment>
+				</param>
+				<param id="locator">
+					<name>目标控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目标控件定位符</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+			</keyword>
+		</group>
+
+		<group name="校验操作">
+				<keyword id='mobile_wait_element_visible'>
+					<name>[公用]等待控件可见性判断(mobile)</name>
+					<comment>校验控件是否可见，预期可见输入true，预期不可见输入false；若预期与实际不符，则会抛出异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:waitForElementVisible</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>待校验可见性控件元素取值，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='isVisible'>
+						<name>预期可见状态</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期控件为可见状态，请选择true; 预期控件为不可见状态，请选择false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id='mobile_wait_element_enabled'>
+					<name>[公用]等待控件可用性判断(mobile)</name>
+					<comment>校验控件是否可用，预期可用输入true，预期不可用输入false；若预期与实际不符，则会抛出异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:waitForElementEnabled</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待校验可用性控件元素取值，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='isEnabled'>
+						<name>预期可用状态</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期控件为可用状态，请选择true; 预期控件为不可用状态，请选择false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id="mobile_browser_wait_for_exist">
+					<name>[公用]等待控件存在性判断(mobile)</name>
+					<comment>等待某控件存在/不存在，等待最多为配置的最大等待时间，超时与预期判断不符则抛异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:waitForElementExist</implement>
+					<show>1</show>
+					<param id="locator">
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>该控件的元素定位取值，请注意输入格式，例如：name::abc</comment>
+					</param>
+					<param id="isExist">
+						<name>预期存在性</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期某控件存在，请选择true；预期某控件不存在，请选择false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id='mobile_browser_wait_for_text'>
+					<name>[公用]等待控件文本匹配性判断(mobile)</name>
+					<comment>等待某控件文本匹配/不匹配，支持文本的模糊匹配,等待最多为配置的最大等待时间，超时与预期判断不符则抛异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:waitForElementText</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>该控件的元素定位取值，请注意输入格式，例如：name::abc</comment>
+					</param>
+					<param id='text'>
+						<name>预匹配文本</name>
+						<default/>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>预期匹配的文本，若某控件不存在文本，则可不输入</comment>
+					</param>
+					<param id='mode'>
+						<name>匹配模式</name>
+						<default>精确匹配</default>
+						<values>精确匹配\r\n模糊匹配\r\n正则表达式匹配</values>
+						<required>T</required>
+						<datapool/>
+						<comment>匹配模式，请根据实际需要选择。</comment>
+					</param>
+					<param id='matched'>
+						<name>预期匹配性</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期某文本与控件文本匹配，请选择true; 预期某文本与控件文本不匹配，请输入false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id='mobile_verify_element_existed'>
+					<name>[公用]校验控件是否存在(mobile)</name>
+					<comment>校验控件是否存在，预期存在输入true，预期不存在输入false；若预期与实际不符，则会抛出异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:verifyElementExisted</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待校验存在性控件元素取值，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='isExisted'>
+						<name>预期存在状态</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期控件为存在状态，请选择true; 预期控件为不存在状态，请选择false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+
+				<param id='accuracy'>
+					<name>图像识别匹配模式</name>
+					<default>精确匹配</default>
+					<values>精确匹配\r\n模糊匹配</values>
+					<required>F</required>
+					<datapool/>
+					<comment>控件定位选择picture::图像识别方式时生效，精确匹配:匹配度较高，一般应用图标、特征明显的识别,模糊匹配:一般应用文字、暗色等识别</comment>
+				</param>
+				</keyword>
+				<keyword id='mobile_verify_element_visible'>
+					<name>[公用]校验控件是否可见(mobile)</name>
+					<comment>校验控件是否可见，预期存在输入true，预期不可见输入false；若预期与实际不符，则会抛出异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:verifyElementVisible</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待校验可见性控件元素取值，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='isVisible'>
+						<name>预期存在状态</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期控件为可见状态，请选择true; 预期控件为不可见状态，请选择false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id='mobile_verify_element_enabled'>
+					<name>[公用]校验控件是否可用(mobile)</name>
+					<comment>校验控件是否可用，预期存在输入true，预期不可见输入false；若预期与实际不符，则会抛出异常。（Android/iOS 通用）</comment>
+					<implement>VerifyMobileKeyword:verifyElementEnabled</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待校验可用性控件元素取值，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='isEnabled'>
+						<name>预期存在状态</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期控件为可用状态，请选择true; 预期控件为不可用状态，请选择false</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id='mobile_verify_element_text'>
+					<name>[公用]校验控件文本(mobile)</name>
+					<comment>校验控件文本内容与输入内容是否在指定模式下与期望的匹配结果相同。
+		            如，控件文本为a1，预期文本为a2，期望结果为true，模糊匹配模式，可以理解为，期望a1包含a2；
+					反之若期望结果为false，则期望a1不包含a2。
+					匹配结果与期望不一致则抛异常。（Android/iOS 通用）
+					</comment>
+					<implement>VerifyMobileKeyword:verifyElementText</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待校验控件定位符，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='text'>
+						<name>预期文本</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>预期文本，请根据待指定的匹配模式输入</comment>
+					</param>
+					<param id='matched'>
+						<name>预期结果</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+					</param>
+					<param id='mode'>
+						<name>匹配模式</name>
+						<default>精确匹配</default>
+						<values>精确匹配\r\n模糊匹配\r\n正则表达式匹配</values>
+						<required>T</required>
+						<datapool/>
+						<comment>匹配模式，请根据实际需要选择。</comment>
+					</param>
+					<param id='timeout'>
+						<name>等待超时时间</name>
+						<default>30000</default>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+					</param>
+				</keyword>
+				<keyword id='mobile_verify_element_attribute'>
+					<name>[公用]校验控件属性值(mobile)</name>
+					<comment>校验控件某属性的值与输入内容是否在指定模式下与期望的匹配结果相同。
+		            如，控件某属性值为a1，预期为a2，期望结果为true，模糊匹配模式，可以理解为，期望a1包含a2；
+					反之若期望结果为false，则期望a1不包含a2。
+					匹配结果与期望不一致则抛异常。（Android/iOS 通用）
+					</comment>
+					<implement>VerifyMobileKeyword:verifyElementAttribute</implement>
+					<show>1</show>
+					<param id='locator'>
+						<name>控件定位符</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待校验控件定位符，请注意输入正确格式，格式举例：name::abc</comment>
+					</param>
+					<param id='attribute'>
+						<name>控件属性</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>控件属性名，如 text、resource-id、enabled 等。</comment>
+					</param>
+					<param id='value'>
+						<name>预期属性值</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>预期属性值，请根据待指定的匹配模式输入</comment>
+					</param>
+					<param id='matched'>
+						<name>预期结果</name>
+						<default>true</default>
+						<values>true\r\nfalse</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期的匹配结果，若期望匹配成功，请选择true；若期望匹配失败，请选择false</comment>
+					</param>
+					<param id='mode'>
+						<name>匹配模式</name>
+						<default>精确匹配</default>
+						<values>精确匹配\r\n模糊匹配\r\n正则表达式匹配</values>
+						<required>T</required>
+						<datapool/>
+						<comment>匹配模式，请根据实际需要选择。</comment>
+					</param>
+				</keyword>
+		</group>
+
+		<group name="SDK自动化">
+				<keyword id='mobile_SDK_ergodic' platforms="android">
+					<name>SDK按钮遍历</name>
+					<comment>自动遍历 SDK 宿主 App 内可点击控件。支持 Android。</comment>
+					<implement>MobileSDKergodicKeyword:startMobileSDKergodic</implement>
+					<show>1</show>
+					<param id="type">
+						<name>终端类型</name>
+						<default>android</default>
+						<values>android\r\nios</values>
+						<required>F</required>
+						<datapool/>
+						<comment>用于选择应用终端类型（android / ios）；需要强制指定平台时再选。</comment>
+					</param>
+					<param id="appFile">
+						<name>待测试的应用程序位置</name>
+						<default/>
+						<values/>
+						<required>T</required>
+						<datapool/>
+						<comment>待测安装包路径：Android 为 .apk/.apex/.xapk，iOS 为 .ipa；支持绝对或相对工程路径。</comment>
+					</param>
+					<param id="depth">
+						<name>深度层级</name>
+						<default>0</default>
+						<values/>
+						<required>F</required>
+						<datapool/>
+						<comment>应用遍历的深度层级,默认0是按深度点击所有按钮。</comment>
+					</param>
+				</keyword>>
+		</group>
+
+		<group name="WAP端">
+			<keyword id="mobile_browser_open" platforms="android">
+				<name>打开浏览器(wap)</name>
+				<comment>打开浏览器，需要预先安装在手机中。(应用在wap测试中)</comment>
+				<implement>MobileCommKeyword:openBrowser</implement>
+				<show>1</show>
+				<param id="type">
+					<name>浏览器类型</name>
+					<default>Chrome</default>
+					<values>Browser\r\nChrome\r\nSafari\r\nChromium</values>
+					<required>T</required>
+					<datapool/>
+					<comment>准备打开的浏览器类型，需预先安装在手机中</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_browser_close" platforms="android">
+				<name>关闭浏览器(wap)</name>
+				<comment>关闭浏览器，结束测试</comment>
+				<implement>MobileCommKeyword:closeBrowser</implement>
+				<show>1</show>
+			</keyword>
+			<keyword id="mobile_browser_locate" platforms="android">
+				<name>浏览器地址输入(wap)</name>
+				<comment>浏览器地址输入</comment>
+				<implement>MobileCommKeyword:browserLocate</implement>
+				<show>1</show>
+				<param id="url">
+					<name>网址</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待打开的url地址</comment>
+				</param>
+			</keyword>
+	   		<keyword id="mobile_get_current_url">
+				<name>获取当前url(wap)</name>
+				<comment>获取当前url</comment>
+				<implement>MobileCommKeyword:mobileGetCurrentUrl</implement>
+				<show>1</show>
+				<param id="outVar">
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取url存入该变量并保存在上下文待引用。输入举例：var_url</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_move_to_element">
+				<name>移动屏幕至目标控件(wap)</name>
+				<comment>滚动wap页面屏幕至目标控件，无需定义方向</comment>
+				<implement>MobileCommKeyword:mobileMoveToElement</implement>
+				<show>1</show>
+				<param id="locator">
+					<name>目标控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>目标控件定位符</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_JS_click'>
+				<name>控件JS点击(wap)</name>
+				<comment>根据定位符查找控件，并通过js触发点击该控件</comment>
+				<implement>MobileElementKeyword:elementJSClick</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_any_element_click'>
+				<name>点击任意位置控件(wap)</name>
+				<comment>根据wap页面定位符查找控件，并模拟真实点击该控件</comment>
+				<implement>MobileElementKeyword:anyElementClick</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+			</keyword>
+			<keyword id="native_web_swith_context">
+					<name>切换移动上下文(h5/wap)</name>
+					<comment>切换移动上下文,NATIVE:对应用的上下文,WEB:对网页的上下文</comment>
+					<implement>MobileCommKeyword:androidNativeAndWebviewSwithContext</implement>
+					<show>1</show>
+					<param id="swithoption">
+						<name>选择上下文</name>
+						<default>NATIVE</default>
+						<values>NATIVE\r\nWEB\r\nCHROMIUM</values>
+						<required>T</required>
+						<datapool/>
+						<comment>预期控件为NATIVE上下文，请选择NATIVE; 预期控件为WEB上下文，请选择WEB; 预期控件为CHROMIUM上下文，请选择CHROMIUM</comment>
+					</param>
+			</keyword>
+			<keyword id="mobile_app_snapshot">
+				<name>截屏(wap)</name>
+				<comment>对当前手机屏幕截屏，支持 Android、iOS。需先完成启动与服务准备。</comment>
+				<implement>MobileCommKeyword:mobileSnapshot</implement>
+				<show>1</show>
+				<param id="fileName">
+	                <name>自定义文件名称</name>
+	                <default/>
+	                <values/>
+	                <required>F</required>
+	                <comment>自定义截屏图片的文件名称。</comment>
+	            </param>
+	            <param id="select_if_timestamp">
+					<name>命名是否加时间戳</name>
+					<default>是</default>
+					<values>是\r\n否</values>
+					<required>T</required>
+					<datapool/>
+					<comment>是否加时间戳参数只针对自定义文件名称不为空的情况，当名称为空时，截图名称默认时间戳。</comment>
+				</param>
+	            <param id="outVar">
+	                <name>输出截屏图片保存路径[OUT]</name>
+	                <default/>
+	                <values/>
+	                <required>F</required>
+	                <comment>输出截屏图片保存路径，将截屏图片的保存路径输入该变量，并保存在上下文待引用。输入举例：var_img_path</comment>
+	            </param>
+			</keyword>
+			<keyword id="mobile_start_screen_record" platforms="android ios">
+				<name>开始屏幕录像</name>
+				<comment>Android：Appium startRecordingScreen（需会话）。iOS：go-ios screenshot --stream + OpenCV 落盘（Win/Mac/Linux；需 go-ios、匹配 DDI、OpenCV；资源不全则关键字报不可用）。timeLimit/bitRate 仅 Android 生效。</comment>
+				<implement>MobileCommKeyword:mobileStartScreenRecord</implement>
+				<show>1</show>
+				<param id="timeLimit">
+					<name>最长录制秒数</name>
+					<default>180</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>Android：传给 Appium 的 timeLimit（秒）。iOS 忽略。</comment>
+				</param>
+				<param id="bitRate">
+					<name>码率 bitRate</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>Android 可选码率；iOS 忽略。</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_stop_screen_record" platforms="android ios">
+				<name>停止屏幕录像</name>
+				<comment>停止录像并保存 mp4。默认路径为工程 reports/evidence/，便于 Runner 打进 evidence.zip。Android/iOS 均可。</comment>
+				<implement>MobileCommKeyword:mobileStopScreenRecord</implement>
+				<show>1</show>
+				<param id="fileName">
+					<name>自定义文件名称</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>相对名写入 reports/evidence/；绝对路径按原路径落盘。空则 screen_record_设备后缀_时间戳.mp4。</comment>
+				</param>
+				<param id="select_if_timestamp">
+					<name>命名是否加时间戳</name>
+					<default>是</default>
+					<values>是\r\n否</values>
+					<required>T</required>
+					<datapool/>
+					<comment>是否在文件名后追加时间戳。</comment>
+				</param>
+				<param id="outVar">
+					<name>输出录像保存路径[OUT]</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>将 mp4 绝对路径写入该变量。举例：var_record_path</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_define_swipe_direction">
+				<name>自定义起止位置按方向滑屏(mobile/wap)</name>
+				<comment>触摸滑屏，可按上、下、左、右方向滑动</comment>
+				<implement>MobileCommKeyword:mobileDefineSwipeDirection</implement>
+				<show>1</show>
+				<param id="direction">
+					<name>滑动方向</name>
+					<default>上</default>
+					<values>上\r\n下\r\n左\r\n右\r\n</values>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动方向</comment>
+				</param>
+				<param id="localStationX">
+					<name>起始位置(整屏X轴)</name>
+					<default>0.5</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>自定义设置自上到下屏幕的比例为滑动初始位置(0-1之间)</comment>
+				</param>
+				<param id="localStationY">
+					<name>起始位置(整屏Y轴)</name>
+					<default>0.5</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>自定义设置自上到下屏幕的比例为滑动初始位置(0-1之间)</comment>
+				</param>
+				<param id="size">
+					<name>滑动尺度(屏)</name>
+					<default>0.25</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>自定义初始位置处开始滑动至结束的滑动幅度(0-1之间)</comment>
+				</param>
+				<param id="count">
+					<name>滑动次数</name>
+					<default>1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动次数，默认1次，输入整数</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_click'>
+				<name>控件点击(mobile/wap)</name>
+				<comment>根据定位符查找控件，并模拟真实点击该控件。locator 支持 picture:: 图像识别（可配合检视器框选或参数「选择图片」）。</comment>
+				<implement>MobileElementKeyword:elementClick</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待点击的控件定位符，格式举例：name::abc；图像识别：picture::images/btn.png</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒；图像识别方式可不依赖此超时</comment>
+				</param>
+				<param id='accuracy'>
+					<name>图像识别匹配模式</name>
+					<default>精确匹配</default>
+					<values>精确匹配\r\n模糊匹配</values>
+					<required>F</required>
+					<datapool/>
+					<comment>控件定位选择 picture:: 图像识别方式时生效；精确匹配适合图标等特征明显目标，模糊匹配适合文字/暗色等</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_text_input'>
+				<name>文本框文本输入(mobile/wap)</name>
+				<comment>根据文本框控件定位符查找文本框位置，将期望文字模拟输入至文本框中</comment>
+				<implement>MobileElementKeyword:textInput</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>文本框控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文本框控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='text'>
+					<name>待输入的文字</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>待输入的文字</comment>
+				</param>
+				<param id='testStyle'>
+					<name>安卓移动测试类型</name>
+					<default>NATIVE</default>
+					<values>NATIVE\r\nWEB</values>
+					<required>T</required>
+					<datapool/>
+					<comment>判断安卓测试类型，默认为NATIVE。App的选择NATIVE，WAP的选择WEB</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+				<param id='type'>
+					<name>文本框类型</name>
+					<default>text</default>
+					<values>text\r\nusername\r\npassword</values>
+					<required>F</required>
+					<datapool/>
+					<comment>文本框类型：普通文本框，用户名文本框、密码文本框，用户名文本框和密码文本框支持多机并行账户互踢。</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_text_clear'>
+				<name>清空文本框文本(mobile/wap)</name>
+				<comment>根据文本框控件定位符查找文本框位置，清空文本框中原文字（Android/iOS 通用）</comment>
+				<implement>MobileElementKeyword:textClear</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>文本框控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文本框控件定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='isPassword'>
+					<name>是否密码框</name>
+					<default>false</default>
+					<values>true\r\nfalse</values>
+					<required>T</required>
+					<datapool/>
+					<comment>密码框中即使有内容时，也无法获取到text值</comment>
+				</param>
+				<param id='times'>
+					<name>按删除键的次数</name>
+					<default>1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>如果是密码框，按删除键的次数</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_get_element_text'>
+				<name>获取控件文本(mobile/wap)</name>
+				<comment>根据输入的控件定位符查找控件，并将此控件的文本内容存入输出变量中保存在上下文待引用（Android/iOS 通用）</comment>
+				<implement>MobileElementKeyword:getElementText</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取文本内容的控件的定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='outVar'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的控件文本内容存入该变量并保存在上下文待引用。输入举例：var_text</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_get_element_exist'>
+				<name>获取控件存在性(mobile/wap)</name>
+				<comment>根据输入的控件定位符查找控件，并将此控件的存在性YES/NO存入输出变量中保存在上下文待引用</comment>
+				<implement>MobileElementKeyword:getElementExist</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取存在性的控件的定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='outVar'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的控件存在性YES/NO存入该变量并保存在上下文待引用。输入举例：var_text;</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_get_element_visible'>
+				<name>获取控件可见性(mobile/wap)</name>
+				<comment>根据输入的控件定位符查找控件，并将此控件的可见性YES/NO存入输出变量中保存在上下文待引用（Android/iOS 通用）</comment>
+				<implement>MobileElementKeyword:getElementVisible</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取可见性的控件的定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='outVar'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的控件可见性YES/NO存入该变量并保存在上下文待引用。输入举例：var_text;</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+			</keyword>
+			<keyword id='mobile_element_get_element_enabled'>
+				<name>获取控件可用性(mobile/wap)</name>
+				<comment>根据输入的控件定位符查找控件，并将此控件的可用性YES/NO存入输出变量中保存在上下文待引用</comment>
+				<implement>MobileElementKeyword:getElementEnabled</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取可用性的控件的定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='outVar'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的控件可用性YES/NO存入该变量并保存在上下文待引用。输入举例：var_text;</comment>
+				</param>
+				<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为30000毫秒</comment>
+				</param>
+			</keyword>
+        	<keyword id='mobile_element_get_element_attribute'>
+				<name>获取控件属性(mobile/wap)</name>
+				<comment>根据输入的控件定位符查找控件，并将此控件的文本内容存入输出变量中保存在上下文待引用</comment>
+				<implement>MobileElementKeyword:getElementAttribute</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取文本内容的控件的定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='attribution'>
+					<name>控件属性名称</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>控件属性名，如 text、resource-id、enabled 等。</comment>
+				</param>
+				<param id='outVar'>
+					<name>输出变量名称[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量名称，将获取的控件文本内容存入该变量并保存在上下文待引用。输入举例：var_text</comment>
+				</param>
+			</keyword>
+			<keyword id="textInput">
+            	<name>判断并文本框输入文本(mobile/wap)</name>
+            	<comment>判断文本框存在性，存在则文本框输入文本，不存在则不做操作</comment>
+            	<implement>MobileProductKeyword:textInput</implement>
+            	<show>1</show>
+            	<param id="locator">
+                	<name>控件定位符</name>
+                	<default/>
+                	<values/>
+                	<required>T</required>
+                	<comment>文本框控件定位符，请注意输入格式，格式举例：name::abc</comment>
+            	</param>
+            	<param id="text">
+                	<name>输入文本字符</name>
+                	<default/>
+                	<values/>
+                	<required>T</required>
+                	<comment>控件存在时待输入的文本，不可为空</comment>
+            	</param>
+            	<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>5000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为5000毫秒</comment>
+				</param>
+				<param id='type'>
+					<name>文本框类型</name>
+					<default>text</default>
+					<values>text\r\nusername\r\npassword</values>
+					<required>F</required>
+					<datapool/>
+					<comment>文本框类型：普通文本框，用户名文本框、密码文本框，用户名文本框和密码文本框支持多机并行账户互踢。</comment>
+				</param>
+        	</keyword>
+            <keyword id="elementClick">
+            	<name>判断并控件点击(mobile/wap)</name>
+            	<comment>判断控件是否存在，存在则点击；不存在则不做操作。locator 支持 picture:: 图像识别。</comment>
+            	<implement>MobileProductKeyword:elementClick</implement>
+            	<show>1</show>
+            	<param id="locator">
+                	<name>控件定位符</name>
+                	<default/>
+                	<values/>
+                	<required>T</required>
+                	<comment>待判断是否存在的控件定位符，存在则点击；图像识别：picture::images/btn.png</comment>
+            	</param>
+            	<param id='timeout'>
+					<name>等待超时时间</name>
+					<default>5000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>时间单位为毫秒，默认等待超时时间为5000毫秒</comment>
+				</param>
+				<param id='accuracy'>
+					<name>图像识别匹配模式</name>
+					<default>精确匹配</default>
+					<values>精确匹配\r\n模糊匹配</values>
+					<required>F</required>
+					<datapool/>
+					<comment>控件定位选择 picture:: 时生效；精确匹配适合图标，模糊匹配适合文字/暗色</comment>
+				</param>
+        	</keyword>
+		</group>
+
+		<group name="特殊场景">
+			<keyword id="mobile_app_launch">
+				<name>打开应用</name>
+				<comment>打开已安装的被测应用；崩溃后可再次调用恢复。支持 Android、iOS。</comment>
+				<implement>MobileCommKeyword:launchApp</implement>
+				<show>1</show>
+			</keyword>
+			<keyword id="mobile_commActionTouch">
+				<name>安卓九宫格解锁(通用)</name>
+				<comment>根据提供依据手机分辨率、开始坐标及滑动偏移量实现在不同款手机屏幕上滑动四个点进行解锁操作</comment>
+				<implement>MobileCommKeyword:androidCommActionTouch</implement>
+				<show>1</show>
+				<param id="resolution">
+					<name>参考手机分辨率</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>例如nexus 5分辨率:1080,1920</comment>
+				</param>
+				<param id="startCoordinate">
+					<name>九宫格"1"的坐标</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动初始坐标，例如:190,800</comment>
+				</param>
+				<param id="deviation">
+					<name>九宫格"1"与"5"的偏移量</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动幅度:例如：350,350,即从"1"位置向右滑动350像素，再向下滑动350像素可至"5"位置</comment>
+				</param>
+				<param id="count">
+					<name>滑动次数</name>
+					<default>1</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>滑动次数，默认1次，输入整数</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_monkey" platforms="android ios" risk_level="irreversible">
+				<name>执行Monkey稳定性测试</name>
+				<comment>在已安装并启动的应用上执行随机操作稳定性测试。需先装包并启动应用，包名可从变量 app_package 读取。</comment>
+				<implement>AndroidMobileKeyword:androidRunMonkey</implement>
+				<show>1</show>
+				<param id="monkeySteps">
+					<name>步骤数</name>
+					<default>20</default>
+					<values>20\r\n30\r\n40\r\n50\r\n60\r\n70\r\n80\r\n90\r\n100\r\n110\r\n120\r\n130\r\n140\r\n150\r\n160\r\n170\r\n180\r\n190\r\n200</values>
+					<required>T</required>
+					<datapool/>
+					<comment>事件次数 20~200。iOS 纯步数模式为上限；若同时填 durationSec 则按时长跑，步骤数为安全上限（先到先停）。</comment>
+				</param>
+				<param id="durationSec">
+					<name>执行时长(秒)</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>iOS 专用：大于 0 时按秒数运行（最长 6 小时），与 monkeySteps 安全上限取先到者。</comment>
+				</param>
+				<param id="throttleMs">
+					<name>事件间隔(ms)</name>
+					<default>500</default>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>iOS 专用：每步基础间隔毫秒，实际含随机抖动。</comment>
+				</param>
+				<param id="monkeyPolicy">
+					<name>Monkey策略</name>
+					<default>balanced</default>
+					<values>safe\r\nbalanced\r\naggressive</values>
+					<required>F</required>
+					<datapool/>
+					<comment>iOS 专用：safe 保守 / balanced 均衡 / aggressive 激进。</comment>
+				</param>
+				<param id="seed">
+					<name>随机种子</name>
+					<default/>
+					<values/>
+					<required>F</required>
+					<datapool/>
+					<comment>iOS 专用：留空则随机生成，用于复现路径。</comment>
+				</param>
+				<param id="collectDeviceLogs">
+					<name>采集设备日志</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>F</required>
+					<datapool/>
+					<comment>仅 iOS：测试期间是否同时采集设备日志与崩溃信息（默认开启）。</comment>
+				</param>
+				<param id="deviceLogsBackend">
+					<name>设备日志后端</name>
+					<default>auto</default>
+					<values>auto\r\ngo-ios\r\npmd3\r\noff</values>
+					<required>F</required>
+					<datapool/>
+					<comment>仅 iOS：设备日志采集方式；off 表示不采集。一般选 auto 即可。</comment>
+				</param>
+				<param id="syslogMode">
+					<name>Syslog模式</name>
+					<default/>
+					<values>\r\nfull\r\nostrace</values>
+					<required>F</required>
+					<datapool/>
+					<comment>仅 iOS：日志采集范围。full=全量；ostrace=按应用过滤（适合长时间测试）。留空使用工程默认。</comment>
+				</param>
+				<param id="reportHtml">
+					<name>生成HTML报告</name>
+					<default>true</default>
+					<values>true\r\nfalse</values>
+					<required>F</required>
+					<datapool/>
+					<comment>iOS 专用：结束后生成自包含 report.html（默认 true）。</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_pull_file_to_mobile" platforms="android">
+				<name>push文件</name>
+				<comment>把本地文件push到设备上</comment>
+				<implement>AndroidMobileKeyword:androidPullFileToMobile</implement>
+				<show>1</show>
+				<param id="path">
+					<name>文件本地存放的位置</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件本地存放的位置，输入举例：d:\test.txt；存在多push步骤时，本地文件请保持文件名称不同，不支持同文件名文件同时push</comment>
+				</param>
+				<param id="remotPath">
+					<name>文件在设备上将要存放的位置</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>文件本地存放的位置，输入举例：/sdcard/test.txt</comment>
+				</param>
+			</keyword>
+			<keyword id="mobile_toast_verify" platforms="android">
+				<name>android端toast消息验证</name>
+				<comment>android端toast消息验证，目前仅android原生的toast消息</comment>
+				<implement>AndroidMobileKeyword:androidToastVerify</implement>
+				<show>1</show>
+				<param id="text">
+					<name>待验证的toast消息内容</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待验证的toast消息内容，可以只写部分内容</comment>
+				</param>
+				<param id="wait">
+					<name>等待几秒后验证</name>
+					<default>3000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>默认在3秒后验证toast消息</comment>
+				</param>
+			</keyword>
+			<keyword id="Shelter" platforms="android">
+	            <name>智能防键盘遮挡</name>
+	            <comment/>
+	            <implement>MobileElementKeyword:Shelter</implement>
+	            <show>1</show>
+	            <param id="locator">
+	                <name>控件位置</name>
+	                <default/>
+	                <values/>
+	                <required>T</required>
+	                <comment/>
+	            </param>
+        	</keyword>
+        	<keyword id="backToTab" platforms="android">
+                <name>回到tab栏展示</name>
+            	<comment>判断当前的activity是否与输入的activity一致，不一致则按手机back返回，直到一致为止</comment>
+            	<implement>MobileProductKeyword:backTabActivity</implement>
+            	<show>1</show>
+            	<param id='activity'>
+					<name>activity</name>
+					<default>.base.host.MainActivity</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待返回的activity</comment>
+				</param>
+            </keyword>
+            <keyword id="mobileProduct_app_getPrice">
+            	<name>获取price</name>
+            	<comment>对于￥2.00或者￥2,200.00 去除￥并去除前后空格，得到2.00或者2,200.00，商城app上用来进行金额的校验</comment>
+            	<implement>MobileProductKeyword:getPrice</implement>
+            	<show>1</show>
+            	<param id="str">
+                	<name>金额字符串</name>
+                	<default/>
+                	<values/>
+                	<required>T</required>appium
+                	<comment>商城app上获取的金额，如￥2.00或者￥2,200.00等</comment>
+            	</param>
+            	<param id='varName'>
+					<name>输出变量[OUT]</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>输出变量，将获取到的金额字符串中的金额放入变量中保存在上下文中待引用</comment>
+				</param>
+        	</keyword>
+			<keyword id='mobile_activity_switch' platforms="android">
+				<name>Activity来回切换(mobile)</name>
+				<comment>根据输入的控件定位符查找控件并点击，进入新的Activity后再返回，来回切换</comment>
+				<implement>MobileElementKeyword:activitySwitch</implement>
+				<show>1</show>
+				<param id='locator'>
+					<name>控件定位符</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>待获取文本内容的控件的定位符，请注意输入格式，格式举例：name::abc</comment>
+				</param>
+				<param id='timeout'>
+					<name>查找控件超时时间</name>
+					<default>30000</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>查找控件超时时间，单位ms，默认30000ms</comment>
+				</param>
+				<param id='times'>
+					<name>切换次数</name>
+					<default>10</default>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>两个activity来回切换的次数，默认来回切换10次，最高切换40次，超过40次的按40次处理</comment>
+				</param>
+			</keyword>
+			<keyword id="performance_data_capture" platforms="android">
+					<name>性能数据捕获</name>
+					<comment>性能数据捕获，包含内存、Cpu、Fps等数据</comment>
+					<implement>MobileCommKeyword:performanceDataCapture</implement>
+					<show>1</show>
+				</keyword>
+			<keyword id="intentToMiniProgram" platforms="android">
+					<name>通过URL Scheme跳转到小程序</name>
+					<comment>通过 URL Scheme 跳转小程序，用于稳定性测试。支持 Android。</comment>
+					<implement>MobileCommKeyword:intentToMiniProgram</implement>
+					<show>1</show>
+					<param id='urlPath'>
+					<name>URL Scheme 链接</name>
+					<default/>
+					<values/>
+					<required>T</required>
+					<datapool/>
+					<comment>URL Scheme，用于跳转到小程序。</comment>
+				</param>
+				</keyword>
+		</group>
+
+		<group name="iOS系统弹框">
+			<keyword id="ios_alert_handle" platforms="ios">
+				<name>处理iOS系统弹框</name>
+				<comment>主动检测并处理 iOS 系统级 Alert（非 App 内 onboarding 按钮）</comment>
+				<implement>ios_alert:ios_alert_handle</implement>
+				<show>1</show>
+			</keyword>
+			<keyword id="ios_alert_exists" platforms="ios">
+				<name>检测iOS系统弹框</name>
+				<comment>仅检测是否存在系统 Alert，不执行点击</comment>
+				<implement>ios_alert:ios_alert_exists</implement>
+				<show>1</show>
+			</keyword>
+			<keyword id="ios_alert_set_policy" platforms="ios">
+				<name>设置iOS弹框策略</name>
+				<comment>运行期策略：auto/accept/dismiss/ignore/strict</comment>
+				<implement>ios_alert:ios_alert_set_policy</implement>
+				<show>1</show>
+				<param id="policy">
+					<name>策略</name>
+					<default>auto</default>
+					<values>auto\r\naccept\r\ndismiss\r\nignore\r\nstrict</values>
+					<required>T</required>
+					<datapool/>
+					<comment>弹框处理策略</comment>
+				</param>
+			</keyword>
+			<keyword id="ios_alert_set_enabled" platforms="ios">
+				<name>开关iOS弹框处理</name>
+				<comment>运行期开关 opportunistic 弹框处理</comment>
+				<implement>ios_alert:ios_alert_set_enabled</implement>
+				<show>1</show>
+				<param id="enabled">
+					<name>启用</name>
+					<default>是</default>
+					<values>是\r\n否</values>
+					<required>T</required>
+					<datapool/>
+					<comment>是否启用自动弹框处理</comment>
+				</param>
+			</keyword>
+		</group>
+</group>
+</root>

@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=AutoPilot
+Comment=关键字驱动的自动化测试 IDE
+# Exec：改成你的实际启动命令（开发期用解释器跑 run.py；打包后指向可执行文件）
+Exec=autopilot %f
+# Icon：装到图标主题后用名字 "autopilot"；否则改成 png 的绝对路径
+# 例：Icon=/opt/autopilot/resources/branding/autopilot.png
+Icon=autopilot
+Terminal=false
+Categories=Development;IDE;
+# 须与窗口 WM_CLASS 一致，任务栏/Dock 才能把运行窗口归到此启动器图标
+# 代码已 app.setDesktopFileName("autopilot")，文件名/此值都用 autopilot
+StartupWMClass=autopilot
+StartupNotify=true

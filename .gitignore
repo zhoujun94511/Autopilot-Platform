@@ -1,0 +1,96 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.hypothesis/
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Coverage
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+
+# Editors / agents / OS
+.idea/
+.vscode/
+.agents/
+skills-lock.json
+.cursor/
+.DS_Store
+Thumbs.db
+
+# Logs / scratch / runtime
+logs/
+*.log
+*.tmp
+*.temp
+tmp/
+tests/live/
+tests/test_managementconsole_pg.py
+audit-output/
+/data/
+autopilot_platform/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+uploads/
+vector_store/
+sessions/
+screenshots/
+reports/
+
+# Local identity / pairing / TLS material
+selfIdentity.plist
+*.pem
+*.p12
+*.pfx
+*.key
+*.jks
+*.mobileprovision
+Lockdown/
+
+# Vue frontend
+autopilot_platform/frontend/node_modules/
+autopilot_platform/frontend/dist/
+
+# Local platform runtime dirs
+artifacts/
+app_builds/
+job_logs/
+mc_runtime_config.json
+platform_runtime_config.json
+
+# Uploaded packages (never commit lab binaries; keep in-tree helper APKs)
+*.apk
+*.ipa
+*.xapk
+!resources/re_apks/*.apk
+!resources/re_uiautomator/*.apk
+
+# Apple DDI / local go-ios runtimes (not for git)
+resources/re_go_ios/devimages/
+resources/re_go_ios/runpath/
+resources/re_go_ios/executable/
+
+# Env files (keep examples)
+.env
+.env.*
+!.env.example
+!**/.env.example
+platform.url
+!platform.url.example

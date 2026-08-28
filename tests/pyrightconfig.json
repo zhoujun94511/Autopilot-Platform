@@ -1,0 +1,21 @@
+{
+  "include": ["."],
+  "extraPaths": [".."],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "reportUnusedParameter": "none",
+  "reportPrivateUsage": "none",
+  "reportArgumentType": "none",
+  "reportAssignmentType": "none",
+  "reportCallIssue": "none",
+  "reportAttributeAccessIssue": "none",
+  "reportGeneralTypeIssues": "none",
+  "reportIncompatibleMethodOverride": "none",
+  "reportUnusedImport": "warning",
+  "reportUnreachable": "warning",
+  "reportRedeclaration": "warning",
+  "reportInvalidTypeForm": "none",
+  "reportPrivateImportUsage": "none",
+  "reportOptionalMemberAccess": "none"
+}

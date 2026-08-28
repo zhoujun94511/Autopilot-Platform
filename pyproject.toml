@@ -1,0 +1,154 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# 产品名 AutoPilot Platform；导入包名 autopilot_platform。
+name = "autopilot_platform"
+version = "0.2.0"
+description = "AutoPilot Platform：测试设计 + 执行治理（FastAPI）与可选 TestRunner Agent"
+requires-python = ">=3.10"
+license = { file = "LICENSE.txt" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "SQLAlchemy>=2.0",
+    "httpx>=0.27",
+    "pydantic>=2.0",
+    "PyJWT>=2.8",
+    "python-multipart>=0.0.9",
+    "cryptography>=42.0",
+    "signxml>=3.2",
+    "pyaxmlparser>=0.3",
+    "lxml>=5.0",
+    "python-docx>=1.1",
+    "PyPDF2>=3.0",
+    "alembic>=1.13",
+]
+
+[project.optional-dependencies]
+platform = []
+# Agent：仓内 autopilot_platform.ap 执行核（与 IDE runtime 应对齐，不依赖用户本机装 Console）
+runner = [
+    "selenium>=4.20",
+    "Jinja2>=3.1",
+    "Appium-Python-Client>=3.1",
+    "httpx>=0.27",
+    "jsonpath-ng>=1.6",
+    "jsonschema>=4.20",
+    "openpyxl>=3.1",
+    "opencv-python-headless>=4.9",
+    "numpy>=1.26",
+    "pymobiledevice3>=4.0",
+    "psutil>=5.9",
+    "PyYAML>=6.0",
+    "adbutils>=2.8",
+]
+# Platform Web 远控（Android scrcpy → WebRTC；iOS 复用 runner/httpx 的 WDA MJPEG）
+runner_remote = [
+    "aiortc>=1.9",
+    "av>=12.0",
+    "adbutils>=2.8",
+    "websockets>=16.0",
+]
+# 可选 Web 引擎（AUTOPILOT_WEB_ENGINE=playwright）
+web_playwright = ["playwright>=1.40"]
+apkmeta = []
+s3 = ["boto3>=1.34"]
+pg = ["psycopg[binary]>=3.1"]
+secure = ["keyring>=25"]
+# 设计域 LLM/RAG（OpenAI 兼容 Embedding + hashing 兜底；sqlite-vec 可选加速）
+design = [
+    "langchain>=0.3",
+    "langchain-openai>=0.2",
+    "langchain-community>=0.3",
+    "openai>=1.40",
+    "sqlite-vec>=0.1.6",
+]
+dev = ["pytest>=8.0", "ruff>=0.5", "playwright>=1.40", "httpx>=0.27"]
+# tools/rbac_web_e2e.py
+e2e = ["playwright>=1.40", "httpx>=0.27"]
+# AUD-2026-07：alembic 已进主依赖；保留 extra 名兼容旧文档/CI
+migrate = ["alembic>=1.13"]
+# 可选：MCP 只读适配（platform.mcp_readonly serve）；未装时 list-tools/call 仍可用
+mcp = ["mcp>=1.0"]
+
+[project.scripts]
+ap-platform = "autopilot_platform.platform.__main__:main"
+ap-runner = "autopilot_platform.runner.__main__:main"
+ap-create-job = "autopilot_platform.platform.cli_create_job:main"
+mc-platform = "autopilot_platform.platform.__main__:main"
+mc-runner = "autopilot_platform.runner.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["autopilot_platform*"]
+
+[tool.setuptools.package-data]
+autopilot_platform = [
+    "frontend/dist/*",
+    "frontend/dist/assets/*",
+    "ap/metadata/keyword_defs/*.xml",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# xonsh 是 pymobiledevice3 的传递依赖，其 pytest 插件启动时会建交互 shell，
+# 在无控制台缓冲区的环境（IDE/CI）直接 INTERNALERROR。
+addopts = "-p no:xonsh"
+
+[tool.pyright]
+# 源码为 flat layout：autopilot_platform 包位于仓库根。
+# 让 basedpyright / pyright 从仓库根解析 `autopilot_platform.*` 绝对导入。
+extraPaths = ["."]
+# 默认闸门只覆盖 platform 业务包（services 拆包 / API / 调度器）。
+# ap/ 与 runner/ 是执行核与 Agent，历史类型债与拆包无关；需要时：
+#   python tools/check_types.py --runtime
+include = ["autopilot_platform/platform"]
+# 采用宽松档：只保留基础检查（解决“无法解析导入”即可），
+# 不启用 basedpyright 默认 recommended 档的 reportUnknown* / 泛型参数等严格噪音。
+typeCheckingMode = "basic"
+reportMissingTypeArgument = false
+# Protocol 方法仅 docstring 体的误报
+reportReturnType = false
+# 第三方库（signxml 等）私有子模块导入的误报
+reportPrivateImportUsage = false
+# 第三方 C 扩展/无类型库（lxml.etree 等）符号解析的误报
+reportAttributeAccessIssue = false
+# runner / runner_remote / web_playwright extras（adbutils、aiortc、av、cv2、playwright）
+# 不在主依赖中；未装 extra 时勿报「无法解析导入」
+reportMissingImports = false
+reportMissingModuleSource = false
+exclude = [
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    "frontend/node_modules",
+    "frontend/dist",
+    # 旧 TestPilot 只读归档：依赖旧包名/langchain，不参与 Platform 类型检查
+    "archive",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+    ".venv",
+    "venv",
+    "build",
+    "dist",
+    ".idea",
+    "__pycache__",
+    "frontend/node_modules",
+    "archive",
+]
+
+[tool.ruff.lint]
+select = ["F", "E4", "E7", "E9"]
+ignore = ["E702"]
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]
+"tests/**" = ["E402"]

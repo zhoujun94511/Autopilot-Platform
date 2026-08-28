@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- AUD-2026-08：降低跨站导航携带 SSE query token 的 Referer 风险 -->
+    <meta name="referrer" content="no-referrer" />
+    <meta name="theme-color" content="#0b0f19" />
+    <script>
+      (function () {
+        try {
+          var t = localStorage.getItem("autopilot-mc-theme");
+          if (t !== "light" && t !== "dark") t = "dark";
+          document.documentElement.setAttribute("data-theme", t);
+          document.documentElement.style.colorScheme = t;
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", t === "light" ? "#f4f6f9" : "#0b0f19");
+        } catch (e) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      })();
+    </script>
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" href="/brand/autopilot.png" type="image/png" sizes="256x256" />
+    <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png" />
+    <title>AutoPilot 管理台</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

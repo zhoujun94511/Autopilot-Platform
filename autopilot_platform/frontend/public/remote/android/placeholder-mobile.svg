@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="240" viewBox="0 0 120 240" fill="none" role="img" aria-label="No stream">
+  <!-- Glyph color comes from .remote-placeholder-glyph (remote-stage-glyph token). -->
+  <rect x="12" y="8" width="96" height="224" rx="16" stroke="currentColor" stroke-width="3"/>
+  <rect x="50" y="18" width="20" height="5" rx="2.5" fill="currentColor" opacity="0.9"/>
+  <rect x="28" y="32" width="64" height="160" rx="8" stroke="currentColor" stroke-width="2" opacity="0.38"/>
+  <circle cx="60" cy="208" r="8" stroke="currentColor" stroke-width="3" fill="none"/>
+  <path d="M52 112 L52 128 L68 120 Z" stroke="currentColor" stroke-width="3" stroke-linejoin="round" fill="none"/>
+</svg>

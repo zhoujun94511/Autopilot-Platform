@@ -1,0 +1,27 @@
+services:
+  coturn:
+    image: coturn/coturn:4.6.3-r3
+    restart: unless-stopped
+    env_file:
+      - .env
+    command:
+      - --config=/etc/coturn/turnserver.conf
+      - --realm=${TURN_REALM}
+      - --static-auth-secret=${TURN_STATIC_AUTH_SECRET}
+      - --external-ip=${TURN_EXTERNAL_IP}
+      - --min-port=${TURN_MIN_PORT:-49160}
+      - --max-port=${TURN_MAX_PORT:-49200}
+    ports:
+      - "3478:3478/tcp"
+      - "3478:3478/udp"
+      - "5349:5349/tcp"
+      - "49160-49200:49160-49200/udp"
+    volumes:
+      - ./turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./certs:/etc/coturn/certs:ro
+    healthcheck:
+      test: ["CMD-SHELL", "turnutils_stunclient 127.0.0.1 -p 3478 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

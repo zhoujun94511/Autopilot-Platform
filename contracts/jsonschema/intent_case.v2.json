@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autopilot.local/contracts/intent_case.v2.json",
+  "title": "IntentTestCase",
+  "description": "Intent-first logical case (v2). Intent is the executable semantic source; locators live only in step_binding.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "logical_case_id",
+    "project_id",
+    "title",
+    "intent_steps",
+    "expected_results",
+    "review_status"
+  ],
+  "properties": {
+    "schema_version": { "const": "2.0" },
+    "logical_case_id": { "type": "string", "minLength": 1 },
+    "case_key": { "type": "string" },
+    "project_id": { "type": "string", "minLength": 1 },
+    "revision_id": { "type": "string" },
+    "title": { "type": "string", "minLength": 1 },
+    "description": { "type": "string" },
+    "preconditions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "logical_steps": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Legacy display/fallback strings; prefer intent_steps for execution."
+    },
+    "intent_steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "action", "text"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "action": {
+            "type": "string",
+            "enum": ["click", "type", "assert", "swipe", "open", "wait", "custom"]
+          },
+          "target": { "type": "string" },
+          "value": { "type": "string" },
+          "platform_hint": {
+            "type": "string",
+            "enum": ["web", "android", "ios", "any"]
+          },
+          "text": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "expected_results": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "priority": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "test_type": { "type": "string" },
+    "module": { "type": "string" },
+    "source_requirement_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "review_status": {
+      "type": "string",
+      "enum": ["AI_DRAFT", "HUMAN_REVIEWED", "APPROVED", "REJECTED"]
+    },
+    "automatability": {
+      "type": "string",
+      "enum": ["AUTOMATABLE", "PARTIAL", "MANUAL_ONLY", "NEEDS_DESIGN", "UNKNOWN"]
+    },
+    "automation_status": {
+      "type": "string",
+      "enum": [
+        "LOGICAL_ONLY",
+        "INTENT_READY",
+        "BINDING_PARTIAL",
+        "DRAFT_AUTOMATION",
+        "MAPPING_REQUIRED",
+        "DEBUGGING",
+        "EXECUTABLE",
+        "PUBLISHED",
+        "DEPRECATED"
+      ]
+    },
+    "generation_metadata": { "type": "object" }
+  }
+}

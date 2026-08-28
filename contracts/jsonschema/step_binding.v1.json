@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autopilot.local/contracts/step_binding.v1.json",
+  "title": "StepBinding",
+  "description": "IDE-project source of truth for resolved keyword/locator bindings of intent steps. Not part of logical_case export.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "logical_case_id", "steps"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "logical_case_id": { "type": "string", "minLength": 1 },
+    "revision_id": { "type": "string" },
+    "steps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["platform", "keyword_id"],
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["web", "android", "ios"]
+          },
+          "keyword_id": { "type": "string", "minLength": 1 },
+          "params": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "candidates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["locator"],
+              "properties": {
+                "locator": { "type": "string" },
+                "score": { "type": "number" },
+                "keyword_id": { "type": "string" },
+                "params": { "type": "object", "additionalProperties": true }
+              }
+            }
+          },
+          "resolver": {
+            "type": "string",
+            "enum": ["dom", "accessibility", "vision", "heuristic", "cache"]
+          },
+          "updated_at": { "type": "string" },
+          "heal_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    }
+  }
+}

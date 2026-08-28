@@ -1,0 +1,51 @@
+"""平台侧契约：DTO / 常量（无 Qt、无执行引擎）。"""
+
+from .constants import (
+    API_V1_PREFIX,
+    DEFAULT_API_TOKEN,
+    HEARTBEAT_TIMEOUT_SEC,
+    JobStatus,
+)
+from .schemas import (
+    ArtifactOut,
+    DeviceInfo,
+    HeartbeatIn,
+    JobCreate,
+    JobOut,
+    JobResultIn,
+    LoginIn,
+    ProjectCreate,
+    ProjectMemberIn,
+    ProjectMemberOut,
+    ProjectOut,
+    ReportIndex,
+    RunnerOut,
+    RunnerRegister,
+    TokenOut,
+    UserCreate,
+    UserOut,
+)
+
+__all__ = [
+    "API_V1_PREFIX",
+    "DEFAULT_API_TOKEN",
+    "HEARTBEAT_TIMEOUT_SEC",
+    "JobStatus",
+    "ArtifactOut",
+    "DeviceInfo",
+    "HeartbeatIn",
+    "JobCreate",
+    "JobOut",
+    "JobResultIn",
+    "LoginIn",
+    "ProjectCreate",
+    "ProjectMemberIn",
+    "ProjectMemberOut",
+    "ProjectOut",
+    "ReportIndex",
+    "RunnerOut",
+    "RunnerRegister",
+    "TokenOut",
+    "UserCreate",
+    "UserOut",
+]

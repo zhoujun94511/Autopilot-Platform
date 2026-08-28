@@ -1,0 +1,6 @@
+# Optional WebRTC deps for Platform Runner remote (Android).
+# Install: pip install -e ".[runner_remote]"
+aiortc>=1.9
+av>=12.0
+adbutils>=2.8
+websockets>=16.0
