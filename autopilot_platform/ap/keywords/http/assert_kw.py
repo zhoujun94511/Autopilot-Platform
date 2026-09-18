@@ -7,8 +7,19 @@ import re
 from pathlib import Path
 from typing import Any
 
+from ...runtime.paths import safe_path_under_project
 from ..context import ExecutionContext
 from ..registry import KeywordError, keyword
+
+
+def _project_root_from_ctx(ctx: ExecutionContext) -> str:
+    raw = getattr(ctx, "project_path", None) or ctx.get_var("__project_path__")
+    root = str(raw or "").strip()
+    if root and Path(root).is_dir():
+        return root
+    raise KeywordError(
+        "json_assert_schema: 从文件加载 schema 需要工程路径（project_path / __project_path__）"
+    )
 
 
 def _last(ctx: ExecutionContext) -> dict[str, Any]:
@@ -98,12 +109,13 @@ def _load_schema(ctx: ExecutionContext, schema: str) -> Any:
             return json.loads(text)
         except json.JSONDecodeError as exc:
             raise KeywordError(f"schema JSON 无法解析: {exc}") from exc
-    # 文件路径（相对工程）
-    path = Path(text)
-    if not path.is_file():
-        proj = getattr(ctx, "project_path", None)
-        if proj:
-            path = Path(proj) / text
+    # 文件路径（相对工程根；拒绝绝对路径与 .. 越界）
+    root = _project_root_from_ctx(ctx)
+    try:
+        resolved = safe_path_under_project(root, text)
+    except ValueError as exc:
+        raise KeywordError(f"schema 路径非法: {text}") from exc
+    path = Path(resolved)
     if not path.is_file():
         raise KeywordError(f"schema 文件不存在: {text}")
     return json.loads(path.read_text(encoding="utf-8"))

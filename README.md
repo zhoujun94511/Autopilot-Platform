@@ -39,6 +39,23 @@ AutoPilot Platform 是 AutoPilot 自动化体系的服务端与 Web 工作台，
 
 ### 1. 启动工作台与 API
 
+新电脑可先跑一键安装（默认装齐 Platform Web 与 Runner 宿主工具；仓库 `resources/` 已有二进制则跳过）：
+
+```powershell
+# Windows：默认全部安装
+.\install_deps.bat
+# 只体检：.\install_deps.bat -CheckOnly
+```
+
+```bash
+# Linux / macOS
+chmod +x scripts/install_deps.sh
+./scripts/install_deps.sh
+./scripts/install_deps.sh --check
+```
+
+也可按下面逐步安装：
+
 ```powershell
 # Windows
 py -3.12 -m venv .venv

@@ -62,6 +62,7 @@
 
 | 脚本 | 用途 | 来源灵感 |
 |---|---|---|
+| [`../install_deps.bat`](../install_deps.bat) / [`../scripts/install_deps.ps1`](../scripts/install_deps.ps1) / [`../scripts/install_deps.sh`](../scripts/install_deps.sh) | 新设备一键安装全部宿主依赖（Platform Web + Runner）；仓库 `resources/` 已有二进制则跳过 | 本仓 |
 | `preflight.py` | 环境 / 依赖 / Runner 工具链体检 | 本仓原有 |
 | `check_ap_version.py` | `ap` 与 `RUNTIME_PIN` 对齐 | 本仓原有 |
 | `check_api_contract.py` | FastAPI 路由 ↔ 前端 `/api/v1` 调用契约 | TestPilot `check_api_contract` |

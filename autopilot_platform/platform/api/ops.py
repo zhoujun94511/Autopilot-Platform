@@ -45,6 +45,7 @@ router = APIRouter(tags=["ops"])
 
 # 单请求 prompt 上限：防止一次塞入超大上下文打爆输入 token
 MAX_AI_PROMPT_CHARS = 60000
+AI_CODEGEN_WIRE_VERSION = "1.0"
 
 
 
@@ -621,6 +622,11 @@ def _ai_codegen_capabilities() -> dict:
     accepts_images = model_accepts_images(provider, model, base_url=base_url)
     locate_accepts_images = model_accepts_images(provider, locate_model, base_url=base_url)
     return {
+        "wire_contract_version": AI_CODEGEN_WIRE_VERSION,
+        "prompt_max_chars": MAX_AI_PROMPT_CHARS,
+        "supported_purposes": ["authoring", "planning", "locate"],
+        "response_content_field": "content",
+        "error_envelope": "platform_error_v1",
         "enabled": ai_config.ai_enabled(),
         "provider": provider,
         "model": model,
@@ -675,6 +681,24 @@ def api_ops_ai_codegen(
 
     assert_ai_gateway_caller(auth)
 
+    requested_contract = str(
+        (body or {}).get("wire_contract_version") or ""
+    ).strip()
+    if requested_contract and requested_contract.split(".", 1)[0] != "1":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": (
+                    "IDE 与 Platform 的 AI 编写协议不兼容："
+                    f"IDE={requested_contract}, Platform={AI_CODEGEN_WIRE_VERSION}"
+                ),
+                "details": {
+                    "reason": "incompatible_ai_codegen_contract",
+                    "requested": requested_contract,
+                    "supported": AI_CODEGEN_WIRE_VERSION,
+                },
+            },
+        )
     prompt = str((body or {}).get("prompt") or "").strip()
     _assert_codegen_text_only(prompt)
     if len(prompt) > MAX_AI_PROMPT_CHARS:
@@ -730,6 +754,7 @@ def api_ops_ai_codegen(
 
     return {
         "ok": True,
+        "wire_contract_version": AI_CODEGEN_WIRE_VERSION,
         "purpose": purpose,
         "model": model_used,
         "content": content or "",

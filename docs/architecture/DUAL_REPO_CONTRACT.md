@@ -300,7 +300,7 @@ Platform 权威目录：`contracts/jsonschema/`；IDE 必须镜像**全部**同�
    - `python -m autopilot_platform.ap.intent …`  
    行为应对齐（help、子命令）。  
 4. **Webhook**：IDE/Runner 收 Platform `logical_case.approved`；密钥与 loopback 规则见 `intent/webhook_server.py`。  
-5. **链路 3 LLM 密钥**：厂商 `AP_AI_*` **只在 Platform**（Ops 掩码 / 服务端 env）；IDE 企业路径只持登录 JWT，经 `POST /api/v1/ops/ai/codegen`（`cap.ops.ai.codegen`）转发。本机 `AP_AI_*` 仅为未锁定部署时的开发逃生口，禁止写入工程仓或 `settings.json`。
+5. **链路 3 LLM 密钥与线协议**：厂商 `AP_AI_*` **只在 Platform**（Ops 掩码 / 服务端 env）；IDE 企业路径只持登录 JWT，先读 `GET /api/v1/ops/ai/capabilities`，再经 `POST /api/v1/ops/ai/codegen`（`cap.ops.ai.codegen`）转发。双仓镜像 `contracts/jsonschema/ai_codegen_wire.v1.json`；IDE 请求携带 `wire_contract_version=1.x`，Platform 回传版本、prompt 上限、用途集合、内容字段和标准错误信封。缺少版本的旧服务端兼容，已声明但 major 不一致时拒绝调用。本机 `AP_AI_*` 仅为未锁定部署时的开发逃生口，禁止写入工程仓或 `settings.json`。
 
 ---
 

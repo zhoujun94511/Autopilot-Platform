@@ -63,12 +63,12 @@ export function useRemoteStream(platform: string) {
   const ios = platform.toLowerCase() === "ios";
   const fpsLimit = ios ? STREAM_LIMITS.maxFpsIos : STREAM_LIMITS.maxFpsAndroid;
   const adaptive = ref(true);
-  const bitrate = ref(STREAM_LIMITS.bitrate.fallback);
-  const maxFps = ref(fpsLimit.fallback);
-  const maxWidth = ref(STREAM_LIMITS.maxWidth.fallback);
-  const iFrameInterval = ref(STREAM_LIMITS.iFrameInterval.fallback);
-  const jpegQuality = ref(STREAM_LIMITS.jpegQuality.fallback);
-  const jpegScale = ref(STREAM_LIMITS.jpegScale.fallback);
+  const bitrate = ref<number>(STREAM_LIMITS.bitrate.fallback);
+  const maxFps = ref<number>(fpsLimit.fallback);
+  const maxWidth = ref<number>(STREAM_LIMITS.maxWidth.fallback);
+  const iFrameInterval = ref<number>(STREAM_LIMITS.iFrameInterval.fallback);
+  const jpegQuality = ref<number>(STREAM_LIMITS.jpegQuality.fallback);
+  const jpegScale = ref<number>(STREAM_LIMITS.jpegScale.fallback);
   const loading = ref(false);
   const error = ref("");
 

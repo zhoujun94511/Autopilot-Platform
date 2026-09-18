@@ -71,14 +71,9 @@ def discover_cases(directory: str) -> list[str]:
 
 def _safe_under_root(root: str, rel: str) -> str:
     """将相对路径解析到 root 下；拒绝越界。"""
-    rel_n = (rel or "").strip().replace("\\", "/").lstrip("/")
-    if not rel_n or ".." in rel_n.split("/"):
-        raise ValueError(f"invalid entry path: {rel!r}")
-    root_abs = os.path.abspath(root)
-    path = os.path.normpath(os.path.join(root_abs, rel_n.replace("/", os.sep)))
-    if path != root_abs and not path.startswith(root_abs + os.sep):
-        raise ValueError(f"entry path escapes project: {rel!r}")
-    return path
+    from ..runtime.paths import safe_path_under_project
+
+    return safe_path_under_project(root, rel)
 
 
 def load_entry_cases(project_dir: str, entry_paths: list[str]) -> list[TestCase]:

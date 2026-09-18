@@ -398,8 +398,8 @@ def _filter_classes(raw: Any, *, max_count: int = MAX_CLASS_COUNT) -> list[str]:
     return kept
 
 
-def _best_locator(el: dict[str, Any]) -> str:
-    """返回执行引擎可直接解析的定位串（``id::`` / ``name::`` / ``xpath::`` …）。
+def _locator_candidates(el: dict[str, Any]) -> list[str]:
+    """按稳定性返回执行引擎可直接解析的候选定位串。
 
     历史上用过 ``i:`` / ``a:`` 压缩前缀，模型会原样填进关键字参数，而
     ``ExecutionContext.resolve`` 只认 ``::`` 形式，最终被当成裸 XPath 失败。
@@ -429,20 +429,72 @@ def _best_locator(el: dict[str, Any]) -> str:
             ("accessibility_id", "name::"),
             ("label", "name::"),
         )
+    candidates: list[str] = []
     for key, prefix in order:
         val = str(loc.get(key) or "").strip()
         if val:
             # testid 常是属性值，尽量收成可点的 css；已带选择器前缀则原样
             if key == "testid" and not val.startswith(("#", ".", "[", "css::")):
                 val = f'[data-testid="{val}"]'
-            return f"{prefix}{val[:80]}"
+            candidate = f"{prefix}{val[:80]}"
+            if candidate not in candidates:
+                candidates.append(candidate)
     rid = str(el.get("resource_id") or el.get("resource-id") or "").strip()
     if rid:
-        return f"id::{rid[:80]}"
+        candidate = f"id::{rid[:80]}"
+        if candidate not in candidates:
+            candidates.append(candidate)
     name = str(el.get("name") or "").strip()
     if name:
-        return f"name::{name[:80]}"
-    return ""
+        candidate = f"name::{name[:80]}"
+        if candidate not in candidates:
+            candidates.append(candidate)
+    return candidates
+
+
+def _best_locator(el: dict[str, Any]) -> str:
+    candidates = _locator_candidates(el)
+    return candidates[0] if candidates else ""
+
+
+def _disambiguate_serialized_locators(
+    pairs: list[tuple[dict[str, Any], dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    """重复主定位符优先改成当前页唯一备选；仍不唯一则显式标 ``dup``。
+
+    Android 设置页等界面会让所有标题共享 ``android:id/title``。只把该 id 交给
+    模型会稳定点中第一项。这里不猜业务，而是利用同一节点已有的文本 XPath /
+    accessibility locator 选择当前页唯一候选；没有唯一候选时保留原值并禁止静默执行。
+    """
+    from collections import Counter
+
+    primary_counts = Counter(
+        str(row.get("l") or "") for _, row in pairs if str(row.get("l") or "")
+    )
+    candidate_counts = Counter(
+        candidate
+        for element, _ in pairs
+        for candidate in _locator_candidates(element)
+        if candidate
+    )
+    for element, row in pairs:
+        primary = str(row.get("l") or "")
+        count = primary_counts.get(primary, 0)
+        if not primary or count <= 1:
+            continue
+        unique = next(
+            (
+                candidate
+                for candidate in _locator_candidates(element)
+                if candidate != primary and candidate_counts.get(candidate, 0) == 1
+            ),
+            "",
+        )
+        if unique:
+            row["l"] = unique
+        else:
+            row["dup"] = count
+    return [row for _, row in pairs]
 
 
 def compact_signature(el: dict[str, Any]) -> dict[str, Any]:
@@ -772,7 +824,16 @@ def serialize_elements(
     if mode_l in ("off", "none", "0", "false"):
         return []
     if mode_l == "full":
-        rows = [full_signature(el) for el in elements if compact_signature(el)]
+        pairs = [
+            (el, full_signature(el))
+            for el in elements
+            if compact_signature(el)
+        ]
     else:
-        rows = [c for el in elements if (c := compact_signature(el))]
+        pairs = [
+            (el, compact)
+            for el in elements
+            if (compact := compact_signature(el))
+        ]
+    rows = _disambiguate_serialized_locators(pairs)
     return [_sanitize_signature(row) for row in rows if row]

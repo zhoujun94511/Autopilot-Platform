@@ -172,6 +172,7 @@ def run_parallel_device(testcases: list[TestCase], config: RunConfig) -> SuiteRe
     results: list[tuple[int, SuiteResult]] = []
     seen: set[Future] = set()
     pool = ThreadPoolExecutor(max_workers=n)
+    # noinspection PyBroadException
     try:
         futures: dict[Future, int] = {
             pool.submit(worker, i, copy.deepcopy(testcases)): i

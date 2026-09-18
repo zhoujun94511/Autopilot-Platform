@@ -6,7 +6,7 @@
 |------|----------------|
 | 1 传统 | 制品 / Job / 设备 / Runner |
 | 2 设计 AI | 文档分析、逻辑用例生成与人审；Webhook/入队为高级可选 |
-| 3 AI 编写 | **持钥** `POST /ops/ai/codegen`（`cap.ops.ai.codegen`）；**不**持有定位器真源 |
+| 3 AI 编写 | **持钥** `GET /ops/ai/capabilities` + `POST /ops/ai/codegen`（`cap.ops.ai.codegen`）；发布 `ai_codegen_wire.v1`，**不**持有定位器真源 |
 
 配置见 [AI_CONFIG.md](./AI_CONFIG.md)、[TOKEN_BUDGET.md](./TOKEN_BUDGET.md)、[DOMAIN_BOUNDARIES.md](./DOMAIN_BOUNDARIES.md)。
 

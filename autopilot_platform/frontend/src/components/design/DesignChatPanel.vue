@@ -848,38 +848,65 @@ onUnmounted(() => {
         />
 
         <section class="surface-card chat-main">
-          <div class="card-title-row">
-            <h3>
+          <header class="chat-header">
+            <h3
+              class="chat-session-title"
+              :title="
+                generalMode
+                  ? '本地临时对话'
+                  : activeSession?.title || '选择或新建对话'
+              "
+            >
               {{
                 generalMode
                   ? "本地临时对话"
                   : activeSession?.title || "选择或新建对话"
               }}
             </h3>
-            <div v-if="generalMode && messages.length" class="inline-tools">
+            <div
+              v-if="generalMode && messages.length"
+              class="chat-toolbar"
+              role="toolbar"
+              aria-label="临时对话操作"
+            >
               <button type="button" class="small" @click="onClearEphemeral">清空</button>
             </div>
-            <div v-else-if="activeSessionId" class="inline-tools">
-              <button type="button" class="small" @click="onRenameSession">重命名</button>
-              <button type="button" class="small" @click="onClearSession">清空</button>
-              <ApSelect
-                class="export-fmt"
-                size="compact"
-                title="导出格式"
-                aria-label="导出格式"
-                :model-value="exportFormat"
-                :options="[
-                  { value: 'json', label: 'JSON' },
-                  { value: 'txt', label: 'TXT' },
-                  { value: 'csv', label: 'CSV' },
-                  { value: 'xlsx', label: 'Excel' },
-                ]"
-                @update:model-value="exportFormat = $event as ChatExportFormat"
-              />
-              <button type="button" class="small" @click="onExportSession">导出</button>
-              <button type="button" class="small danger" @click="onDeleteSession">删除</button>
+            <div
+              v-else-if="activeSessionId"
+              class="chat-toolbar"
+              role="toolbar"
+              aria-label="当前对话操作"
+            >
+              <div class="chat-toolbar-group session-tools">
+                <button type="button" class="small" @click="onRenameSession">重命名</button>
+                <button type="button" class="small" @click="onClearSession">清空</button>
+              </div>
+              <div class="chat-toolbar-group export-tools">
+                <ApSelect
+                  class="export-fmt"
+                  size="compact"
+                  title="导出格式"
+                  aria-label="导出格式"
+                  :model-value="exportFormat"
+                  :options="[
+                    { value: 'json', label: 'JSON' },
+                    { value: 'txt', label: 'TXT' },
+                    { value: 'csv', label: 'CSV' },
+                    { value: 'xlsx', label: 'Excel' },
+                  ]"
+                  @update:model-value="exportFormat = $event as ChatExportFormat"
+                />
+                <button type="button" class="small" @click="onExportSession">导出</button>
+              </div>
+              <button
+                type="button"
+                class="small danger delete-session"
+                @click="onDeleteSession"
+              >
+                删除
+              </button>
             </div>
-          </div>
+          </header>
 
           <div v-if="!generalMode" class="model-bar">
             <label class="check-line compact" title="把当前项目知识库一起交给助手">
@@ -1174,6 +1201,43 @@ onUnmounted(() => {
   min-height: 0;
   overflow: hidden;
 }
+.chat-header {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+.chat-session-title {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem 0.65rem;
+  min-width: 0;
+}
+.chat-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.export-tools {
+  padding-left: 0.65rem;
+  border-left: 1px solid var(--line);
+}
+.delete-session {
+  margin-left: auto;
+}
 .model-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1189,7 +1253,8 @@ onUnmounted(() => {
   gap: 0.35rem;
 }
 .export-fmt {
-  max-width: 12rem;
+  width: 7rem;
+  min-width: 7rem;
 }
 .check-line.compact {
   font-size: 0.78rem;
@@ -1237,6 +1302,25 @@ onUnmounted(() => {
   flex-wrap: wrap;
   gap: 0.3rem;
   align-items: center;
+}
+@media (max-width: 520px) {
+  .chat-toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .export-tools {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    padding-top: 0.5rem;
+    padding-left: 0;
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+  .delete-session {
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+  }
 }
 .check-line {
   display: inline-flex;

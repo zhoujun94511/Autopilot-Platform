@@ -7,7 +7,13 @@ Runner 包内保留同一份静态参考数据。未知新机型原样返回，�
 from __future__ import annotations
 
 MARKETING_NAMES: dict[str, str] = {
-    # iPhone 17 series (2025) — provisional / verify on real devices
+    # iPhone 18 generation (2026). Unconfirmed iPhone19,x identifiers stay
+    # unmapped intentionally so future models are not mislabeled.
+    "iPhone19,2": "iPhone 18 Pro",
+    "iPhone19,3": "iPhone 18 Pro Max",
+    "iPhone19,4": "iPhone Duo",
+    "iPhone19,7": "iPhone 18 Pro Max",
+    # iPhone 17 series (2025–2026)
     "iPhone18,1": "iPhone 17 Pro",
     "iPhone18,2": "iPhone 17 Pro Max",
     "iPhone18,3": "iPhone 17",

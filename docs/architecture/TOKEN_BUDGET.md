@@ -43,7 +43,7 @@
 | 生产未配预算无人知晓 | `ai_usage.budget_config_warnings()`；启动体检写日志（生产 error），`/ops` 用量汇总含 `config_warnings` |
 | IDE 重复触发整轮 AI 编写 | `AiAuthoringDialog._generating` 互斥 + `assert_llm_ready()` 先做登录/Key 预检 |
 | Vision 按步触发无上限 | `AUTOPILOT_VISION_MAX_CALLS_PER_CASE=30`，`run_testcase` 每用例重置 |
-| Authoring 多回合 prompt 线性膨胀 | `prompt.py`：历史仅保留最近 8 条，页面摘要截断到 24000 字符 |
+| Authoring 多回合 prompt 线性膨胀 | `prompt.py`：历史仅保留最近 6 条，页面摘要限制为 12000 字符；单次 wire prompt 上限 60000 字符 |
 
 ---
 

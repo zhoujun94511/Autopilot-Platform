@@ -200,7 +200,7 @@ export async function apiPostRemoteCommand(
   sessionId: string,
   name: string,
   payload: Record<string, unknown> = {},
-  requestId = crypto.randomUUID(),
+  requestId: string = crypto.randomUUID(),
 ): Promise<Record<string, unknown>> {
   return api(`/api/v1/device-remote-sessions/${encodeURIComponent(sessionId)}/commands`, {
     method: "POST",

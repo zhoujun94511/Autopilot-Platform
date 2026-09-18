@@ -11,6 +11,11 @@ from autopilot_platform.runner.ios_marketing import marketing_name
 
 def test_ios_marketing_known_and_unknown_models():
     assert marketing_name("iPhone16,2") == "iPhone 15 Pro Max"
+    assert marketing_name("iPhone19,2") == "iPhone 18 Pro"
+    assert marketing_name("iPhone19,3") == "iPhone 18 Pro Max"
+    assert marketing_name("iPhone19,4") == "iPhone Duo"
+    assert marketing_name("iPhone19,7") == "iPhone 18 Pro Max"
+    assert marketing_name("iPhone19,1") == "iPhone19,1"
     assert marketing_name("iPhone99,9") == "iPhone99,9"
     assert marketing_name("") == ""
 
@@ -123,6 +128,8 @@ def test_list_ios_devices_falls_back_to_goios(monkeypatch):
         ],
     )
     monkeypatch.setattr(local_devices, "_host_backends", lambda: ["ios-wda"])
+    monkeypatch.setattr(local_devices, "_ios_identity_via_lockdown", lambda _udid: None)
+    monkeypatch.setattr(local_devices, "_ios_identity_via_goios", lambda _udid: None)
     devices = local_devices.list_ios_devices()
     assert [d.udid for d in devices] == [
         "00008140-0010000000000001",

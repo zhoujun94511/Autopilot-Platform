@@ -46,6 +46,12 @@ DEFAULT_VISION_MAX_CALLS_PER_CASE = "30"
 
 
 def intent_vision_enabled() -> bool:
+    """Intent 自愈 / 编写 Vision 兜底总开关（默认关）。
+
+    仅 IDE 侧 AI 辅助自动化（Intent 定位、采页 Vision 兜底）需要显式
+    ``AUTOPILOT_INTENT_VISION=1``。Platform 设计域/codegen、纯 Chat 不传图
+    均不读此开关；有 Key 不会自动开启。
+    """
     return _truthy(_env("AUTOPILOT_INTENT_VISION", DEFAULT_VISION_ENABLED))
 
 
@@ -122,24 +128,32 @@ def vision_base_url() -> str:
     ).rstrip("/")
 
 
-def vision_model() -> str:
-    """Vision 定位模型。
+def chat_model() -> str:
+    """编写/规划/文本定位 LLM 型号（纯文本；不做 DeepSeek vision 回落）。"""
+    return _env("AP_AI_MODEL") or _env("DEEPSEEK_MODEL") or DEFAULT_VISION_MODEL
 
-    未显式指定 ``AUTOPILOT_VISION_MODEL`` / ``AP_AI_LOCATE_MODEL`` 时，
-    若 Chat 默认是 DeepSeek 纯文本型号，回落到官方 vision 实验模型，避免把
-    ``deepseek-v4-flash`` 误当识图。显式指定文本型号仍走 DOM-only。
-    """
-    explicit = _env("AUTOPILOT_VISION_MODEL") or _env("AP_AI_LOCATE_MODEL")
-    if explicit:
-        return explicit
-    mid = _env("AP_AI_MODEL") or _env("DEEPSEEK_MODEL") or DEFAULT_VISION_MODEL
-    url = vision_base_url()
-    provider = detect_provider("", mid, url)
-    if (provider == "deepseek" or mid.lower().startswith("deepseek")) and not model_accepts_images(
-        provider, mid, base_url=url
-    ):
+
+def _resolve_vision_model_for_images(mid: str, url: str) -> str:
+    """Intent Vision 识图：DeepSeek 文本型号自动升到官方 vision 实验模型。"""
+    model_id = (mid or "").strip() or DEFAULT_VISION_MODEL
+    provider = detect_provider("", model_id, url)
+    if model_accepts_images(provider, model_id, base_url=url):
+        return model_id
+    if provider == "deepseek" or model_id.lower().startswith("deepseek"):
         return DEFAULT_DEEPSEEK_VISION_MODEL
-    return mid
+    return model_id
+
+
+def vision_model() -> str:
+    """Intent Vision 识图 API 型号。
+
+    只读 ``AUTOPILOT_VISION_MODEL``（Vision 专用）或 Chat 默认型号；
+    ``AP_AI_LOCATE_MODEL`` 仅影响文本 codegen，不参与 Vision。
+    DeepSeek ``v4-flash`` / ``v4-pro`` 等文本型号一律自动升到 ``-vision-exp``。
+    若只要 DOM 不传图，设 ``AUTOPILOT_VISION_IMAGE_MODE=off``。
+    """
+    mid = _env("AUTOPILOT_VISION_MODEL") or chat_model()
+    return _resolve_vision_model_for_images(mid, vision_base_url())
 
 
 def vision_image_mode() -> str:

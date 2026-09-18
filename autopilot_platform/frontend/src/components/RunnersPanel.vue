@@ -93,8 +93,6 @@ const runnersOfflineCount = computed(
   () => (runners.value || []).filter((r: Runner) => !r.online).length,
 );
 
-const managedRunnerId = computed(() => (managed.value?.runner_id || "managed-local").trim());
-
 const filteredRunners = computed(() => {
   const listItems = items.value || [];
   if (runnerFilter.value === "online") return listItems.filter((r) => r.online);
@@ -181,7 +179,7 @@ function hiddenCapabilityCount(r: Runner) {
 }
 
 function isManagedRow(r: Runner) {
-  return managed.value?.runner_id && r.runner_id === managed.value.runner_id;
+  return Boolean(managed.value?.runner_id && r.runner_id === managed.value.runner_id);
 }
 
 function inventoryHaystack(d: RunnerInventoryDevice) {

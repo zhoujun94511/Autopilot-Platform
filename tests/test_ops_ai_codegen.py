@@ -164,6 +164,43 @@ def test_codegen_purpose_selects_locate_model(client: TestClient, monkeypatch):
     assert caps.get("locate_model") == "locate-m"
 
 
+def test_codegen_exposes_versioned_wire_contract(client: TestClient, monkeypatch):
+    h = _login(client)
+    _enable_ai(monkeypatch)
+    caps_response = client.get("/api/v1/ops/ai/capabilities", headers=h)
+    assert caps_response.status_code == 200, caps_response.text
+    caps = caps_response.json()
+    assert caps["wire_contract_version"].startswith("1.")
+    assert caps["prompt_max_chars"] == 60000
+    assert caps["supported_purposes"] == ["authoring", "planning", "locate"]
+    assert caps["response_content_field"] == "content"
+
+
+def test_codegen_rejects_incompatible_wire_major(client: TestClient, monkeypatch):
+    h = _login(client)
+    _enable_ai(monkeypatch)
+    response = client.post(
+        "/api/v1/ops/ai/codegen",
+        headers=h,
+        json={
+            "prompt": "打开设置",
+            "purpose": "authoring",
+            "wire_contract_version": "2.0",
+        },
+    )
+    assert response.status_code == 409
+    out = response.json()
+    assert out["details"]["reason"] == "incompatible_ai_codegen_contract"
+    assert "协议不兼容" in out["message"]
+
+
+@pytest.mark.parametrize("alias", ["authoring", "codegen", "agent", "session"])
+def test_codegen_authoring_purpose_aliases(alias: str):
+    from autopilot_platform.platform.ai import ai_config
+
+    assert ai_config.normalize_codegen_purpose(alias) == "authoring"
+
+
 def test_ai_model_for_purpose_fallback(monkeypatch):
     from autopilot_platform.platform.ai import ai_config
 

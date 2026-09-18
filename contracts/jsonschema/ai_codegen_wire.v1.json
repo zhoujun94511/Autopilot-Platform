@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://autopilot.local/contracts/ai_codegen_wire.v1.json",
+  "title": "AutoPilot AI Codegen Wire Contract v1",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "required": ["prompt", "purpose"],
+      "properties": {
+        "prompt": {"type": "string", "minLength": 1, "maxLength": 60000},
+        "purpose": {"enum": ["authoring", "planning", "locate"]},
+        "project_id": {"type": "string"},
+        "wire_contract_version": {"type": "string", "pattern": "^1(?:\\.|$)"}
+      },
+      "additionalProperties": true
+    },
+    "capabilities": {
+      "type": "object",
+      "required": [
+        "wire_contract_version",
+        "prompt_max_chars",
+        "supported_purposes",
+        "response_content_field",
+        "enabled"
+      ],
+      "properties": {
+        "wire_contract_version": {"type": "string", "pattern": "^1(?:\\.|$)"},
+        "prompt_max_chars": {"type": "integer", "minimum": 1},
+        "supported_purposes": {
+          "type": "array",
+          "items": {"enum": ["authoring", "planning", "locate"]},
+          "uniqueItems": true
+        },
+        "response_content_field": {"const": "content"},
+        "error_envelope": {"const": "platform_error_v1"},
+        "enabled": {"type": "boolean"}
+      },
+      "additionalProperties": true
+    },
+    "success": {
+      "type": "object",
+      "required": [
+        "ok",
+        "wire_contract_version",
+        "purpose",
+        "content",
+        "capabilities"
+      ],
+      "properties": {
+        "ok": {"const": true},
+        "wire_contract_version": {"type": "string", "pattern": "^1(?:\\.|$)"},
+        "purpose": {"enum": ["authoring", "planning", "locate"]},
+        "content": {"type": "string"},
+        "capabilities": {"$ref": "#/$defs/capabilities"}
+      },
+      "additionalProperties": true
+    },
+    "error": {
+      "type": "object",
+      "required": ["code", "message", "error_type", "trace_id"],
+      "properties": {
+        "code": {"type": "string"},
+        "message": {"type": "string"},
+        "error_type": {"type": "string"},
+        "trace_id": {"type": "string"},
+        "details": {}
+      },
+      "additionalProperties": true
+    }
+  }
+}

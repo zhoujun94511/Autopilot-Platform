@@ -268,6 +268,8 @@ def normalize_codegen_purpose(purpose: str | None) -> str:
         return "locate"
     if raw in ("planning", "plan", "nl", "nl_bootstrap", "bootstrap"):
         return "planning"
+    if raw in ("authoring", "codegen", "agent", "session"):
+        return "authoring"
     return "authoring"
 
 

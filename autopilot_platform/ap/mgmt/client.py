@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+AI_CODEGEN_WIRE_VERSION = "1.0"
+
 
 class MgmtClientError(RuntimeError):
     """管理台 HTTP 错误；可附带 status_code 便于 403 特判。"""
@@ -103,7 +105,14 @@ class MgmtClient:
                 oid = ""
         if oid:
             headers["X-Org-Id"] = oid
-        self._client = httpx.Client(base_url=self.base_url, headers=headers, timeout=timeout)
+        from ..runtime.http_ssl import httpx_verify
+
+        self._client = httpx.Client(
+            base_url=self.base_url,
+            headers=headers,
+            timeout=timeout,
+            verify=httpx_verify(),
+        )
 
     def close(self) -> None:
         self._client.close()
@@ -137,6 +146,12 @@ class MgmtClient:
                 body = r.json()
                 if isinstance(body, dict):
                     detail = body.get("message") or body.get("detail") or detail
+                    if isinstance(detail, dict):
+                        detail = (
+                            detail.get("message")
+                            or detail.get("error")
+                            or r.text
+                        )
             except (ValueError, TypeError):
                 pass
             raise MgmtClientError(
@@ -296,6 +311,7 @@ class MgmtClient:
         body: dict[str, Any] = {
             "prompt": prompt,
             "purpose": purpose or "authoring",
+            "wire_contract_version": AI_CODEGEN_WIRE_VERSION,
         }
         pid = (project_id or "").strip()
         if pid:

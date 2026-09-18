@@ -8,7 +8,7 @@ Platform 基址默认：`http://127.0.0.1:8000`，API 前缀 `/api/v1`。
 |---|---|---|
 | 1 传统 | 制品 / Job / 设备池 | 关键字 `.tc`、F5、上传、远程批跑 |
 | 2 设计 AI | 文档分析、逻辑用例生成与人审 | **不强制**；Webhook / 导入意图为高级可选 |
-| 3 AI 编写 | **持钥** LLM 网关 `POST /ops/ai/codegen`（`cap.ops.ai.codegen`）；不收设备 UI 树真源 | 采页 → 登录态调网关 → 传统 `.tc` → 试跑门禁；企业 IDE 不持 `AP_AI_*` |
+| 3 AI 编写 | **持钥** LLM 网关 `GET /ops/ai/capabilities` + `POST /ops/ai/codegen`（`cap.ops.ai.codegen`）；发布 `ai_codegen_wire.v1`，不持设备 UI 树真源 | 采页 → 能力/协议预检 → 登录态调网关 → 传统 `.tc` → 试跑门禁；企业 IDE 不持 `AP_AI_*` |
 
 **APPROVED** 只表示设计审核通过，**不等于**已有 Binding、不等于可云端批跑。
 
@@ -31,6 +31,7 @@ Platform 基址默认：`http://127.0.0.1:8000`，API 前缀 `/api/v1`。
 | 提交远程 Job | POST | `/jobs` |
 | 任务结构化结果 | GET | `/jobs/{id}/result` |
 | 链路 3 LLM 网关（服务端持钥） | POST | `/ops/ai/codegen` |
+| 链路 3 能力与 wire 版本预检 | GET | `/ops/ai/capabilities` |
 
 Export bundle（v2）：含 `review_status=APPROVED` 的用例，带 `intent_steps`（及兼容字段 `logical_steps`）。**不含** xpath；Binding 只在 IDE 工程内。
 

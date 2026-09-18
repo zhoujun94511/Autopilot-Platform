@@ -52,6 +52,27 @@ def join_project(project_dir: str, rel_or_abs: str) -> str:
     return os.path.normpath(os.path.join(base, p)) if base else p
 
 
+def safe_path_under_project(project_dir: str, rel: str) -> str:
+    """将相对路径严格解析到工程根下；拒绝 ``..`` 与越界（Runner 文件访问 containment）。
+
+    与 ``resolve_project_file`` 不同：不接受工程外绝对路径，也不做跨机重定位。
+    供 HTTP schema/env、套件 entry 等「必须在工程内」的场景使用。
+    """
+    rel_n = to_posix((rel or "").strip()).lstrip("/")
+    native = to_native(rel or "")
+    if os.path.isabs(native):
+        raise ValueError(f"absolute paths not allowed under project: {rel!r}")
+    if not rel_n or ".." in rel_n.split("/"):
+        raise ValueError(f"invalid project-relative path: {rel!r}")
+    root_abs = os.path.abspath(to_native(project_dir or ""))
+    if not root_abs or not os.path.isdir(root_abs):
+        raise ValueError(f"project root not found: {project_dir!r}")
+    path = os.path.normpath(os.path.join(root_abs, to_native(rel_n)))
+    if path != root_abs and not path.startswith(root_abs + os.sep):
+        raise ValueError(f"path escapes project: {rel!r}")
+    return path
+
+
 def project_relative_or_abs(project_dir: str, abs_path: str) -> str:
     """若 abs_path 落在工程内，返回 POSIX 相对路径；否则返回原绝对路径。"""
     proj = to_native(project_dir or "")

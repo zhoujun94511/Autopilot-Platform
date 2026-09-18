@@ -26,14 +26,12 @@ from pathlib import Path
 from typing import Callable, Optional, Collection
 
 from ._paths import REPO_ROOT as _REPO_ROOT
+from .ios_ports import DEFAULT_MJPEG_PORT, DEFAULT_TUNNEL_INFO_PORT, DEFAULT_WDA_PORT
 _IOS_RES = _REPO_ROOT / "resources" / "re_go_ios"
 DEVIMAGE_DIR = _IOS_RES / "devimages"
 
 # go-ios 用户态隧道 agent 环境（免管理员，来自社区实践）
 AGENT_ENV = {"ENABLE_GO_IOS_AGENT": "user"}
-DEFAULT_TUNNEL_INFO_PORT = 28100
-DEFAULT_WDA_PORT = 8100
-DEFAULT_MJPEG_PORT = 9100      # WDA 屏幕 MJPEG 流端口（实时镜像用）
 _GOIOS_RESOLVE_LOCK = threading.Lock()
 
 

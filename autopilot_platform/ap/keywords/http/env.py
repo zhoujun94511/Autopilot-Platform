@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ...runtime.paths import safe_path_under_project
 from ..context import ExecutionContext
 from ..registry import KeywordError, keyword
 from .session import get_http_session
@@ -45,14 +46,17 @@ def find_api_env_file(
     """定位 api_env.yaml；找不到返回 None。"""
     candidates: list[Path] = []
     specified = str(env_file or "").strip()
-    if specified:
-        candidates.append(Path(specified))
     root = _project_root(ctx, project_dir)
     if root is not None:
         if specified:
-            candidates.append(root / specified)
+            try:
+                candidates.append(Path(safe_path_under_project(str(root), specified)))
+            except ValueError:
+                return None
         candidates.append(root / "api_env.yaml")
         candidates.append(root / "config" / "api_env.yaml")
+    elif specified:
+        return None
     seen: set[str] = set()
     for path in candidates:
         key = str(path)

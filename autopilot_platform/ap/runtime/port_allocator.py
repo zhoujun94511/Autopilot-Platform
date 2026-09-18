@@ -11,7 +11,7 @@ import socket
 from contextlib import closing
 from dataclasses import dataclass
 
-from ..mobile.ios_bootstrap import (
+from ..mobile.ios_ports import (
     DEFAULT_MJPEG_PORT,
     DEFAULT_TUNNEL_INFO_PORT,
     DEFAULT_WDA_PORT,

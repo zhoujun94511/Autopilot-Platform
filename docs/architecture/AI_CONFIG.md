@@ -22,6 +22,11 @@
 
 链路 3 用途分模型（可选；运维「AI 接入」可配）：
 
+链路 3 线协议为 `ai_codegen_wire.v1`：IDE 先调用
+`GET /ops/ai/capabilities` 获取协议版本、60000 字符输入上限、支持用途与响应字段，
+再向 `POST /ops/ai/codegen` 携带 `wire_contract_version`。旧 IDE 未携带版本仍兼容；
+已携带但 major 不匹配时服务端返回 409，防止字段漂移导致编写会话中途断链。
+
 | 变量 | 用途 | 回落 |
 |------|------|------|
 | `AP_AI_PLANNING_MODEL` | 编写规划 / NL 抽槽（`purpose=authoring\|planning`） | `AP_AI_MODEL` |

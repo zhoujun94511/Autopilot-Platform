@@ -48,6 +48,10 @@ class ExecutionContext:
         self.http_session: Any = None
         # 最近一次 HTTP 响应摘要（供 assert 关键字）
         self.last_http: dict[str, Any] = {}
+        # 运行期注入（web/ssh 等子系统管理器）
+        self.web: Any = None
+        self.ssh: Any = None
+        self.ssh_factory: Any = None
 
     def load_dataconfig(self, cfg: Any) -> None:
         """把 DataConfig（或 dict）的键值载入变量池作为基线变量。"""

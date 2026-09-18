@@ -39,6 +39,23 @@ AutoPilot Platform is the server and web workspace of the AutoPilot suite. It pr
 
 ### 1. Start the workspace and API
 
+On a new machine, run the one-shot installer first (Platform web workspace and Runner host tools by default; skips download when `resources/` already has binaries):
+
+```powershell
+# Windows: install everything by default
+.\install_deps.bat
+# Check only: .\install_deps.bat -CheckOnly
+```
+
+```bash
+# Linux / macOS
+chmod +x scripts/install_deps.sh
+./scripts/install_deps.sh
+./scripts/install_deps.sh --check
+```
+
+Or install step by step:
+
 ```powershell
 # Windows
 py -3.12 -m venv .venv

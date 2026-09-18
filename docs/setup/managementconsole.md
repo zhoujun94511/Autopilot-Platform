@@ -8,7 +8,9 @@
 只想尽快看到 Web 跑起来、能远程批跑？照抄下面三步（纯 Platform，无需 IDE 客户端仓）。`start_dev.py` **仅用于本机开发**，不得作为生产入口。默认账户与 Token **仅允许绑定 127.0.0.1**。
 
 ```powershell
-# ① 安装（仓库根）
+# ① 安装（仓库根；新设备可用 install_deps.bat 一键完成 JDK/Node/Appium/前端/venv）
+.\install_deps.bat
+# 或逐步：
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -U pip
 .\.venv\Scripts\python.exe -m pip install -e ".[dev,runner]"
