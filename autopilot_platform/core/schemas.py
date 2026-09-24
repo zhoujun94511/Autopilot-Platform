@@ -666,6 +666,8 @@ class ArtifactOut(BaseModel):
     required_runtime_version: str = ""
     manifest_warnings: list[str] = Field(default_factory=list)
     manifest_errors: list[str] = Field(default_factory=list)
+    sha256: str = ""
+    reused: bool = False
 
 
 class AppBuildOut(BaseModel):

@@ -468,7 +468,7 @@ export async function onIssueRunnerToken(runnerId: string) {
 export async function onDeregisterRunner(runner: Runner) {
   requireDeps();
   const prompt = runner.online
-    ? `节点 ${runner.runner_id} 当前在线。注销后如该机 Runner 仍在运行，下次心跳会自动重新注册（需先停机才能彻底移除）。远程节点无法由网页直接杀进程；本机托管请先点「停止」。仍要注销？`
+    ? `节点 ${runner.runner_id} 当前在线。注销只删除平台上的登记，不会停掉那台电脑上的进程。请先停进程再注销：IDE 私人节点要在客户端重新「启动本机 Runner」才会再次登记，心跳本身不会把节点加回来。仍要注销？`
     : `注销离线节点 ${runner.runner_id}？将一并清除其设备记录。`;
   if (!(await confirmDialog(prompt))) return;
   try {

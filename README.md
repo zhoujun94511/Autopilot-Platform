@@ -17,7 +17,9 @@
 
 </div>
 
-AutoPilot Platform 是 AutoPilot 自动化体系的服务端与 Web 工作台，面向组织提供测试设计评审、工程制品与应用版本管理、远程批跑调度、报告归档及实验室设备统一治理等能力。与 [AutoPilot IDE](../AutoPilot/README.md) 配套使用，支撑测试团队从设计到执行、从本机到实验室的标准化交付。
+AutoPilot Platform 是 AutoPilot 自动化体系的服务端与 Web 工作台，面向组织提供测试设计评审、工程制品与应用版本管理、远程批跑调度、报告归档及实验室设备统一治理等能力。与 [AutoPilot IDE](https://github.com/zhoujun94511/AutoPilot) 配套使用。该仓库是桌面 IDE：负责用例编排、本机验证，并把工程制品提交到本平台做评审、调度与归档，支撑测试团队从设计到执行、从本机到实验室的标准化交付。
+
+![Web 工作台概览](docs/pic/platorm-interface.png)
 
 ---
 
@@ -281,6 +283,8 @@ flowchart TB
 计划调度为进程内 tick + 数据库租约（`ops_locks`），不引入独立 MQ。SQLite 适合单写联调；多写请用 PostgreSQL。详见 [调度 ADR](docs/architecture/ADR_scheduler_no_mq.md)。
 
 同一设备同一时刻一名控制者；Runner 掉线由回收逻辑释放。详见 [远控](docs/REMOTE_PHASE3.md)。
+
+Web 远控由 Platform Runner 提供画面。单台 iOS 27 及以上设备走 CoreDevice HEVC：设备直接推流，Runner 主机不转码。低于 iOS 27（设备返回 9021）、开流失败，或 Runner 上设置 `IOS_HEVC=0` 时，会话回到 WDA MJPEG。需要 Runner 上的 `pymobiledevice3>=11.17.0`。Android 远控仍是 scrcpy H.264。IDE 侧的 HEVC 只用于 Windows/Linux 本机检视，macOS IDE 仍用 AVFoundation。
 
 ### 术语
 

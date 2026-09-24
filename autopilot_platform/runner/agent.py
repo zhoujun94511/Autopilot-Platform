@@ -17,8 +17,8 @@ from autopilot_platform.core.schemas import HeartbeatIn, JobResultIn, RunnerRegi
 
 from .client import PlatformClient
 from .devices import list_local_devices, probe_host_capabilities
-from .device_policy import load_device_policy, update_device_policy
-from .execute import execute_job
+from .device_policy import load_device_policy, sync_exclude_udids, update_device_policy
+from .execute import DEVICE_OFFLINE_ERROR, execute_job
 from .instance_lock import RunnerInstanceBusyError, RunnerInstanceLock
 from .job_slots import JobSlotTracker
 
@@ -128,6 +128,8 @@ class RunnerAgent:
         self.hostname = hostname or socket.gethostname()
         self._slots = JobSlotTracker()
         self._cancel: dict[str, threading.Event] = {}
+        self._job_udids: dict[str, list[str]] = {}
+        self._offline_jobs: set[str] = set()
         self._job_threads: dict[str, threading.Thread] = {}
         self._hb_guard = threading.Lock()
         self._hb_stop = threading.Event()
@@ -140,6 +142,7 @@ class RunnerAgent:
         self._device_policy = load_device_policy(self.runner_id)
 
     def _heartbeat_once(self, client: PlatformClient) -> None:
+        self._device_policy = sync_exclude_udids(self.runner_id, self._device_policy)
         inventory = list_local_devices()
         devices = self._device_policy.filter(inventory)
         caps, host_backends = probe_host_capabilities()
@@ -217,6 +220,18 @@ class RunnerAgent:
         if t is not None and t.is_alive():
             t.join(timeout=2.0)
 
+    def _signal_missing_devices(self) -> None:
+        present = {d.udid for d in list_local_devices()}
+        for jid, ev in list(self._cancel.items()):
+            if ev.is_set():
+                continue
+            missing = [uid for uid in self._job_udids.get(jid, []) if uid not in present]
+            if not missing:
+                continue
+            self._offline_jobs.add(jid)
+            ev.set()
+            print(f"[runner] job {jid} device offline: {','.join(missing)}", flush=True)
+
     def _poll_cancel(self, client: PlatformClient) -> None:
         items = list(self._cancel.items())
         if not items:
@@ -249,6 +264,7 @@ class RunnerAgent:
                         break
                     try:
                         self._heartbeat_once(hb_client)
+                        self._signal_missing_devices()
                         self._sync_remote_sessions(hb_client)
                         self._poll_cancel(hb_client)
                     except (*_HTTP_ERRS,) as exc:
@@ -313,7 +329,12 @@ class RunnerAgent:
                     f"({time.monotonic() - t_exec:.2f}s)",
                     flush=True,
                 )
-                if cancel_ev.is_set() and not (result.error or "").strip():
+                status_val = (
+                    result.status.value if hasattr(result.status, "value") else str(result.status)
+                )
+                if job.id in self._offline_jobs and status_val != JobStatus.SUCCEEDED.value:
+                    result = result.with_error(DEVICE_OFFLINE_ERROR)
+                elif cancel_ev.is_set() and not (result.error or "").strip():
                     result = result.with_error("任务执行中被取消")
                 report_path = (
                     (result.report.report_path if result.report else "") or ""
@@ -361,6 +382,8 @@ class RunnerAgent:
                         shutil.rmtree(parent, ignore_errors=True)
             finally:
                 self._cancel.pop(job.id, None)
+                self._job_udids.pop(job.id, None)
+                self._offline_jobs.discard(job.id)
                 self._slots.release(job.id)
                 self._maybe_stop_exec_heartbeat()
 
@@ -387,6 +410,9 @@ class RunnerAgent:
             return True
         cancel_ev = threading.Event()
         self._cancel[job.id] = cancel_ev
+        self._job_udids[job.id] = [
+            str(u).strip() for u in (getattr(job, "device_udids", None) or []) if str(u).strip()
+        ]
         self._ensure_exec_heartbeat(client)
         th = threading.Thread(
             target=self._run_claimed_job,

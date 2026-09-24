@@ -17,7 +17,9 @@
 
 </div>
 
-AutoPilot Platform is the server and web workspace of the AutoPilot suite. It provides design review, versioned artifacts and app builds, remote batch scheduling, report archival, and unified lab device governance for organizations. It works with the [AutoPilot IDE](../AutoPilot/README_en.md) to standardize delivery from design through execution—from local workstations to the lab.
+AutoPilot Platform is the server and web workspace of the AutoPilot suite. It provides design review, versioned artifacts and app builds, remote batch scheduling, report archival, and unified lab device governance for organizations. It works with the [AutoPilot IDE](https://github.com/zhoujun94511/AutoPilot). That repository is the desktop IDE: it authors cases, validates them locally, and submits project artifacts to this platform for review, scheduling, and archival—standardizing delivery from design through execution, from local workstations to the lab.
+
+![Web workspace overview](docs/pic/platorm-interface.png)
 
 ---
 
@@ -269,6 +271,8 @@ Project zips **do not** include app packages; jobs can pin an app build version.
 In-process tick + DB lease (`ops_locks`); no separate message queue. SQLite for single-writer dev; PostgreSQL for multi-writer. See [scheduler ADR](docs/architecture/ADR_scheduler_no_mq.md).
 
 One controller per device at a time; Runner disconnect triggers reclaim. See [remote control](docs/REMOTE_PHASE3.md).
+
+Web remote video comes from the Platform Runner. A single iOS 27+ device uses CoreDevice HEVC: the device publishes the stream and the Runner host does not transcode. iOS below 27 (device code 9021), a failed open, or `IOS_HEVC=0` on the Runner falls back to WDA MJPEG. The Runner needs `pymobiledevice3>=11.17.0`. Android remote stays on scrcpy H.264. HEVC in the IDE is only for local inspection on Windows/Linux; the macOS IDE still uses AVFoundation.
 
 ### Terminology
 

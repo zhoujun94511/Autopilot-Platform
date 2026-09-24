@@ -454,6 +454,15 @@ def _filter_devices_list(
     return out
 
 
+def visible_tr_device_ids(db: Session, auth=None, *, project_id: str = "") -> set[str]:
+    """当前用户在设备板上能看到的设备 id（不分页）。"""
+    return {
+        str(item.get("id") or "")
+        for item in _collect_tr_devices(db, auth=auth, project_id=project_id)
+        if str(item.get("id") or "")
+    }
+
+
 def list_tr_devices(
     db: Session,
     auth=None,
@@ -538,7 +547,6 @@ def _filter_devices_for_auth(
             str(d.get("registration_source") or "platform") == "ide"
             and str(d.get("owner_user_id") or "")
             and str(d.get("owner_user_id") or "") != auth.user_id
-            and str(d.get("runner_org_id") or "") not in manager_orgs
         )
     ]
     org_count = int(db.scalar(select(func.count()).select_from(OrganizationRow)) or 0)

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from autopilot_platform.core.constants import DEVICE_STATE_OFFLINE
 from autopilot_platform.core.schemas import (
     DeviceInfo,
     HeartbeatIn,
@@ -74,16 +75,12 @@ def register_runner(
 
 
 def heartbeat(db: Session, body: HeartbeatIn) -> RunnerOut:
-    """upsert 设备列表：保留 busy_job_id；调和多 Runner 同 UDID；未注册时自动补注册。"""
+    """刷新已登记节点的设备列表。未登记不建节点，避免把本机设备心跳成平台共享。"""
 
     expire_reservations(db)
     row = db_get(db, RunnerRow, body.runner_id)
-    auto_registered = False
     if row is None:
-        # 兜底：网络抖动丢 register / Agent 重启竞态时，心跳可自愈注册
-        row = RunnerRow(runner_id=body.runner_id)
-        db.add(row)
-        auto_registered = True
+        raise LookupError("runner not registered")
     now = utcnow()
     row.last_heartbeat_at = now
 
@@ -94,9 +91,6 @@ def heartbeat(db: Session, body: HeartbeatIn) -> RunnerOut:
             caps.append(tag)
     if caps:
         row.capabilities = caps
-    if auto_registered and not (row.hostname or "").strip():
-        row.hostname = ""
-        row.version = ""
 
     row.device_inventory = [
         item.model_dump(mode="json") for item in body.inventory
@@ -225,10 +219,9 @@ def _upsert_device_rows(
         for uid, stale in existing.items():
             if uid in seen:
                 continue
-            if uid in protected:
-                stale.updated_at = now
-                continue
-            if stale.busy_job_id or stale.reservation_id:
+            if uid in protected or stale.busy_job_id or stale.reservation_id:
+                stale.state = DEVICE_STATE_OFFLINE
+                stale.health_note = "设备已从本机列表消失"
                 stale.updated_at = now
                 continue
             db.delete(stale)
@@ -545,7 +538,6 @@ def _filter_runners_for_auth(
             (r.registration_source or "platform") == "ide"
             and (r.owner_user_id or "")
             and r.owner_user_id != auth.user_id
-            and (r.org_id or "").strip() not in manager_orgs
         )
     ]
     org_count = int(db.scalar(select(func.count()).select_from(OrganizationRow)) or 0)
@@ -580,7 +572,7 @@ def deregister_runner(db: Session, runner_id: str) -> dict:
 
     - 节点不存在 → LookupError
     - 存在占用中设备（busy_job_id）→ ValueError，需先释放占用 / 等任务结束
-    -     在线节点也可注销，但若该机 Runner 仍在运行，下次心跳会自愈重建（调用方应提示）
+    - 在线节点也可注销。心跳不会重建节点。
     """
     row = db_get(db, RunnerRow, runner_id)
     if row is None:

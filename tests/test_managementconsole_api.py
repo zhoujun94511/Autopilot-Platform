@@ -1018,6 +1018,21 @@ def test_schedule_create_tick_and_stop_on_fail(client: TestClient):
     assert r.json()["enabled"] is True
     assert r.json()["next_run_at"]
 
+    assert client.post(
+        "/api/v1/runners/register",
+        headers=TOKEN,
+        json={"runner_id": "sched-r", "hostname": "h", "capabilities": ["android"]},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/runners/heartbeat",
+        headers=TOKEN,
+        json={
+            "runner_id": "sched-r",
+            "inventory": [{"udid": "dev-a", "platform": "android"}],
+            "devices": [{"udid": "dev-a", "platform": "android"}],
+        },
+    ).status_code == 200
+
     r = client.post("/api/v1/schedules-tick", headers=ah)
     assert r.status_code == 200
     job_ids = r.json()

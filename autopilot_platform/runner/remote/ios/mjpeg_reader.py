@@ -70,6 +70,7 @@ class MjpegReader:
         self._min_interval = 1.0 / max(0.5, float(fps))
         self._stop = stop_event or threading.Event()
         self._thread: threading.Thread | None = None
+        self._response: object | None = None
         self._fail_streak = 0
 
     def start(self) -> None:
@@ -81,7 +82,24 @@ class MjpegReader:
         self._thread.start()
 
     def stop(self) -> None:
+        """置停止标记并关掉当前 HTTP 响应，让 iter_bytes 立刻退出，再等读线程结束。"""
         self._stop.set()
+        response = self._response
+        if response is not None:
+            closer = getattr(response, "close", None)
+            if callable(closer):
+                # noinspection PyBroadException
+                try:
+                    closer()
+                except Exception:  # noqa: BLE001
+                    _log.debug("mjpeg response close", exc_info=True)
+        thread = self._thread
+        if (
+            thread is not None
+            and thread.is_alive()
+            and thread is not threading.current_thread()
+        ):
+            thread.join(timeout=2.0)
 
     def set_fps(self, fps: float) -> None:
         self._min_interval = 1.0 / max(0.5, float(fps))
@@ -111,33 +129,37 @@ class MjpegReader:
         while not self._stop.is_set():
             try:
                 with httpx.stream("GET", self.url, timeout=timeout) as resp:
-                    resp.raise_for_status()
-                    got_frame = False
-                    for chunk in resp.iter_bytes():
-                        if self._stop.is_set():
-                            return
-                        if not chunk:
-                            continue
-                        buf += chunk
-                        if len(buf) > 8 * 1024 * 1024:
-                            buf = buf[-2 * 1024 * 1024 :]
-                        frames, buf = split_jpegs(buf)
-                        if not frames:
-                            continue
-                        now = time.monotonic()
-                        if now - last_emit < self._min_interval:
-                            continue
-                        jpg = frames[-1]
-                        w, h = jpeg_size(jpg)
-                        last_emit = now
-                        got_frame = True
-                        self._fail_streak = 0
-                        try:
-                            self._on_frame(jpg, w, h)
-                        except Exception as exc:  # noqa: BLE001
-                            _log.debug("on_frame: %s", exc)
-                    if not got_frame:
-                        self._mark_fail("MJPEG stream ended without frames")
+                    self._response = resp
+                    try:
+                        resp.raise_for_status()
+                        got_frame = False
+                        for chunk in resp.iter_bytes():
+                            if self._stop.is_set():
+                                return
+                            if not chunk:
+                                continue
+                            buf += chunk
+                            if len(buf) > 8 * 1024 * 1024:
+                                buf = buf[-2 * 1024 * 1024 :]
+                            frames, buf = split_jpegs(buf)
+                            if not frames:
+                                continue
+                            now = time.monotonic()
+                            if now - last_emit < self._min_interval:
+                                continue
+                            jpg = frames[-1]
+                            w, h = jpeg_size(jpg)
+                            last_emit = now
+                            got_frame = True
+                            self._fail_streak = 0
+                            try:
+                                self._on_frame(jpg, w, h)
+                            except Exception as exc:  # noqa: BLE001
+                                _log.debug("on_frame: %s", exc)
+                        if not got_frame:
+                            self._mark_fail("MJPEG stream ended without frames")
+                    finally:
+                        self._response = None
             except Exception as exc:  # noqa: BLE001
                 if self._stop.is_set():
                     return

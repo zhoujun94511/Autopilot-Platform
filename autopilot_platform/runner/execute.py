@@ -93,6 +93,31 @@ def _resolve_app_build_path(
         return "", f"应用构建下载失败：{exc}", None
 
 
+DEVICE_OFFLINE_ERROR = "device_offline: 设备掉线，任务退回等待"
+
+
+def _install_pinned_build(app_path: str, udids: list[str], platform: str) -> str | None:
+    """开跑前把任务钉住的安装包装到每台目标设备。用例里的安装关键字会用同一路径。"""
+    targets = [str(uid).strip() for uid in udids if str(uid).strip()]
+    if not targets or not app_path:
+        return None
+    plat = (platform or "").strip().lower()
+    ios = plat == "ios" or app_path.lower().endswith(".ipa")
+    for uid in targets:
+        try:
+            if ios:
+                from autopilot_platform.ap.keywords.mobile.session import ios_install_app
+
+                ios_install_app(app_path, udid=uid)
+            else:
+                from autopilot_platform.ap.mobile.xapk import install_android_package
+
+                install_android_package(app_path, serial=uid, replace=True)
+        except Exception as exc:  # noqa: BLE001
+            return f"安装被测包失败：{uid}: {exc}"
+    return None
+
+
 def _preflight_devices(job: JobOut) -> Optional[str]:
     udids = [u for u in (job.device_udids or []) if str(u).strip()]
     if not udids:
@@ -103,7 +128,7 @@ def _preflight_devices(job: JobOut) -> Optional[str]:
     for uid in udids:
         d = by_udid.get(uid)
         if d is None:
-            return f"运行前本机未找到设备：{uid}"
+            return f"{DEVICE_OFFLINE_ERROR}：{uid}"
         if (d.state or "").strip().lower() != "ready":
             note = (d.health_note or "").strip()
             return f"设备未就绪：{uid} 状态={d.state}" + (f"（{note}）" if note else "")
@@ -186,6 +211,14 @@ def execute_job(
             return JobResultIn(status=JobStatus.FAILED, error=app_err, log="\n".join(lines) + "\n")
         if app_path:
             lines.append(f"[runner] app_build_path={app_path}")
+            install_err = _install_pinned_build(app_path, list(job.device_udids or []), plat)
+            if install_err:
+                lines.append(f"[runner] ERROR install: {install_err}")
+                return JobResultIn(
+                    status=JobStatus.FAILED,
+                    error=install_err,
+                    log="\n".join(lines) + "\n",
+                )
 
         report_tmp = tempfile.mkdtemp(prefix=f"mc-report-{job.id[:8]}-")
         cleanup.append(report_tmp)

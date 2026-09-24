@@ -202,7 +202,11 @@ def test_enqueue_approved_job(client: TestClient, tmp_path):
         f"name: c1\nlogical_case_id: {case_id}\nsteps: []\n",
         encoding="utf-8",
     )
-    sha = hashlib.sha256(b"x").hexdigest()
+    from autopilot_platform.platform.artifacts.artifact_manifest import (
+        compute_artifact_content_sha256,
+    )
+
+    sha = compute_artifact_content_sha256(suite)
     manifest = {
         "schema_version": "1.0",
         "artifact_version": "1",
@@ -278,7 +282,11 @@ def test_enqueue_approved_job_web_engine_playwright(client: TestClient, tmp_path
         f"name: c1\nlogical_case_id: {case_id}\nsteps: []\n",
         encoding="utf-8",
     )
-    sha = hashlib.sha256(b"x").hexdigest()
+    from autopilot_platform.platform.artifacts.artifact_manifest import (
+        compute_artifact_content_sha256,
+    )
+
+    sha = compute_artifact_content_sha256(suite)
     manifest = {
         "schema_version": "1.0",
         "artifact_version": "1",

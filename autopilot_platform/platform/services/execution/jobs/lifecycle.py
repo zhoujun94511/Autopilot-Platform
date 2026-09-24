@@ -30,6 +30,7 @@ from ....core.settings import (
     alert_on_failed,
     alert_on_stale,
     enforce_runtime_version,
+    require_artifact_manifest,
     job_log_retention_days,
     job_logs_root,
     job_stale_sec,
@@ -177,14 +178,22 @@ def create_job(
     if require_job_devices() and not is_deviceless_platform(plat) and not list(body.device_udids or []):
         raise ValueError(msg.JOB_DEVICES_REQUIRED)
     if auth is not None and getattr(auth, "kind", "") == "user":
-        # 延迟：仅用户 JWT 绑设备时校验远程设备 ACL
+        # 延迟：仅用户 JWT 绑设备时校验远程设备 ACL，并与设备板可见范围一致。
         from ...remote.policy import can_user_use_device
+        from ..devices.board import visible_tr_device_ids
 
-        for uid in set(body.device_udids or []):
+        visible_ids = visible_tr_device_ids(db, auth)
+        for raw in set(body.device_udids or []):
+            uid = str(raw or "").strip()
+            if not uid:
+                continue
             known = list(
                 db.scalars(select(DeviceRow).where(DeviceRow.udid == uid)).all()
             )
-            if known and not any(can_user_use_device(db, auth, d) for d in known):
+            if not any(
+                can_user_use_device(db, auth, d) and d.id in visible_ids
+                for d in known
+            ):
                 raise PermissionError(f"无权使用设备: {uid}")
     if artifact_id:
 
@@ -223,6 +232,22 @@ def create_job(
             raise
         except (OSError, RuntimeError, TypeError, AttributeError, ImportError):
             pass
+        manifest_status = (getattr(art, "manifest_status", "") or "").strip().lower()
+        if manifest_status == "invalid" or (
+            require_artifact_manifest() and manifest_status != "valid"
+        ):
+            raise ValueError("制品 manifest 未通过校验，不能提交执行")
+        wanted = [str(p).strip() for p in (body.entry_paths or []) if str(p).strip()]
+        if wanted:
+            from ....artifacts.users_artifacts import list_artifact_entries
+
+            known = {str(item.get("path") or "") for item in list_artifact_entries(art)}
+            if known:
+                missing = [path for path in wanted if path not in known]
+                if missing:
+                    raise ValueError(
+                        "制品中没有这些入口: " + ", ".join(missing[:5])
+                    )
 
     if app_build_id:
         build = db_get(db, AppBuildRow, app_build_id)
@@ -239,6 +264,9 @@ def create_job(
             )
         if not project_id and build.project_id:
             project_id = str(build.project_id)
+        build_plat = (getattr(build, "platform", "") or "").strip().lower()
+        if build_plat and plat in {"android", "ios"} and build_plat != plat:
+            raise ValueError(f"安装包平台是 {build_plat}，任务平台是 {plat}")
 
     # 解析完制品/安装包归属后再校验写权限；空 project_id 一律拒绝（含平台管理员）
     if auth is not None:
@@ -668,6 +696,17 @@ def complete_job(db: Session, job_id: str, runner_id: str, body: JobResultIn) ->
     if body.status not in (JobStatus.SUCCEEDED, JobStatus.FAILED):
         raise ValueError(msg.JOB_INVALID_RESULT_STATUS)
 
+    if (body.error or "").startswith("device_offline:"):
+        row.status = JobStatus.PENDING.value
+        row.runner_id = None
+        row.claimed_at = None
+        row.error = body.error or "device_offline: 设备掉线，任务退回等待"
+        row.updated_at = utcnow()
+        clear_device_busy(db, job_id)
+        db.commit()
+        db.refresh(row)
+        return job_to_out(row)
+
     status_val = str(body.status.value)
     row.status = status_val
     row.error = body.error or ""
@@ -957,10 +996,29 @@ def job_is_terminal(job_id: str) -> bool:
         db.close()
 
 
-def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> list[str]:
-    """将超时的 claimed/running 标为 failed 并释放设备；返回 job_id 列表。
+def _job_lost_device(db: Session, row: JobRow) -> bool:
+    """目标手机已从该 Runner 消失或被标为 offline 时，僵死任务才退回等待。"""
+    udids = [str(u).strip() for u in (row.device_udids or []) if str(u).strip()]
+    if not udids:
+        return False
+    rid = (row.runner_id or "").strip()
+    found = list(
+        db.scalars(
+            select(DeviceRow).where(
+                DeviceRow.udid.in_(udids),
+                DeviceRow.runner_id == rid,
+            )
+        ).all()
+    )
+    if len(found) < len(set(udids)):
+        return True
+    return any((d.state or "").strip().lower() == "offline" for d in found)
 
-    若绑定 Runner 仍在线：仅刷新 updated_at（长任务靠执行期心跳续命），不误杀。
+
+def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> list[str]:
+    """Runner 已离线且超时的 claimed/running：手机已掉线则退回 pending，否则标失败。
+
+    已成功或已失败的任务不在此列。Runner 仍在线时只刷新 updated_at，不中断长任务。
     条件 UPDATE 领取，避免多实例重复回收与重复告警。
     """
     sec = job_stale_sec() if older_than_sec is None else max(0, int(older_than_sec))
@@ -987,6 +1045,16 @@ def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> lis
                 touched = True
                 continue
         err = (row.error or "") or f"reclaimed: stale >{sec}s"
+        requeue = _job_lost_device(db, row)
+        values: dict = {"error": err, "updated_at": now}
+        if requeue:
+            values.update(
+                status=JobStatus.PENDING.value,
+                runner_id=None,
+                claimed_at=None,
+            )
+        else:
+            values["status"] = JobStatus.FAILED.value
         result = db.execute(
             update(JobRow)
             .where(
@@ -996,11 +1064,7 @@ def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> lis
                 ),
                 JobRow.updated_at < cutoff,
             )
-            .values(
-                status=JobStatus.FAILED.value,
-                error=err,
-                updated_at=now,
-            )
+            .values(**values)
             .execution_options(synchronize_session=False)
         )
         if int(getattr(result, "rowcount", 0) or 0) != 1:

@@ -6,10 +6,30 @@ import json
 import logging
 import queue
 import threading
+from collections import deque
 from typing import Any
 from urllib.parse import urlencode, urlsplit, urlunsplit
 
 _log = logging.getLogger(__name__)
+
+def _hevc_is_config(payload: bytes) -> bool:
+    return len(payload) >= 6 and payload[5] == 2
+
+
+def _hevc_must_keep(payload: bytes) -> bool:
+    if _hevc_is_config(payload):
+        return True
+    return len(payload) >= 15 and payload[5] == 3 and payload[14] in (0, 2)
+
+
+def _mark_hevc_reset(payload: bytes) -> bytes:
+    """丢过 delta 之后，下一关键帧要让浏览器重置解码器。"""
+    if len(payload) < 15 or payload[5] != 3 or payload[14] != 0:
+        return payload
+    data = bytearray(payload)
+    data[14] = 2
+    return bytes(data)
+
 
 _SIGNALING_TYPES = frozenset({"offer", "answer", "ice"})
 _PEER_CONTROL_TYPES = frozenset({"participant.left", "control.transferred"})
@@ -32,6 +52,9 @@ class RunnerRemoteWebSocket:
         self._connected = threading.Event()
         self._send_guard = threading.Lock()
         self._pending_binary: bytes | None = None
+        self._hevc_pending: deque[bytes] = deque()
+        self._hevc_lock = threading.Lock()
+        self._hevc_gap = False
         self._socket: Any = None
         self._queues: dict[str, queue.Queue[dict[str, Any]]] = {
             "signaling": queue.Queue(maxsize=100),
@@ -98,6 +121,7 @@ class RunnerRemoteWebSocket:
             if not self.connected or sock is None:
                 return False
             sock.send(raw)
+            self._drain_pending_hevc_locked(sock)
             self._drain_pending_binary_locked(sock)
             return True
         except (OSError, RuntimeError, TimeoutError):
@@ -124,6 +148,7 @@ class RunnerRemoteWebSocket:
                 return False
             self._pending_binary = None
             sock.send(payload)
+            self._drain_pending_hevc_locked(sock)
             self._drain_pending_binary_locked(sock)
             return True
         except (OSError, RuntimeError, TimeoutError):
@@ -132,6 +157,76 @@ class RunnerRemoteWebSocket:
             return False
         finally:
             self._send_guard.release()
+
+    def send_hevc(self, payload: bytes) -> bool:
+        """有序发送 APJF HEVC。不能像 JPEG 那样只留最新一帧。
+
+        队列溢出时丢掉 delta 并返回 False，调用方应请求关键帧。
+        """
+        sock = self._socket
+        if not self.connected or sock is None or not payload:
+            return False
+        acquired = self._send_guard.acquire(blocking=False)
+        if not acquired:
+            return self._enqueue_hevc(payload)
+        try:
+            sock = self._socket
+            if not self.connected or sock is None:
+                return False
+            payload = self._mark_pending_hevc(payload)
+            self._drain_pending_hevc_locked(sock)
+            sock.send(payload)
+            self._drain_pending_binary_locked(sock)
+            return True
+        except (OSError, RuntimeError, TimeoutError):
+            self._connected.clear()
+            self._note_hevc_gap()
+            return False
+        finally:
+            self._send_guard.release()
+
+    def _mark_pending_hevc(self, payload: bytes) -> bytes:
+        """直发路径也要消费 gap，否则下一关键帧不会让浏览器重置解码器。"""
+        with self._hevc_lock:
+            if self._hevc_gap:
+                payload = _mark_hevc_reset(payload)
+                if _hevc_must_keep(payload):
+                    self._hevc_gap = False
+            return payload
+
+    def _note_hevc_gap(self) -> None:
+        with self._hevc_lock:
+            self._hevc_pending.clear()
+            self._hevc_gap = True
+
+    def _enqueue_hevc(self, payload: bytes) -> bool:
+        with self._hevc_lock:
+            keep = _hevc_must_keep(payload)
+            if len(self._hevc_pending) >= 24 and not keep:
+                self._hevc_gap = True
+                return False
+            if len(self._hevc_pending) >= 24:
+                kept = [item for item in self._hevc_pending if _hevc_is_config(item)]
+                self._hevc_pending.clear()
+                self._hevc_pending.extend(kept)
+                self._hevc_gap = True
+            if self._hevc_gap:
+                payload = _mark_hevc_reset(payload)
+                if _hevc_must_keep(payload):
+                    self._hevc_gap = False
+            self._hevc_pending.append(payload)
+            return True
+
+    def _drain_pending_hevc_locked(self, sock: Any) -> None:
+        with self._hevc_lock:
+            pending = list(self._hevc_pending)
+            self._hevc_pending.clear()
+        try:
+            for item in pending:
+                sock.send(item)
+        except (OSError, RuntimeError, TimeoutError):
+            self._note_hevc_gap()
+            raise
 
     def _drain_pending_binary_locked(self, sock: Any) -> None:
         while True:

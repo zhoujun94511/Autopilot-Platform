@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -75,11 +74,15 @@ def _zip_artifact(tmp_path: Path, *, project_id: str, case_id: str) -> bytes:
         f"name: c1\nlogical_case_id: {case_id}\nsteps: []\n",
         encoding="utf-8",
     )
+    from autopilot_platform.platform.artifacts.artifact_manifest import (
+        compute_artifact_content_sha256,
+    )
+
     manifest = {
         "schema_version": "1.0",
         "artifact_version": "1",
         "project_id": project_id,
-        "sha256": hashlib.sha256(b"x").hexdigest(),
+        "sha256": compute_artifact_content_sha256(suite),
         "required_runtime_version": "0.1.0-vendored",
         "required_capabilities": [],
         "case_index": [{"relative_path": "c1.tc.yaml", "logical_case_id": case_id}],
@@ -355,3 +358,249 @@ def test_execute_job_logs_missing_app_build(tmp_path, monkeypatch):
     )
     result = execute_job(job)
     assert "未指定 app_build_id" in (result.log or "")
+
+
+def _zip_members(members: dict[str, bytes], *, when: tuple[int, int, int, int, int, int]) -> bytes:
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, payload in members.items():
+            zf.writestr(zipfile.ZipInfo(name, date_time=when), payload)
+    return buf.getvalue()
+
+
+def test_artifact_reused_when_zip_timestamp_differs(client: TestClient):
+    """同一工程重新打包只改 zip 时间戳，应复用已有 artifact_id。"""
+    members = {"c1.tc.yaml": b"name: c1\nsteps: []\n"}
+    first = _zip_members(members, when=(2020, 1, 1, 0, 0, 0))
+    second = _zip_members(members, when=(2024, 6, 1, 12, 0, 0))
+    assert first != second
+    h = _admin(client)
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={"file": ("suite.zip", first, "application/zip")},
+        data={"name": "suite", "project_id": "p-dedup"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body.get("reused") is False
+    aid = body["id"]
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={"file": ("suite.zip", second, "application/zip")},
+        data={"name": "suite-again", "project_id": "p-dedup"},
+    )
+    assert r.status_code == 200, r.text
+    again = r.json()
+    assert again["id"] == aid
+    assert again["reused"] is True
+
+
+def test_artifact_reused_when_only_manifest_changes(client: TestClient):
+    """清单时间戳变化不产生新制品，用例文件相同则复用。"""
+    case = b"name: c1\nsteps: []\n"
+
+    def _pack(stamp: str) -> bytes:
+        buf = BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("c1.tc.yaml", case)
+            zf.writestr(
+                "manifest.json",
+                json.dumps({"artifact_version": stamp, "created_at": stamp}),
+            )
+        return buf.getvalue()
+
+    h = _admin(client)
+    first = _pack("2020.01.01")
+    second = _pack("2024.06.01")
+    assert first != second
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={"file": ("suite.zip", first, "application/zip")},
+        data={"name": "suite", "project_id": "p-man"},
+    )
+    assert r.status_code == 200, r.text
+    aid = r.json()["id"]
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={"file": ("suite.zip", second, "application/zip")},
+        data={"name": "suite", "project_id": "p-man"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["id"] == aid
+    assert r.json()["reused"] is True
+
+
+def test_job_rejects_invalid_manifest_and_unknown_entry(client: TestClient, tmp_path):
+    h = _admin(client)
+    bad = tmp_path / "bad"
+    bad.mkdir()
+    (bad / "c1.tc.yaml").write_text("name: c1\nsteps: []\n", encoding="utf-8")
+    (bad / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "artifact_version": "1",
+                "project_id": "p-gate",
+                "sha256": "a" * 64,
+                "required_runtime_version": "0.1.0-vendored",
+                "required_capabilities": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.write(bad / "c1.tc.yaml", "c1.tc.yaml")
+        zf.write(bad / "manifest.json", "manifest.json")
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={"file": ("bad.zip", buf.getvalue(), "application/zip")},
+        data={"name": "bad", "project_id": "p-gate"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json().get("manifest_status") == "invalid"
+    r = client.post(
+        "/api/v1/jobs",
+        headers=h,
+        json={"name": "bad", "artifact_id": r.json()["id"], "project_id": "p-gate", "platform": "android"},
+    )
+    assert r.status_code == 400, r.text
+    assert "manifest" in r.json()["message"]
+
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={
+            "file": (
+                "suite.zip",
+                _zip_artifact(tmp_path, project_id="p-entry", case_id="lc-entry"),
+                "application/zip",
+            )
+        },
+        data={"name": "suite", "project_id": "p-entry"},
+    )
+    assert r.status_code == 200, r.text
+    aid = r.json()["id"]
+    r = client.post(
+        "/api/v1/jobs",
+        headers=h,
+        json={
+            "name": "missing-entry",
+            "artifact_id": aid,
+            "project_id": "p-entry",
+            "platform": "android",
+            "entry_paths": ["no-such.tc.yaml"],
+        },
+    )
+    assert r.status_code == 400, r.text
+    assert "no-such.tc.yaml" in r.json()["message"]
+
+
+def test_job_rejects_app_build_platform_mismatch(client: TestClient, tmp_path):
+    h = _admin(client)
+    buf = BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("Payload/App", b"ios")
+    r = client.post(
+        "/api/v1/app-builds",
+        headers=h,
+        files={"file": ("app.ipa", buf.getvalue(), "application/octet-stream")},
+        data={"name": "ios-app", "project_id": "p-plat", "platform": "ios"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["platform"] == "ios"
+    bid = r.json()["id"]
+    r = client.post(
+        "/api/v1/artifacts",
+        headers=h,
+        files={
+            "file": (
+                "suite.zip",
+                _zip_artifact(tmp_path, project_id="p-plat", case_id="lc-plat"),
+                "application/zip",
+            )
+        },
+        data={"name": "suite", "project_id": "p-plat"},
+    )
+    assert r.status_code == 200, r.text
+    r = client.post(
+        "/api/v1/jobs",
+        headers=h,
+        json={
+            "name": "cross",
+            "artifact_id": r.json()["id"],
+            "app_build_id": bid,
+            "project_id": "p-plat",
+            "platform": "android",
+        },
+    )
+    assert r.status_code == 400, r.text
+    assert "ios" in r.json()["message"] and "android" in r.json()["message"]
+
+
+def test_execute_installs_pinned_build_before_cases(tmp_path, monkeypatch):
+    proj = tmp_path / "p"
+    proj.mkdir()
+    (proj / "c.tc.yaml").write_text("name: c\nsteps: []\n", encoding="utf-8")
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"PK")
+    order: list[str] = []
+    monkeypatch.setattr(
+        "autopilot_platform.runner.execute._preflight_devices",
+        lambda _job: None,
+    )
+    monkeypatch.setattr(
+        "autopilot_platform.runner.execute._resolve_app_build_path",
+        lambda *_a, **_k: (str(apk), None, None),
+    )
+
+    def _install(path, serial, replace=True):
+        order.append(f"install:{serial}")
+        assert replace is True
+        assert path == str(apk)
+
+    monkeypatch.setattr(
+        "autopilot_platform.ap.mobile.xapk.install_android_package",
+        _install,
+    )
+
+    def _run(*_a, **_k):
+        order.append("run")
+        return _FakeSuite()
+
+    monkeypatch.setattr("autopilot_platform.ap.engine.run_project_directory", _run)
+    monkeypatch.setattr("autopilot_platform.ap.report.write_report", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        "autopilot_platform.ap.report.result_json.write_result_json",
+        lambda *_a, **_k: None,
+    )
+    job = JobOut(
+        id="j-install",
+        name="n",
+        status=JobStatus.CLAIMED,
+        project_dir=str(proj),
+        platform="android",
+        app_build_id="build-1",
+        device_udids=["phone-1"],
+    )
+    result = execute_job(job)
+    assert result.status == JobStatus.SUCCEEDED
+    assert order == ["install:phone-1", "run"]
+
+    def _boom(*_a, **_k):
+        raise RuntimeError("install rejected")
+
+    monkeypatch.setattr(
+        "autopilot_platform.ap.mobile.xapk.install_android_package",
+        _boom,
+    )
+    failed = execute_job(job)
+    assert failed.status == JobStatus.FAILED
+    assert "安装被测包失败" in (failed.error or "")
+    assert "device_offline:" not in (failed.error or "")
+    assert order == ["install:phone-1", "run"]

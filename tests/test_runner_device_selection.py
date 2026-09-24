@@ -357,7 +357,8 @@ def test_register_selected_then_heartbeat_creates_only_allowlisted_rows(
     assert body["selection_mode"] == "include"
     assert body["selected_udids"] == ["LOCAL-1"]
     assert body["registered"] == ["LOCAL-1"]
-    assert "LOCAL-1" in _device_udids(client, ah)
+    # 探测登记不写心跳。在线设备池要等 Runner 心跳，避免把未运行的节点显示成可调用。
+    assert "LOCAL-1" not in _device_udids(client, ah)
     assert "LOCAL-2" not in _device_udids(client, ah)
     inventory = client.get(f"/api/v1/runners/{rid}/device-inventory", headers=ah)
     by_udid = {d["udid"]: d for d in inventory.json()["devices"]}
@@ -697,10 +698,39 @@ def test_platform_policy_revision_does_not_roll_back(tmp_path, monkeypatch):
     assert kept.selected_udids == {"A"}
 
 
+def test_policy_refresh_keeps_ide_exclude(tmp_path, monkeypatch):
+    monkeypatch.setenv("MC_RUNNER_STATE_DIR", str(tmp_path))
+    from autopilot_platform.runner.device_policy import save_device_policy
+
+    current = DevicePolicy(
+        mode="all", selected_udids=set(), revision=1, exclude_udids={"PHONE-1"}
+    )
+    save_device_policy("rev-r1", current)
+    kept = update_device_policy(
+        "rev-r1",
+        current,
+        {
+            "device_selection_mode": "all",
+            "selected_device_udids": [],
+            "device_policy_revision": 2,
+        },
+    )
+    assert kept.exclude_udids == {"PHONE-1"}
+
+    class _Dev:
+        def __init__(self, udid: str):
+            self.udid = udid
+
+    reported = [item.udid for item in kept.filter([_Dev("PHONE-1"), _Dev("PHONE-2")])]
+    assert reported == ["PHONE-2"]
+
+
 def test_platform_heartbeat_contract_includes_inventory_and_policy():
     from autopilot_platform.core.schemas import HeartbeatIn as PlatformHeartbeat
 
-    fields = set(PlatformHeartbeat.model_fields)
+    # model_fields 在当前 Pydantic 上是描述符；检查器用类方法签名 () -> Any 看它。
+    # __pydantic_fields__ 才是描述符返回的字段表。
+    fields = set(PlatformHeartbeat.__pydantic_fields__)
     assert {"runner_id", "devices", "inventory", "policy_revision"} <= fields
-    assert PlatformHeartbeat.model_fields["inventory"].is_required()
-    assert PlatformHeartbeat.model_fields["devices"].is_required()
+    assert PlatformHeartbeat.__pydantic_fields__["inventory"].is_required()
+    assert PlatformHeartbeat.__pydantic_fields__["devices"].is_required()

@@ -3,7 +3,8 @@
  * 画面区：视频/MJPEG + 指针输入。
  * 触控/滚轮逻辑移植自 WebAppFlaskscrcpy DeviceScreen.vue（pointer → touch/scroll emit）。
  */
-import { computed, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, reactive, ref } from "vue";
+import { HevcCanvasPlayer } from "../../composables/remote/hevcPlayback";
 
 const props = defineProps<{
   useMjpeg: boolean;
@@ -21,12 +22,45 @@ const emit = defineEmits<{
   touch: [payload: { x: number; y: number; action: number }];
   scroll: [payload: { x: number; y: number; h: number; v: number }];
   dimensions: [width: number, height: number];
+  hevcFallback: [reason: string];
+  hevcKeyframe: [];
 }>();
 
 const videoRef = ref<HTMLVideoElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const mjpegReady = ref(false);
 let mjpegPaintGen = 0;
+let hevcPlayer: HevcCanvasPlayer | null = null;
+
+function ensureHevcPlayer(): HevcCanvasPlayer {
+  if (!hevcPlayer) {
+    hevcPlayer = new HevcCanvasPlayer({
+      canvas: () => canvasRef.value,
+      onFrame: (width, height) => {
+        mjpegReady.value = true;
+        if (width && height) emit("dimensions", width, height);
+      },
+      onUnsupported: (reason) => emit("hevcFallback", reason),
+      onKeyframe: () => emit("hevcKeyframe"),
+    });
+  }
+  return hevcPlayer;
+}
+
+function pushHevcConfig(codec: string, description: Uint8Array): void {
+  void ensureHevcPlayer().pushConfig(codec, description);
+}
+
+function pushHevcPacket(packet: Uint8Array): void {
+  ensureHevcPlayer().pushPacket(packet);
+}
+
+function closeHevc(): void {
+  hevcPlayer?.close();
+  hevcPlayer = null;
+}
+
+onBeforeUnmount(closeHevc);
 
 const pointerState = reactive({
   dragging: false,
@@ -284,6 +318,9 @@ defineExpose({
   clearMediaStream,
   clearMjpegFrame,
   applyMjpegFrame,
+  pushHevcConfig,
+  pushHevcPacket,
+  closeHevc,
   getElement,
   getNativeDimensions,
 });

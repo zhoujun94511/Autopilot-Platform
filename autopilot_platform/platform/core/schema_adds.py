@@ -24,6 +24,7 @@ SCHEMA_ADDS: tuple[tuple[str, str, str], ...] = (
     ("artifacts", "manifest_status", "VARCHAR(32) DEFAULT ''"),
     ("artifacts", "manifest_version", "VARCHAR(64) DEFAULT ''"),
     ("artifacts", "manifest_notes_json", "TEXT DEFAULT '[]'"),
+    ("artifacts", "sha256", "VARCHAR(64) DEFAULT ''"),
     ("devices", "busy_job_id", "VARCHAR(64)"),
     ("devices", "os_version", "VARCHAR(64) DEFAULT ''"),
     ("devices", "state", "VARCHAR(32) DEFAULT 'ready'"),

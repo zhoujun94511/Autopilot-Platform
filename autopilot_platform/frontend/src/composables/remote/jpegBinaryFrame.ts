@@ -7,13 +7,23 @@ const MAGIC2 = 0x4a; // J
 const MAGIC3 = 0x46; // F
 
 export type UnpackedJpegFrame = {
+  kind: "image";
   width: number;
   height: number;
   mime: string;
   bytes: Uint8Array;
 };
 
-export function unpackBinaryFrame(buf: ArrayBuffer): UnpackedJpegFrame | null {
+export type UnpackedHevcFrame = {
+  kind: "hevc-config" | "hevc";
+  codec: string;
+  description: Uint8Array;
+  packet: Uint8Array;
+};
+
+export type UnpackedBinaryFrame = UnpackedJpegFrame | UnpackedHevcFrame;
+
+export function unpackBinaryFrame(buf: ArrayBuffer): UnpackedBinaryFrame | null {
   if (buf.byteLength < HEADER_SIZE) return null;
   const u8 = new Uint8Array(buf);
   if (
@@ -25,10 +35,30 @@ export function unpackBinaryFrame(buf: ArrayBuffer): UnpackedJpegFrame | null {
   ) {
     return null;
   }
+  const payload = u8.subarray(HEADER_SIZE);
+  if (u8[5] === 2) {
+    const nul = payload.indexOf(0);
+    if (nul <= 0) return null;
+    const codec = new TextDecoder().decode(payload.subarray(0, nul));
+    return {
+      kind: "hevc-config",
+      codec,
+      description: payload.subarray(nul + 1),
+      packet: payload,
+    };
+  }
+  if (u8[5] === 3) {
+    return {
+      kind: "hevc",
+      codec: "",
+      description: new Uint8Array(),
+      packet: payload,
+    };
+  }
   const mime = u8[5] === 1 ? "image/png" : "image/jpeg";
   const width = (u8[6] << 8) | u8[7];
   const height = (u8[8] << 8) | u8[9];
-  return { width, height, mime, bytes: u8.subarray(HEADER_SIZE) };
+  return { kind: "image", width, height, mime, bytes: payload };
 }
 
 export function jpegB64ToBytes(b64: string): Uint8Array {

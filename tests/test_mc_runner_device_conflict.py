@@ -86,13 +86,24 @@ def _reg(client: TestClient, rid: str) -> None:
     assert r.status_code == 200, r.text
 
 
-def test_heartbeat_auto_registers_missing_runner(client: TestClient):
-    """未先 register 时，heartbeat 应自愈创建 Runner。"""
-    _hb(client, "orphan-runner")
+def test_heartbeat_does_not_auto_register_missing_runner(client: TestClient):
+    """未 register 的心跳不得建节点，避免把设备写成平台共享。"""
+    missed = client.post(
+        "/api/v1/runners/heartbeat",
+        headers=TOKEN,
+        json={
+            "runner_id": "orphan-runner",
+            "inventory": [_dev()],
+            "devices": [_dev()],
+            "capabilities": ["android", BACKEND_ANDROID_APPIUM],
+            "host_backends": [BACKEND_ANDROID_APPIUM],
+        },
+    )
+    assert missed.status_code == 404
     r = client.get("/api/v1/runners", headers=TOKEN)
     assert r.status_code == 200
     ids = {x["runner_id"] for x in page_items(r.json())}
-    assert "orphan-runner" in ids
+    assert "orphan-runner" not in ids
 
 
 def test_dual_runner_same_udid_marks_conflict(client: TestClient):

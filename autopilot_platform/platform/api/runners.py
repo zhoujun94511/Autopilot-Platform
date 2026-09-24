@@ -79,13 +79,22 @@ def api_register(
 
     assert_production_runner_scoped(auth)
     assert_runner_id_allowed(auth, body.runner_id)
-    # Runner 凭据不能把新节点伪装成 IDE 私有资源；已有 managed/ide 来源保持不变。
-    source = (
-        (existing.registration_source or "platform")
-        if existing is not None
-        else "platform"
-    )
-    return services.register_runner(db, body, registration_source=source)
+    # 已有登记只刷新能力，不改来源：IDE 保持私有，platform/managed 保持共享。
+    if existing is not None:
+        source = (existing.registration_source or "platform").strip().lower()
+        if source not in {"ide", "platform", "managed"}:
+            source = "platform"
+        return services.register_runner(db, body, registration_source=source)
+    # 绑定到具体节点的 Token 只能刷新，不能新建。否则 IDE 进程能把本机设备登记成共享。
+    if (auth.runner_id or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                "Runner 尚未登记。IDE 节点须由用户会话预注册为私有；"
+                "平台共享节点须由管理员或全局执行令牌登记"
+            ),
+        )
+    return services.register_runner(db, body, registration_source="platform")
 
 
 @router.post("/runners/heartbeat", response_model=RunnerOut)
@@ -98,7 +107,6 @@ def api_heartbeat(
     try:
         return services.heartbeat(db, body)
     except LookupError as exc:
-        # 理论上 heartbeat 已自愈注册；保留 404 兼容旧行为
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
@@ -337,7 +345,7 @@ def api_deregister_runner(
     """注销 Runner（admin 运维）：删除节点记录及其设备行。
 
     - 存在占用中设备时拒绝（先释放占用 / 等任务结束）。
-    - 在线节点也可注销，但若该机 Runner 仍在运行，下次心跳会自愈重建。
+    - 在线节点也可注销。心跳不会重建节点；须重新 register。IDE 私人节点只能由用户会话预注册。
     - 远程节点无法由 Platform 直接杀进程；仅注销登记。本机托管请用
       ``POST /runners/managed/stop``。
     """

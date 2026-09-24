@@ -1204,6 +1204,30 @@ def test_whitebox_ws_relays_binary_jpeg_to_browser(client: TestClient):
     assert parsed["height"] == 16
 
 
+def test_whitebox_ws_relays_hevc_and_skips_http_jpeg_slot(client: TestClient):
+    from autopilot_platform.runner.remote.shared.frame_bus import (
+        pack_hevc_config,
+        unpack_binary_frame,
+    )
+
+    admin = login(client)
+    device_id = register_device(client, runner_id="runner-ws-hevc", udid="WS-HEVC-1")
+    reserve(client, admin, device_id)
+    session = open_remote(client, admin, device_id)
+    sid = session["id"]
+    packed = pack_hevc_config("hev1.1.6.L150.B0", b"\x01\x02")
+    runner_url = f"/api/v1/device-remote-sessions/{sid}/ws?role=runner"
+    with ws_browser_connect(client, sid, session["access_token"]) as browser:
+        with client.websocket_connect(runner_url, headers=TOKEN) as runner:
+            assert runner.receive_json()["name"] == "transport.ready"
+            runner.send_bytes(packed)
+            got = browser.receive_bytes()
+    parsed = unpack_binary_frame(got)
+    assert parsed is not None
+    assert parsed["type"] == "hevc"
+    assert parsed["hevc_kind"] == 2
+
+
 def test_whitebox_ws_binary_frame_falls_back_to_http_poll(client: TestClient):
     from autopilot_platform.runner.remote.shared.frame_bus import pack_binary_frame
 

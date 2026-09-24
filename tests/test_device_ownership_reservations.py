@@ -155,6 +155,83 @@ def register_shared(
     return runner_id, token
 
 
+def test_heartbeat_does_not_create_shared_runner(client: TestClient):
+    _admin, alice, bob = setup_users_and_project(client)
+    missed = client.post(
+        "/api/v1/runners/heartbeat",
+        headers=TOKEN,
+        json={
+            "runner_id": "never-registered",
+            "devices": [{"udid": "LEAK-1", "platform": "android", "state": "ready"}],
+            "inventory": [{"udid": "LEAK-1", "platform": "android", "state": "ready"}],
+        },
+    )
+    assert missed.status_code == 404
+    assert "LEAK-1" not in {d["udid"] for d in page_items(client.get("/api/v1/devices", headers=alice).json())}
+    assert "LEAK-1" not in {d["udid"] for d in page_items(client.get("/api/v1/devices", headers=bob).json())}
+
+
+def test_runner_token_cannot_flip_private_runner_to_shared(client: TestClient):
+    admin, alice, bob = setup_users_and_project(client)
+    _runner_id, token = register_ide(
+        client, alice, "ide-keep", "private-keep", token_issuer=admin
+    )
+    refreshed = client.post(
+        "/api/v1/runners/register",
+        headers={"X-API-Token": token},
+        json={
+            "runner_id": "ide-keep",
+            "registration_source": "platform",
+            "capabilities": ["android"],
+        },
+    )
+    assert refreshed.status_code == 200, refreshed.text
+    body = refreshed.json()
+    assert body["registration_source"] == "ide"
+    assert body["owner_user_id"]
+    bob_udids = {d["udid"] for d in page_items(client.get("/api/v1/devices", headers=bob).json())}
+    assert "private-keep" not in bob_udids
+    alice_udids = {d["udid"] for d in page_items(client.get("/api/v1/devices", headers=alice).json())}
+    assert "private-keep" in alice_udids
+
+
+def test_global_token_cannot_forge_private_runner(client: TestClient):
+    _admin, alice, bob = setup_users_and_project(client)
+    created = client.post(
+        "/api/v1/runners/register",
+        headers=TOKEN,
+        json={
+            "runner_id": "forged-private",
+            "registration_source": "ide",
+            "owner_user_id": "alice",
+            "capabilities": ["android"],
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["registration_source"] == "platform"
+    assert not (created.json().get("owner_user_id") or "").strip()
+    assert client.post(
+        "/api/v1/runners/heartbeat",
+        headers=TOKEN,
+        json={
+            "runner_id": "forged-private",
+            "devices": [{"udid": "SHARED-OK", "platform": "android", "state": "ready"}],
+            "inventory": [{"udid": "SHARED-OK", "platform": "android", "state": "ready"}],
+        },
+    ).status_code == 200
+    assert client.patch(
+        "/api/v1/runners/forged-private/scope",
+        headers=login(client, "admin", "admin"),
+        json={"org_id": "org-1", "project_ids": ["project-1"]},
+    ).status_code == 200
+    assert "SHARED-OK" in {
+        d["udid"] for d in page_items(client.get("/api/v1/devices", headers=bob).json())
+    }
+    assert "SHARED-OK" in {
+        d["udid"] for d in page_items(client.get("/api/v1/devices", headers=alice).json())
+    }
+
+
 def test_private_and_shared_visibility_use_and_management(client: TestClient):
     admin, alice, bob = setup_users_and_project(client)
     register_ide(client, alice, "ide-alice", "private-1", token_issuer=admin)
@@ -211,6 +288,184 @@ def test_private_and_shared_visibility_use_and_management(client: TestClient):
         headers=outsider,
         json={"duration_minutes": 30},
     ).status_code == 403
+
+
+def test_org_admin_cannot_see_or_use_private_device(client: TestClient):
+    admin, alice, _bob = setup_users_and_project(client)
+    assert client.post(
+        "/api/v1/auth/users",
+        headers=admin,
+        json={"username": "org-admin", "password": "OrgAdmin1", "duty": "user"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/orgs/org-1/members",
+        headers=admin,
+        json={"username": "org-admin", "role": "admin"},
+    ).status_code == 200
+    org_admin = login(client, "org-admin", "OrgAdmin1")
+    register_ide(client, alice, "ide-alice", "private-1", token_issuer=admin)
+    register_shared(client, admin, "platform-1", "shared-1")
+
+    seen = {d["udid"] for d in page_items(client.get("/api/v1/devices", headers=org_admin).json())}
+    assert seen == {"shared-1"}
+    runners = page_items(client.get("/api/v1/runners", headers=org_admin).json())
+    assert "ide-alice" not in {r["runner_id"] for r in runners}
+    denied = client.post(
+        "/api/v1/jobs",
+        headers=org_admin,
+        json={
+            "name": "org admin private",
+            "project_dir": "/tmp/p",
+            "project_id": "project-1",
+            "platform": "android",
+            "device_udids": ["private-1"],
+        },
+    )
+    assert denied.status_code == 403
+    assert client.post(
+        "/api/v1/devices/private-1/maintenance",
+        headers=org_admin,
+        json={"disabled": True},
+    ).status_code == 403
+
+
+def test_job_create_rejects_shared_device_outside_board(client: TestClient):
+    admin, _alice, _bob = setup_users_and_project(client)
+    register_shared(client, admin, "platform-1", "shared-1")
+    assert client.post(
+        "/api/v1/auth/users",
+        headers=admin,
+        json={"username": "other", "password": "Other123", "duty": "user"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/orgs",
+        headers=admin,
+        json={"id": "org-2", "name": "Org 2"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/orgs/org-2/members",
+        headers=admin,
+        json={"username": "other", "role": "member"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/projects",
+        headers={**admin, "X-Org-Id": "org-2"},
+        json={"id": "project-2", "name": "P2", "org_id": "org-2"},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/projects/project-2/members",
+        headers=admin,
+        json={"username": "other", "role": "member"},
+    ).status_code == 200
+    other = login(client, "other", "Other123")
+    denied = client.post(
+        "/api/v1/jobs",
+        headers={**other, "X-Org-Id": "org-2"},
+        json={
+            "name": "typed hidden udid",
+            "project_dir": "/tmp/p",
+            "project_id": "project-2",
+            "platform": "android",
+            "device_udids": ["shared-1"],
+        },
+    )
+    assert denied.status_code == 403
+    missing = client.post(
+        "/api/v1/jobs",
+        headers={**other, "X-Org-Id": "org-2"},
+        json={
+            "name": "unknown udid",
+            "project_dir": "/tmp/p",
+            "project_id": "project-2",
+            "platform": "android",
+            "device_udids": ["no-such-phone"],
+        },
+    )
+    assert missing.status_code == 403
+
+
+def test_busy_device_missing_heartbeat_marked_offline(client: TestClient):
+    from sqlalchemy import select
+
+    from autopilot_platform.platform.core.db import session_factory
+    from autopilot_platform.platform.core.models import DeviceRow
+
+    admin, _alice, _bob = setup_users_and_project(client)
+    runner_id, token = register_shared(client, admin, "platform-off", "phone-off")
+    factory = session_factory()
+    assert factory is not None
+    db = factory()
+    try:
+        row = db.scalar(select(DeviceRow).where(DeviceRow.udid == "phone-off"))
+        assert row is not None
+        row.busy_job_id = "job-running"
+        db.commit()
+    finally:
+        db.close()
+    gone = client.post(
+        "/api/v1/runners/heartbeat",
+        headers={"X-API-Token": token},
+        json={"runner_id": runner_id, "inventory": [], "devices": []},
+    )
+    assert gone.status_code == 200, gone.text
+    db = factory()
+    try:
+        row = db.scalar(select(DeviceRow).where(DeviceRow.udid == "phone-off"))
+        assert row is not None
+        assert row.state == "offline"
+        assert row.busy_job_id == "job-running"
+    finally:
+        db.close()
+
+
+def test_device_offline_complete_requeues_then_claim_after_return(client: TestClient):
+    admin, alice, _bob = setup_users_and_project(client)
+    runner_id, token = register_shared(client, admin, "platform-back", "phone-back")
+    created = client.post(
+        "/api/v1/jobs",
+        headers=alice,
+        json={
+            "name": "retry after cable",
+            "project_dir": "/tmp/p",
+            "project_id": "project-1",
+            "platform": "android",
+            "device_udids": ["phone-back"],
+            "preferred_runner_id": runner_id,
+        },
+    )
+    assert created.status_code == 200, created.text
+    job_id = created.json()["id"]
+    claim = client.post(
+        f"/api/v1/jobs/claim?runner_id={runner_id}",
+        headers={"X-API-Token": token},
+    )
+    assert claim.status_code == 200, claim.text
+    assert claim.json()["id"] == job_id
+    done = client.post(
+        f"/api/v1/jobs/{job_id}/complete",
+        headers={"X-API-Token": token},
+        params={"runner_id": runner_id},
+        json={"status": "failed", "error": "device_offline: 设备掉线，任务退回等待：phone-back"},
+    )
+    assert done.status_code == 200, done.text
+    assert done.json()["status"] == "pending"
+    assert done.json()["runner_id"] in (None, "")
+    back = client.post(
+        "/api/v1/runners/heartbeat",
+        headers={"X-API-Token": token},
+        json={
+            "runner_id": runner_id,
+            "inventory": [{"udid": "phone-back", "platform": "android", "state": "ready"}],
+            "devices": [{"udid": "phone-back", "platform": "android", "state": "ready"}],
+        },
+    )
+    assert back.status_code == 200, back.text
+    again = client.post(
+        f"/api/v1/jobs/claim?runner_id={runner_id}",
+        headers={"X-API-Token": token},
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] == job_id
 
 
 def test_reserve_stop_expire_and_claim_conflict(client: TestClient):

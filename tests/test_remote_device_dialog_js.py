@@ -343,6 +343,9 @@ def test_remote_dialog_webrtc_and_touch_wiring():
     assert "useMjpeg" in dialog
     assert "startMjpeg" in dialog
     assert "等待 WDA/MJPEG" in dialog
+    assert "等待 WDA/HEVC" in dialog
+    assert "等待 MJPEG 首帧" in dialog
+    assert "等待 HEVC 首帧" in dialog
     assert "if (!useMjpeg.value)" in dialog.split("function startTransport", 1)[1].split(
         "async function recoverWebRtcAfterTransport", 1
     )[0]

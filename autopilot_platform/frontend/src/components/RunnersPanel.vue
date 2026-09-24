@@ -756,6 +756,10 @@ async function provisionRunner() {
               <dd>{{ selectedRunner.hostname || "-" }}</dd>
               <dt>来源</dt>
               <dd>{{ runnerSourceLabel(selectedRunner.registration_source) }}</dd>
+              <template v-if="selectedRunner.registration_source === 'ide'">
+                <dt>使用范围</dt>
+                <dd>仅所有者与平台管理员，不进入公共设备池</dd>
+              </template>
               <dt>归属组织</dt>
               <dd>{{ orgLabel(selectedRunner.org_id || "") || "未绑定" }}</dd>
               <dt>版本</dt>
@@ -771,7 +775,7 @@ async function provisionRunner() {
               </dd>
             </dl>
             <p v-if="!isManagedRow(selectedRunner)" class="detail-empty remote-note">
-              远程设备机：网页不能替你启动。请在插手机的那台电脑上执行启动命令，机房建议做成开机自启。
+              平台共享节点：网页不能替你启动。请在插手机的那台电脑上执行启动命令，机房建议做成开机自启。
             </p>
 
             <h4 class="detail-subtitle">挂载设备（{{ detailDevices.length }}）</h4>

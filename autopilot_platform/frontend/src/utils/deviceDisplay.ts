@@ -131,12 +131,12 @@ export function deviceSourceLabel(d: Device): string {
   return "平台共享";
 }
 
-/** 执行节点来源：本机托管 / IDE / 远程设备机。 */
+/** 执行节点来源：本机托管 / IDE 私有 / 平台共享设备机。 */
 export function runnerSourceLabel(source?: string | null): string {
   const s = String(source || "").trim().toLowerCase();
   if (s === "managed") return "本机托管";
-  if (s === "ide") return "IDE";
-  return "远程设备机";
+  if (s === "ide") return "IDE 私有";
+  return "平台共享";
 }
 
 export type RunnerPresenceInput = {

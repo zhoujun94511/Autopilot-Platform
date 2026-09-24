@@ -85,7 +85,11 @@ def _seed_approved(client: TestClient, headers: dict, tmp_path, project_id: str)
         f"name: c1\nlogical_case_id: {case_id}\nsteps: []\n",
         encoding="utf-8",
     )
-    sha = hashlib.sha256(b"x").hexdigest()
+    from autopilot_platform.platform.artifacts.artifact_manifest import (
+        compute_artifact_content_sha256,
+    )
+
+    sha = compute_artifact_content_sha256(suite)
     manifest = {
         "schema_version": "1.0",
         "artifact_version": "1",

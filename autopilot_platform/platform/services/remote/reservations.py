@@ -43,36 +43,27 @@ def runner_is_private(runner: RunnerRow | None) -> bool:
     )
 
 
-def _user_is_runner_admin(db: Session, user: UserRow | None, runner: RunnerRow) -> bool:
-    if user is None:
-        return False
-    if (user.role or "") == "admin":
-        return True
-    oid = (runner.org_id or "").strip()
-    return bool(
-        oid and org_member_role(db, user.id, oid) in {"owner", "admin"}
-    )
-
-
-def can_user_use_runner(db: Session, auth: AuthContext, runner: RunnerRow) -> bool:
+def can_user_use_runner(_db: Session, auth: AuthContext, runner: RunnerRow) -> bool:
     if is_platform_admin(auth):
         return True
     if auth.kind != "user":
         return False
     if not runner_is_private(runner):
         return True
-    if (runner.owner_user_id or "").strip() == auth.user_id:
-        return True
-    user = db_get(db, UserRow, auth.user_id)
-    return _user_is_runner_admin(db, user, runner)
+    return (runner.owner_user_id or "").strip() == auth.user_id
 
 
 def can_user_manage_runner(
     db: Session, auth: AuthContext, runner: RunnerRow
 ) -> bool:
-    """平台管理员，或节点所属组织的 owner/admin，可管理设备选择策略。"""
+    """平台管理员，或共享节点所属组织的 owner/admin，可管理设备选择策略。
+
+    私人 IDE 节点只由平台管理员管理，组织管理员看不到也不能操作。
+    """
     if is_platform_admin(auth):
         return True
+    if runner_is_private(runner):
+        return False
     if getattr(auth, "kind", "") != "user":
         return False
     org_id = (getattr(runner, "org_id", None) or "").strip()
@@ -112,7 +103,7 @@ def username_can_use_runner(db: Session, username: str, runner: RunnerRow) -> bo
         return False
     return bool(
         (runner.owner_user_id or "").strip() == user.id
-        or _user_is_runner_admin(db, user, runner)
+        or (user.role or "") == "admin"
     )
 
 

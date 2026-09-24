@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Platform Web 远控面板：Android WebRTC / iOS MJPEG + 触控。
+ * Platform Web 远控面板：Android WebRTC / iOS 27 HEVC 或 WDA MJPEG + 触控。
  * DataChannel 对齐 WebAppFlaskscrcpy：Runner 创建 input，浏览器 ondatachannel 接收。
  */
 import { computed, onBeforeUnmount, ref, watch } from "vue";
@@ -42,6 +42,7 @@ import {
   jpegB64ToBytes,
   unpackBinaryFrame,
 } from "../composables/remote/jpegBinaryFrame";
+import { browserSupportsHevc } from "../composables/remote/hevcPlayback";
 import {
   markRemoteCold,
   markRunnerConnectedOnce,
@@ -95,6 +96,61 @@ let lastStatsTs = 0;
 let pendingMjpeg: { bytes: Uint8Array; mime: string } | null = null;
 let mjpegPaintScheduled = false;
 let mjpegConnectedHint = false;
+let hevcGaveUp = false;
+let hevcSupportPromise: Promise<boolean> | null = null;
+
+type PictureWait = "webrtc" | "hevc" | "mjpeg";
+
+const PRE_READY_STATUS = new Set([
+  "等待 Runner 就绪并协商 WebRTC…",
+  "创建远控会话…",
+  "加入旁观会话…",
+  "等待 Runner 准备画面…",
+  "等待 Runner 准备 WDA/MJPEG…",
+  "等待 Runner 准备 WDA/HEVC…",
+  "WebSocket 已连接，等待 WDA/MJPEG…",
+  "WebSocket 已连接，等待 WDA/HEVC…",
+  "WebSocket 已连接，协商 WebRTC…",
+  "正在连接 WebSocket…",
+]);
+
+function sessionPlatform(): string {
+  return String(remoteDialogState.value?.session?.platform || "").toLowerCase();
+}
+
+function hevcSupport(): Promise<boolean> {
+  if (!hevcSupportPromise) hevcSupportPromise = browserSupportsHevc();
+  return hevcSupportPromise;
+}
+
+async function resolveIosPicture(): Promise<"hevc" | "mjpeg"> {
+  if (sessionPlatform() !== "ios" || hevcGaveUp) return "mjpeg";
+  const ok = await hevcSupport();
+  return !hevcGaveUp && ok ? "hevc" : "mjpeg";
+}
+
+function wsConnectedText(picture: PictureWait): string {
+  if (picture === "webrtc") return "WebSocket 已连接，协商 WebRTC…";
+  if (picture === "hevc") return "WebSocket 已连接，等待 WDA/HEVC…";
+  return "WebSocket 已连接，等待 WDA/MJPEG…";
+}
+
+function runnerReadyText(picture: PictureWait): string {
+  if (picture === "webrtc") return "Runner 已就绪，等待 WebRTC…";
+  if (picture === "hevc") return "Runner 已就绪，等待 HEVC 首帧…";
+  return "Runner 已就绪，等待 MJPEG 首帧…";
+}
+
+function preparingText(picture: "hevc" | "mjpeg"): string {
+  if (picture === "hevc") return "等待 Runner 准备 WDA/HEVC…";
+  return "等待 Runner 准备 WDA/MJPEG…";
+}
+
+async function currentPictureWait(): Promise<PictureWait> {
+  if (!useMjpeg.value) return "webrtc";
+  if (sessionPlatform() !== "ios") return "mjpeg";
+  return resolveIosPicture();
+}
 /** 仅 HTTP 降级：move 节流，避免 iOS(MJPEG)/Android 兜底路径刷屏 POST。 */
 let lastTouchMoveAt = 0;
 const TOUCH_MOVE_INTERVAL_MS = 50;
@@ -209,8 +265,14 @@ watch(
       configureRemoteCommandSender(sendReliableCommand);
       startStatusWatch(session.id);
       if (useMjpeg.value) {
-        statusText.value = "等待 Runner 准备 WDA/MJPEG…";
+        statusText.value = "等待 Runner 准备画面…";
         await startMjpeg(session);
+        if (String(session.platform || "").toLowerCase() === "ios") {
+          await publishIosPictureChoice();
+          if (statusText.value === "等待 Runner 准备画面…") {
+            statusText.value = preparingText(await resolveIosPicture());
+          }
+        }
       } else {
         statusText.value = "等待 Runner 就绪并协商 WebRTC…";
         await startWebRtc(session);
@@ -261,20 +323,12 @@ function startStatusWatch(sid: string) {
           info.participant_role === "controller" ? "controller" : "viewer",
         );
       }
-      if (
-        info.status === "ready" &&
-        (statusText.value === "等待 Runner 就绪并协商 WebRTC…" ||
-          statusText.value === "创建远控会话…" ||
-          statusText.value === "加入旁观会话…" ||
-          statusText.value === "等待 Runner 准备 WDA/MJPEG…" ||
-          statusText.value === "WebSocket 已连接，等待 WDA/MJPEG…" ||
-          statusText.value === "WebSocket 已连接，协商 WebRTC…" ||
-          statusText.value === "正在连接 WebSocket…")
-      ) {
+      if (info.status === "ready" && PRE_READY_STATUS.has(statusText.value)) {
         markRemoteCold("ui.runner.ready");
-        statusText.value = useMjpeg.value
-          ? "Runner 已就绪，等待首帧…"
-          : "Runner 已就绪，等待 WebRTC…";
+        const picture = await currentPictureWait();
+        if (PRE_READY_STATUS.has(statusText.value)) {
+          statusText.value = runnerReadyText(picture);
+        }
       }
       if (info.status === "connected") {
         markRunnerConnectedOnce();
@@ -313,6 +367,18 @@ function startStatusWatch(sid: string) {
   statusTimer = window.setInterval(() => void tick(), intervalMs);
 }
 
+async function publishIosPictureChoice() {
+  const hevcOk = await hevcSupport();
+  if (!hevcOk || hevcGaveUp) {
+    hevcGaveUp = true;
+    sendReliableCommand({ t: "stream.configure", provider: "mjpeg" });
+    return;
+  }
+  if (transportMode.value === "ws") {
+    sendReliableCommand({ t: "stream.configure", provider: "hevc" });
+  }
+}
+
 function startTransport(session: RemoteSessionInfo) {
   transport?.close();
   transport = connectRemoteTransport(session, {
@@ -323,10 +389,15 @@ function startTransport(session: RemoteSessionInfo) {
         syncFallbackPoll(session.id);
       } else if (state === "open") {
         transportMode.value = "ws";
+        if (String(session.platform || "").toLowerCase() === "ios") {
+          void publishIosPictureChoice();
+        }
         markRemoteCold("ui.transport.open", { mode: "ws" });
-        statusText.value = useMjpeg.value
-          ? "WebSocket 已连接，等待 WDA/MJPEG…"
-          : "WebSocket 已连接，协商 WebRTC…";
+        void currentPictureWait().then((picture) => {
+          if (transportMode.value === "ws" && PRE_READY_STATUS.has(statusText.value)) {
+            statusText.value = wsConnectedText(picture);
+          }
+        });
         syncFallbackPoll(session.id);
         void drainSignaling(session.id);
         if (!useMjpeg.value) {
@@ -334,6 +405,10 @@ function startTransport(session: RemoteSessionInfo) {
         }
       } else if (state === "fallback") {
         transportMode.value = "http";
+        if (String(session.platform || "").toLowerCase() === "ios") {
+          hevcGaveUp = true;
+          sendReliableCommand({ t: "stream.configure", provider: "mjpeg" });
+        }
         markRemoteCold("ui.transport.fallback", { mode: "http" });
         statusText.value = useMjpeg.value
           ? "WebSocket 不可用，HTTP 降级等待 MJPEG…"
@@ -864,9 +939,39 @@ async function drainSignaling(sid: string) {
   }
 }
 
+function onHevcFallback(reason: string) {
+  if (hevcGaveUp) return;
+  hevcGaveUp = true;
+  errorText.value = reason;
+  statusText.value = "HEVC 不可用，改用 MJPEG…";
+  sendReliableCommand({ t: "stream.configure", provider: "mjpeg" });
+}
+
+function onHevcKeyframe() {
+  if (hevcGaveUp) return;
+  sendReliableCommand({ t: "stream.keyframe" });
+}
+
 function applyBinaryMjpegFrame(buf: ArrayBuffer) {
   const unpacked = unpackBinaryFrame(buf);
-  if (!unpacked || unpacked.bytes.byteLength < 2) return;
+  if (!unpacked) return;
+  if (unpacked.kind === "hevc-config") {
+    if (hevcGaveUp || !unpacked.description.byteLength) return;
+    void stageEl.value?.pushHevcConfig(unpacked.codec, unpacked.description);
+    return;
+  }
+  if (unpacked.kind === "hevc") {
+    if (hevcGaveUp) return;
+    stageEl.value?.pushHevcPacket(unpacked.packet);
+    if (!mjpegConnectedHint) {
+      mjpegConnectedHint = true;
+      statusText.value = "已连接 · HEVC";
+      frameUrl.value = "canvas";
+    }
+    return;
+  }
+  if (unpacked.kind !== "image" || unpacked.bytes.byteLength < 2) return;
+  stageEl.value?.closeHevc();
   if (unpacked.width > 0) videoWidth.value = unpacked.width;
   if (unpacked.height > 0) videoHeight.value = unpacked.height;
   pendingMjpeg = { bytes: unpacked.bytes, mime: unpacked.mime };
@@ -886,7 +991,7 @@ function paintLatestMjpegFrame() {
     frameUrl.value = "canvas";
     if (!mjpegConnectedHint) {
       mjpegConnectedHint = true;
-      statusText.value = "已连接";
+      statusText.value = "已连接 · MJPEG";
     }
   });
 }
@@ -904,6 +1009,7 @@ async function processMediaMessage(msg: Record<string, unknown>) {
     return;
   }
   if (type !== "frame") return;
+  stageEl.value?.closeHevc();
   const b64 = String(frame.data_b64 || "");
   if (!b64) return;
   const w = Number(frame.width || 0);
@@ -1154,8 +1260,11 @@ async function teardown() {
   inputReady.value = false;
   stageEl.value?.clearMediaStream();
   stageEl.value?.clearMjpegFrame();
+  stageEl.value?.closeHevc();
   frameUrl.value = "";
   useMjpeg.value = false;
+  hevcGaveUp = false;
+  hevcSupportPromise = null;
   pendingMjpeg = null;
   mjpegPaintScheduled = false;
   mjpegConnectedHint = false;
@@ -1218,6 +1327,8 @@ function onDimensions(width: number, height: number) {
           :resolution-width="videoWidth"
           :resolution-height="videoHeight"
           @dimensions="onDimensions"
+          @hevc-fallback="onHevcFallback"
+          @hevc-keyframe="onHevcKeyframe"
           @touch="sendTouch"
           @scroll="sendScroll"
         />

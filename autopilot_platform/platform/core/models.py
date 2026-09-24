@@ -154,6 +154,7 @@ class ArtifactRow(Base):
     manifest_status: Mapped[str] = mapped_column(String(32), default="")  # missing|valid|invalid
     manifest_version: Mapped[str] = mapped_column(String(64), default="")
     manifest_notes_json: Mapped[str] = mapped_column(Text, default="[]")
+    sha256: Mapped[str] = mapped_column(String(64), default="", index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 

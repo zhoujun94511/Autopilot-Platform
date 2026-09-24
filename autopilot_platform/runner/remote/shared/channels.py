@@ -35,6 +35,7 @@ class RemoteChannels:
     def __init__(self, client: RemoteChannelClient, session_id: str) -> None:
         self._client = client
         self.session_id = session_id
+        self.hevc_needs_key = False
         self._ws: RunnerRemoteWebSocket | None = None
         base_url = str(getattr(client, "base_url", "") or "")
         api_token = str(getattr(client, "api_token", "") or "")
@@ -71,14 +72,22 @@ class RemoteChannels:
         messages.extend(list(out.get("messages") or []))
         return messages
 
-    def post_media(self, body: dict[str, Any]) -> None:
+    def post_media(self, body: dict[str, Any]) -> bool:
         name = str(body.get("type") or "media")
+        if name == "hevc":
+            packet = body.get("packet")
+            if not isinstance(packet, (bytes, bytearray)) or not packet or self._ws is None:
+                return False
+            if not self._ws.send_hevc(bytes(packet)):
+                self.hevc_needs_key = True
+                return False
+            return True
         packed = _binary_frame_from_body(body) if name == "frame" else None
         if packed is not None and self._ws is not None:
             if self._ws.send_binary(packed, drop_if_busy=True):
-                return
+                return True
             if self._ws.connected:
-                return
+                return True
         if packed is not None:
             jpeg = body.get("jpeg")
             if isinstance(jpeg, (bytes, bytearray)) and jpeg:
@@ -91,14 +100,15 @@ class RemoteChannels:
                         mime=str(body.get("mime") or "image/jpeg"),
                     ),
                 )
-                return
+                return True
         drop_frame = name == "frame"
         if self._ws is not None:
             if self._ws.send("media", name, body, drop_if_busy=drop_frame):
-                return
+                return True
             if drop_frame and self._ws.connected:
-                return
+                return True
         self._client.post_remote_media(self.session_id, body)
+        return True
 
     def poll_media(self) -> list[dict[str, Any]]:
         messages: list[dict[str, Any]] = []
