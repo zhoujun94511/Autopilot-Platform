@@ -10,6 +10,7 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from .settings import database_url
+from .schema_adds import SCHEMA_ADDS as _SCHEMA_ADDS
 
 
 class Base(DeclarativeBase):
@@ -23,9 +24,6 @@ _SessionLocal: Optional[sessionmaker[Session]] = None
 def session_factory() -> sessionmaker[Session] | None:
     """已初始化时返回 sessionmaker；未 init 时为 None。"""
     return _SessionLocal
-
-# (table, column, SQL type fragment for ADD COLUMN)
-from .schema_adds import SCHEMA_ADDS as _SCHEMA_ADDS
 
 
 def get_engine(url: str | None = None) -> Engine:
@@ -90,6 +88,8 @@ def migrate_schema(engine: Engine) -> list[str]:
                 col_cache[table] = cols
             if not cols or column in cols:
                 continue
+            if typ == "DATETIME" and engine.dialect.name == "postgresql":
+                typ = "TIMESTAMP WITH TIME ZONE"
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {typ}"))
             cols.add(column)
             applied.append(f"{table}.{column}")

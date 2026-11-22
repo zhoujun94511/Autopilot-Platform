@@ -48,6 +48,9 @@ def audit(openapi_path: Path) -> list[str]:
     for b in CAPABILITY_ROUTE_BINDINGS:
         if b.capability_id not in CAPABILITY_IDS:
             errors.append(f"未知 capability_id: {b.capability_id}")
+        if b.method == "WEBSOCKET":
+            # FastAPI WebSocket 路由由独立的运行时契约测试覆盖。
+            continue
         key = (b.method, _normalize(b.path))
         if key not in paths:
             errors.append(f"OpenAPI 缺失路由: {b.method} {b.path} ({b.capability_id})")

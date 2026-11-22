@@ -618,6 +618,28 @@ class PeerManager:
             return
         self.runner().submit(sess.add_ice(candidate))
 
+    def sync_control_transfer(
+        self, session_id: str, device_id: str, controller_participant_id: str
+    ) -> None:
+        """控制权转移时关闭原控制者的 P2P DataChannel，并拆掉新控制者的只读连接以触发重协商。"""
+        prefix = f"{session_id}:"
+        target_sid = f"{prefix}{controller_participant_id}" if controller_participant_id else ""
+        to_close: list[str] = []
+        with self._lock:
+            for (sid, did), sess in list(self._sessions.items()):
+                if did != device_id:
+                    continue
+                if sid != session_id and not sid.startswith(prefix):
+                    continue
+                if target_sid and sid == target_sid:
+                    if sess.input_channel is None and sess.adb_channel is None:
+                        to_close.append(sid)
+                else:
+                    if sess.input_channel is not None or sess.adb_channel is not None:
+                        to_close.append(sid)
+        for sid in to_close:
+            self.close(sid, device_id)
+
     def attach_video(self, sid: str, device_id: str, scrcpy_client: Any) -> None:
         sess = self.get(sid, device_id)
         if sess is None:

@@ -6,6 +6,7 @@ import { computed, nextTick, watch, type Ref } from "vue";
 import {
   api,
   apiErrorMessage,
+  getAuthSessionVersion,
   parseApiError,
   sessionFetch,
   type AppBuild,
@@ -37,19 +38,32 @@ import type { RefreshScope } from "./mcRefreshScopes";
 import * as S from "./mcExecState";
 import type { JobFormSnapshot, JobTemplate } from "./mcExecState";
 import { isDevicelessPlatform, isWebPlatform, stripDevicelessSubmitPayload } from "./runTargetOptions";
-import { filterOrgId } from "./mcProjectsState";
+import { filterOrgId, workspaceScopeVersion } from "./mcProjectsState";
 
 export type ExecDeps = {
   filterProjectId: Ref<string>;
   isPlatformAdmin: { readonly value: boolean };
   listPageSize: number;
-  getRefreshSeq: () => number;
   refreshScopes: (scopes: Iterable<RefreshScope>) => Promise<void>;
   runnerCliFallback: () => string;
   appBuildRetentionDays: () => string;
 };
 
 let d: ExecDeps;
+let runnerRequestId = 0;
+let managedRunnerRequestId = 0;
+let deviceRequestId = 0;
+let jobsRequestId = 0;
+let artifactsRequestId = 0;
+let appBuildsRequestId = 0;
+
+function captureResourceScope() {
+  const workspace = workspaceScopeVersion.value;
+  const userId = sessionUser.value?.id;
+  const authVersion = getAuthSessionVersion();
+  return () => workspace === workspaceScopeVersion.value && userId === sessionUser.value?.id &&
+    authVersion === getAuthSessionVersion();
+}
 
 export function bindExecDeps(deps: ExecDeps): void {
   d = deps;
@@ -83,7 +97,7 @@ export async function onCreateSchedule(ev: Event) {
     S.scheduleForm.project_id.trim() || d.filterProjectId.value.trim();
   if (!pid) {
     S.scheduleMsgOk.value = false;
-    S.scheduleMsg.value = "请先选择项目空间（计划必须归属项目）";
+    S.scheduleMsg.value = "请先选择项目。定时计划必须归属项目。";
     return;
   }
   S.scheduleForm.project_id = pid;
@@ -246,33 +260,43 @@ export async function onDeleteSchedule(id: string) {
 
 export async function refreshRunners() {
   requireDeps();
+  const sameScope = captureResourceScope();
+  const requestId = ++runnerRequestId;
+  const current = () => sameScope() && requestId === runnerRequestId;
   try {
-    S.runners.value = await fetchAllRunners(undefined);
+    const runners = await fetchAllRunners(undefined);
+    if (current()) S.runners.value = runners;
   } catch {
-    S.runners.value = [];
+    if (current()) S.runners.value = [];
   } finally {
     // 失败时也 bump，避免 RunnersPanel 分页表钉死 stale online 态。
-    S.runnersListVersion.value += 1;
+    if (current()) S.runnersListVersion.value += 1;
   }
 }
 
 export async function refreshManagedRunner() {
   requireDeps();
+  const sameScope = captureResourceScope();
+  const requestId = ++managedRunnerRequestId;
+  const current = () => sameScope() && requestId === managedRunnerRequestId;
   if (!d.isPlatformAdmin.value) {
     S.managedRunner.value = null;
     return;
   }
   try {
-    S.managedRunner.value =
-      (await api<ManagedRunnerStatus>("/api/v1/runners/managed?log_lines=30")) || null;
+    const runner = await api<ManagedRunnerStatus>("/api/v1/runners/managed?log_lines=30");
+    if (current()) S.managedRunner.value = runner || null;
   } catch {
     // 非 admin / 功能关闭时静默；按钮区会根据 null / enabled 隐藏
-    S.managedRunner.value = null;
+    if (current()) S.managedRunner.value = null;
   }
 }
 
 export async function refreshDevicesData() {
   requireDeps();
+  const sameScope = captureResourceScope();
+  const requestId = ++deviceRequestId;
+  const current = () => sameScope() && requestId === deviceRequestId;
   try {
     const pid = d.filterProjectId.value.trim();
     const [all, board, dispatch] = await Promise.all([
@@ -280,49 +304,59 @@ export async function refreshDevicesData() {
       fetchDeviceBoard(undefined, { summary_only: true }),
       pid ? fetchAllDevices(pid) : Promise.resolve(null),
     ]);
+    if (!current()) return;
     S.devices.value = all;
     S.dispatchDevices.value = dispatch ?? all;
     S.deviceBoard.value = board ? { summary: board.summary } : null;
   } catch {
+    if (!current()) return;
     S.devices.value = [];
     S.dispatchDevices.value = [];
     S.deviceBoard.value = null;
   } finally {
-    S.devicesVersion.value += 1;
+    if (current()) S.devicesVersion.value += 1;
   }
 }
 
-export async function refreshJobsList(seq: number) {
+export async function refreshJobsList() {
   requireDeps();
+  const sameScope = captureResourceScope();
+  const requestId = ++jobsRequestId;
   const res = await listJobsPage({
     projectId: d.filterProjectId.value.trim() || undefined,
     page: 1,
     pageSize: d.listPageSize,
   });
-  if (seq !== d.getRefreshSeq()) return;
+  if (!sameScope() || requestId !== jobsRequestId) return;
   S.jobs.value = res.items;
+  S.jobsListTotal.value = res.total;
   S.jobsListVersion.value += 1;
 }
 
-export async function refreshReportsList(seq: number) {
+export async function refreshReportsList() {
   requireDeps();
-  if (seq !== d.getRefreshSeq()) return;
   S.reportsListVersion.value += 1;
 }
 
-export async function refreshArtifactsList(seq: number) {
+export async function refreshArtifactsList() {
   requireDeps();
+  const sameScope = captureResourceScope();
+  const requestId = ++artifactsRequestId;
   const pid = d.filterProjectId.value.trim() || undefined;
-  S.artifacts.value = await fetchAllArtifacts(pid);
-  if (seq !== d.getRefreshSeq()) return;
+  const artifacts = await fetchAllArtifacts(pid);
+  if (!sameScope() || requestId !== artifactsRequestId) return;
+  S.artifacts.value = artifacts;
   S.artifactsVersion.value += 1;
 }
 
-export async function refreshAppBuildsList(seq: number) {
+export async function refreshAppBuildsList() {
   requireDeps();
+  const sameScope = captureResourceScope();
+  const requestId = ++appBuildsRequestId;
   const pid = d.filterProjectId.value.trim() || undefined;
-  S.appBuilds.value = await fetchAllAppBuilds(pid);
-  if (seq !== d.getRefreshSeq()) return;
+  const appBuilds = await fetchAllAppBuilds(pid);
+  if (!sameScope() || requestId !== appBuildsRequestId) return;
+  S.appBuilds.value = appBuilds;
   S.appBuildsVersion.value += 1;
 }
 
@@ -807,14 +841,14 @@ export async function onCreateJob(ev: Event) {
   ev.preventDefault();
   if (!S.form.artifact_id.trim() && !S.form.project_dir.trim()) {
     S.jobMsgOk.value = false;
-    S.jobMsg.value = "请填写制品 ID 或 Runner 本地工程路径（至少一项）";
+    S.jobMsg.value = "请选择工程制品或填写执行节点上的路径";
     return;
   }
   const projectId =
     S.form.project_id.trim() || d.filterProjectId.value.trim();
   if (!projectId) {
     S.jobMsgOk.value = false;
-    S.jobMsg.value = "请先选择项目空间（批跑必须归属项目）";
+    S.jobMsg.value = "请先选择项目。批跑必须归属项目。";
     return;
   }
   S.form.project_id = projectId;
@@ -836,13 +870,13 @@ export async function onCreateJob(ev: Event) {
   if (unknown.length) {
     const ok = await confirmDialog(
       `以下 UDID 不在当前在线设备列表中：\n${unknown.join(", ")}\n\n` +
-        "仍可提交，但需对应 Runner 上线且挂载该设备后才能被领取。是否继续？",
+        "仍可提交，但需对应执行节点上线并挂载该设备后才能领取。是否继续？",
     );
     if (!ok) return;
   }
   if (!udids.length && !isDevicelessPlatform(S.form.platform)) {
     const ok = await confirmDialog(
-      "未指定设备时，任意空闲 Runner 均可领取该任务（可能在错误节点执行）。是否继续？",
+      "未指定设备时，任意空闲执行节点都可领取该任务，可能在非预期节点执行。是否继续？",
     );
     if (!ok) return;
   }
@@ -917,54 +951,68 @@ export async function onCreateJob(ev: Event) {
 export async function onUpload(ev: Event) {
   requireDeps();
   ev.preventDefault();
+  if (S.uploadingArtifact.value) return false;
   if (!S.uploadFile.value) {
     S.artMsgOk.value = false;
     S.artMsg.value = "请选择 zip 文件";
-    return;
+    return false;
   }
-  const pid =
-    d.filterProjectId.value.trim() || S.form.project_id.trim();
+  const selectedProject = d.filterProjectId.value.trim();
+  const pid = selectedProject || S.form.project_id.trim();
   if (!pid) {
     S.artMsgOk.value = false;
-    S.artMsg.value = "请先选择项目空间（制品必须归属项目）";
-    return;
+    S.artMsg.value = "请先选择项目。工程制品必须归属项目。";
+    return false;
   }
+  const selectedOrg = filterOrgId.value;
   const fd = new FormData();
   fd.append("file", S.uploadFile.value);
   if (S.uploadName.value.trim()) fd.append("name", S.uploadName.value.trim());
   fd.append("project_id", pid);
+  S.artMsg.value = "";
+  S.uploadingArtifact.value = true;
   try {
     const art = await api<Artifact>("/api/v1/artifacts", { method: "POST", body: fd });
     S.artMsgOk.value = true;
     S.artMsg.value = `已上传 ${art.id}`;
-    S.form.artifact_id = art.id;
+    if (filterOrgId.value === selectedOrg && d.filterProjectId.value.trim() === selectedProject) {
+      S.form.artifact_id = art.id;
+    }
     S.uploadFile.value = null;
     await d.refreshScopes(["artifacts"]);
+    return true;
   } catch (e) {
     S.artMsgOk.value = false;
     S.artMsg.value = apiErrorMessage(e);
+    return false;
+  } finally {
+    S.uploadingArtifact.value = false;
   }
 }
 
 export async function onUploadAppBuild(ev: Event) {
   requireDeps();
   ev.preventDefault();
+  if (S.uploadingAppBuild.value) return false;
   if (!S.appBuildUploadFile.value) {
     S.appBuildMsgOk.value = false;
-    S.appBuildMsg.value = "请选择 apk/ipa 文件";
-    return;
+    S.appBuildMsg.value = "请选择安装包文件";
+    return false;
   }
-  const pid =
-    d.filterProjectId.value.trim() || S.form.project_id.trim();
+  const selectedProject = d.filterProjectId.value.trim();
+  const pid = selectedProject || S.form.project_id.trim();
   if (!pid) {
     S.appBuildMsgOk.value = false;
-    S.appBuildMsg.value = "请先选择项目空间（应用包必须归属项目）";
-    return;
+    S.appBuildMsg.value = "请先选择项目。应用包必须归属项目。";
+    return false;
   }
+  const selectedOrg = filterOrgId.value;
   const fd = new FormData();
   fd.append("file", S.appBuildUploadFile.value);
   if (S.appBuildUploadName.value.trim()) fd.append("name", S.appBuildUploadName.value.trim());
   fd.append("project_id", pid);
+  S.appBuildMsg.value = "";
+  S.uploadingAppBuild.value = true;
   try {
     const build = await api<AppBuild>("/api/v1/app-builds", { method: "POST", body: fd });
     S.appBuildMsgOk.value = true;
@@ -973,12 +1021,18 @@ export async function onUploadAppBuild(ev: Event) {
       : `已上传 ${build.id}${build.version_name ? ` v${build.version_name}` : ""}${
           build.package_id ? ` · ${build.package_id}` : ""
         }`;
-    S.form.app_build_id = build.id;
+    if (filterOrgId.value === selectedOrg && d.filterProjectId.value.trim() === selectedProject) {
+      S.form.app_build_id = build.id;
+    }
     S.appBuildUploadFile.value = null;
     await d.refreshScopes(["app-builds"]);
+    return true;
   } catch (e) {
     S.appBuildMsgOk.value = false;
     S.appBuildMsg.value = apiErrorMessage(e);
+    return false;
+  } finally {
+    S.uploadingAppBuild.value = false;
   }
 }
 
@@ -1114,6 +1168,24 @@ export function clearScheduleEntryPaths() {
 export function installExecFormWatchers(): void {
   if (formWatchersInstalled) return;
   formWatchersInstalled = true;
+  watch(
+    [workspaceScopeVersion, filterOrgId, () => sessionUser.value?.id],
+    ([, orgId, userId], [, previousOrgId, previousUserId]) => {
+      if (orgId !== previousOrgId || userId !== previousUserId) {
+        S.runners.value = [];
+        S.runnersListVersion.value = 0;
+        S.managedRunner.value = null;
+        S.devices.value = [];
+        S.deviceBoard.value = null;
+      }
+      S.dispatchDevices.value = [];
+      S.jobs.value = [];
+      S.jobsListTotal.value = 0;
+      S.artifacts.value = [];
+      S.appBuilds.value = [];
+    },
+    { flush: "sync" },
+  );
   watch(
     () => S.scheduleForm.artifact_id,
     (aid) => {

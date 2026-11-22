@@ -4,7 +4,8 @@ defineOptions({ name: "DesignKnowledgePanel" });
 import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useProjectsStore } from "../../stores/projectsStore";
-import { useShellStore } from "../../stores/shellStore";
+import { workspaceScopeVersion } from "../../composables/mcProjectsState";
+import { useManualPageRefresh } from "../../composables/useManualPageRefresh";
 import { useDebouncedValue } from "../../composables/useDesignListQuery";
 import { confirmDialog } from "../../composables/useNotify";
 import { DEFAULT_PAGE_SIZE } from "../../api/designList";
@@ -24,12 +25,11 @@ import KnowledgeCreateForm from "./KnowledgeCreateForm.vue";
 import KnowledgeEditForm from "./KnowledgeEditForm.vue";
 import KnowledgeImportCard from "./KnowledgeImportCard.vue";
 import KnowledgeListCard from "./KnowledgeListCard.vue";
-import DesignWorkflowBar from "./DesignWorkflowBar.vue";
+import ApModal from "../ApModal.vue";
 import ProjectContextBanner from "./ProjectContextBanner.vue";
 import ProjectReadonlyBanner from "./ProjectReadonlyBanner.vue";
 import { useCapabilities } from "../../composables/useCapabilities";
 
-const shell = useShellStore();
 const projectsStore = useProjectsStore();
 const { filterProjectId } = storeToRefs(projectsStore);
 
@@ -52,6 +52,8 @@ const busy = ref(false);
 const error = ref("");
 const notice = ref("");
 const form = ref<{ clear: () => void } | null>(null);
+const createOpen = ref(false);
+const createError = ref("");
 const importCard = ref<{ clearFiles: () => void } | null>(null);
 const listCard = ref<{ clearSelection: () => void } | null>(null);
 const editing = ref<KnowledgeItem | null>(null);
@@ -63,15 +65,22 @@ const searchBusy = ref(false);
 const searchResults = ref<KnowledgeSearchHit[]>([]);
 const searchEngine = ref("");
 const selectedIds = ref<string[]>([]);
+let listRequestId = 0;
+let searchRequestId = 0;
 
 async function reload() {
+  const projectId = filterProjectId.value.trim();
+  if (!projectId) return;
+  const scope = workspaceScopeVersion.value;
+  const requestId = ++listRequestId;
+  const current = () => scope === workspaceScopeVersion.value && requestId === listRequestId;
   loading.value = true;
   error.value = "";
   try {
     const confirmedFilter =
       confirmed.value === "true" ? true : confirmed.value === "false" ? false : undefined;
     const out = await listKnowledgePage({
-      projectId: filterProjectId.value,
+      projectId,
       q: listQDebounced.value,
       category: category.value || undefined,
       confirmed: confirmedFilter,
@@ -80,6 +89,7 @@ async function reload() {
       page: page.value,
       pageSize: pageSize.value,
     });
+    if (!current()) return;
     items.value = out.items;
     total.value = out.total;
     pageSize.value = out.page_size;
@@ -98,10 +108,12 @@ async function reload() {
     }
     page.value = out.page;
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (current()) error.value = e?.message || String(e);
   } finally {
-    loading.value = false;
-    hasLoaded.value = true;
+    if (current()) {
+      loading.value = false;
+      hasLoaded.value = true;
+    }
   }
 }
 
@@ -126,24 +138,43 @@ watch(pageSize, () => {
   else void reload();
 });
 watch(
-  () => filterProjectId.value,
+  workspaceScopeVersion,
   () => {
+    const pageChanged = page.value !== 1;
     page.value = 1;
+    items.value = [];
+    total.value = 0;
+    loading.value = false;
+    hasLoaded.value = false;
     universeEmpty.value = false;
-    void reload();
+    error.value = "";
+    notice.value = "";
+    createOpen.value = false;
+    createError.value = "";
+    editing.value = null;
+    selectedIds.value = [];
+    listCard.value?.clearSelection();
+    importCard.value?.clearFiles();
+    searchBusy.value = false;
+    searchResults.value = [];
+    searchEngine.value = "";
+    if (!pageChanged) void reload();
   },
 );
 
 async function onSearch() {
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   if (!searchQuery.value.trim()) {
     error.value = "请输入检索关键词";
     return;
   }
+  const scope = workspaceScopeVersion.value;
+  const requestId = ++searchRequestId;
+  const current = () => scope === workspaceScopeVersion.value && requestId === searchRequestId;
   searchBusy.value = true;
   error.value = "";
   try {
@@ -152,19 +183,21 @@ async function onSearch() {
       query: searchQuery.value.trim(),
       score_threshold: searchThreshold.value,
     });
+    if (!current()) return;
     searchResults.value = out.documents || [];
     searchEngine.value = out.engine || "";
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (current()) error.value = e?.message || String(e);
   } finally {
-    searchBusy.value = false;
+    if (current()) searchBusy.value = false;
   }
 }
 
 async function onRebuildIndex() {
+  const scope = workspaceScopeVersion.value;
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   if (
@@ -172,41 +205,47 @@ async function onRebuildIndex() {
       danger: true,
     }))
   ) return;
+  if (scope !== workspaceScopeVersion.value) return;
   busy.value = true;
   error.value = "";
   notice.value = "";
   try {
     const out = await rebuildKnowledgeIndex({ project_id: projectId, clear_all: true });
+    if (scope !== workspaceScopeVersion.value) return;
     notice.value = out.message || `索引重建完成（${out.indexed_count ?? 0} 条）`;
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
 }
 
 async function onBatchDelete() {
-  if (!selectedIds.value.length) {
+  const scope = workspaceScopeVersion.value;
+  const ids = [...selectedIds.value];
+  if (!ids.length) {
     error.value = "请先勾选要删除的知识条目";
     return;
   }
   if (
     !(await confirmDialog(
-      `批量删除 ${selectedIds.value.length} 条知识？此操作不可撤销。`,
+      `批量删除 ${ids.length} 条知识？此操作不可撤销。`,
       { danger: true },
     ))
   ) return;
+  if (scope !== workspaceScopeVersion.value) return;
   busy.value = true;
   error.value = "";
   notice.value = "";
   try {
-    const out = await batchDeleteKnowledge(selectedIds.value);
-    notice.value = out.message || `已删除 ${out.deleted_count ?? selectedIds.value.length} 条`;
+    const out = await batchDeleteKnowledge(ids);
+    if (scope !== workspaceScopeVersion.value) return;
+    notice.value = out.message || `已删除 ${out.deleted_count ?? ids.length} 条`;
     listCard.value?.clearSelection();
     selectedIds.value = [];
     await reload();
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
@@ -218,17 +257,19 @@ async function onCreate(payload: {
   category: string;
   confirmed: boolean;
 }) {
+  if (busy.value) return;
+  const scope = workspaceScopeVersion.value;
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    createError.value = "请先选择项目";
     return;
   }
   if (!payload.title.trim() || !payload.content.trim()) {
-    error.value = "标题与内容不能为空";
+    createError.value = "标题与内容不能为空";
     return;
   }
   busy.value = true;
-  error.value = "";
+  createError.value = "";
   try {
     await createKnowledge({
       project_id: projectId,
@@ -237,10 +278,12 @@ async function onCreate(payload: {
       category: payload.category,
       confirmed: payload.confirmed,
     });
+    if (scope !== workspaceScopeVersion.value) return;
     form.value?.clear();
+    createOpen.value = false;
     await reload();
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) createError.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
@@ -253,6 +296,7 @@ async function onSaveEdit(payload: {
   confirmed: boolean;
 }) {
   if (!editing.value) return;
+  const scope = workspaceScopeVersion.value;
   if (!payload.title.trim()) {
     error.value = "标题不能为空";
     return;
@@ -261,10 +305,11 @@ async function onSaveEdit(payload: {
   error.value = "";
   try {
     await updateKnowledge(editing.value.id, payload);
+    if (scope !== workspaceScopeVersion.value) return;
     editing.value = null;
     await reload();
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
@@ -276,9 +321,10 @@ async function onImport(payload: {
   confirmed: boolean;
   description: string;
 }) {
+  const scope = workspaceScopeVersion.value;
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   if (!payload.files.length) {
@@ -296,6 +342,7 @@ async function onImport(payload: {
       confirmed: payload.confirmed,
       description: payload.description,
     });
+    if (scope !== workspaceScopeVersion.value) return;
     const summary = out.summary || {};
     const failed = Number(summary.failed_count || 0);
     const okFiles = Number(summary.success_count || 0);
@@ -318,32 +365,36 @@ async function onImport(payload: {
       await reload();
     }
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
 }
 
 async function onRemove(item: KnowledgeItem) {
+  const scope = workspaceScopeVersion.value;
   if (
     !(await confirmDialog(`删除知识条目「${item.title}」？`, {
       danger: true,
     }))
   ) return;
+  if (scope !== workspaceScopeVersion.value) return;
   busy.value = true;
   error.value = "";
   try {
     await deleteKnowledge(item.id);
+    if (scope !== workspaceScopeVersion.value) return;
     if (editing.value?.id === item.id) editing.value = null;
     await reload();
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
 }
 
 let _skipActivateReload = false;
+useManualPageRefresh("design-knowledge", reload);
 onMounted(() => {
   _skipActivateReload = true;
   void reload();
@@ -358,55 +409,61 @@ onActivated(() => {
 </script>
 
 <template>
-  <div class="page-stack knowledge-panel">
+  <div class="page-stack data-page knowledge-panel">
     <header class="page-hero">
       <div class="page-hero-copy">
         <h2>知识库</h2>
-        <p class="lede">记下常用规则，生成用例时可以引用。不是必填项。</p>
       </div>
       <div class="page-hero-actions">
-        <button
-          v-if="canEdit"
-          type="button"
-          class="small"
-          :disabled="busy || !!ctx?.missing"
-          @click="onRebuildIndex"
-        >
-          重建索引
-        </button>
-        <button
-          v-if="canEdit"
-          type="button"
-          class="small danger"
-          :disabled="busy || !selectedIds.length"
-          @click="onBatchDelete"
-        >
-          批量删除{{ selectedIds.length ? ` (${selectedIds.length})` : "" }}
-        </button>
         <button type="button" class="ghost small" :disabled="loading || busy" @click="reload">
           刷新
+        </button>
+        <button
+          v-if="canEdit"
+          type="button"
+          class="primary small"
+          :disabled="busy"
+          @click="createError = ''; createOpen = true"
+        >
+          新增知识
         </button>
       </div>
     </header>
 
-    <div v-if="error" class="msg bad">{{ error }}</div>
-    <div v-if="notice" class="msg ok">{{ notice }}</div>
+    <div v-if="error" class="msg bad" role="alert">{{ error }}</div>
+    <div v-if="notice" class="msg ok" role="status">{{ notice }}</div>
 
     <ProjectContextBanner ref="ctx" />
     <ProjectReadonlyBanner />
-    <DesignWorkflowBar page="knowledge" />
+    <KnowledgeListCard
+      ref="listCard"
+      v-model:q="listQ"
+      v-model:category="category"
+      v-model:confirmed="confirmed"
+      v-model:sort-by="sortBy"
+      v-model:order="order"
+      v-model:page="page"
+      v-model:page-size="pageSize"
+      :items="items"
+      :total="total"
+      :loading="loading"
+      :has-loaded="hasLoaded"
+      :busy="busy"
+      :readonly="!canEdit"
+      @edit="editing = $event"
+      @remove="onRemove"
+      @selection-change="selectedIds = $event"
+    >
+      <template v-if="canEdit && selectedIds.length" #bulk-actions>
+        <button type="button" class="small danger" :disabled="busy" @click="onBatchDelete">
+          删除所选（{{ selectedIds.length }}）
+        </button>
+      </template>
+    </KnowledgeListCard>
 
-    <div class="skip-bar">
-      <span class="meta-line">知识库非必填。日常生成请先去意图用例粘贴需求。</span>
-      <button type="button" class="primary small" @click="shell.activeTab = 'design-cases'">
-        跳过，去生成用例
-      </button>
-    </div>
-
-    <details class="fold-card surface-card">
+    <details class="fold-card knowledge-tool">
       <summary class="fold-summary">
         <span>语义检索</span>
-        <span class="fold-hint">向量相似度命中（与下方列表筛选独立）</span>
       </summary>
       <div class="field-stack">
         <div class="inline-fields">
@@ -438,15 +495,23 @@ onActivated(() => {
           </div>
         </div>
         <div v-else-if="searchQuery && !searchBusy" class="empty-state compact">
-          <p class="empty-desc">暂无命中结果，可调低阈值或补充知识条目。</p>
+          <p class="empty-desc">无匹配结果</p>
         </div>
+        <button
+          v-if="canEdit"
+          type="button"
+          class="ghost small index-action"
+          :disabled="busy || !!ctx?.missing"
+          @click="onRebuildIndex"
+        >
+          重建索引
+        </button>
       </div>
     </details>
 
-    <details v-if="canEdit" class="fold-card surface-card">
+    <details v-if="canEdit" class="fold-card knowledge-tool">
       <summary class="fold-summary">
         <span>批量导入</span>
-        <span class="fold-hint">多文件入库，默认折叠避免占满首屏</span>
       </summary>
       <KnowledgeImportCard
         ref="importCard"
@@ -457,32 +522,26 @@ onActivated(() => {
       />
     </details>
 
-    <KnowledgeCreateForm v-if="canEdit && !editing" ref="form" :busy="busy" @create="onCreate" />
+    <ApModal
+      v-if="canEdit && createOpen"
+      title="新增知识"
+      variant="drawer"
+      :close-on-backdrop="false"
+      :close-on-esc="!busy"
+      @close="createOpen = false"
+    >
+      <p v-if="createError" class="msg bad" role="alert">{{ createError }}</p>
+      <KnowledgeCreateForm ref="form" bare :busy="busy" @create="onCreate" />
+      <template #actions>
+        <button type="button" :disabled="busy" @click="createOpen = false">关闭</button>
+      </template>
+    </ApModal>
     <KnowledgeEditForm
       v-if="canEdit"
       :item="editing"
       :busy="busy"
       @save="onSaveEdit"
       @cancel="editing = null"
-    />
-    <KnowledgeListCard
-      ref="listCard"
-      v-model:q="listQ"
-      v-model:category="category"
-      v-model:confirmed="confirmed"
-      v-model:sort-by="sortBy"
-      v-model:order="order"
-      v-model:page="page"
-      v-model:page-size="pageSize"
-      :items="items"
-      :total="total"
-      :loading="loading"
-      :has-loaded="hasLoaded"
-      :busy="busy"
-      :readonly="!canEdit"
-      @edit="editing = $event"
-      @remove="onRemove"
-      @selection-change="selectedIds = $event"
     />
   </div>
 </template>
@@ -492,10 +551,16 @@ onActivated(() => {
   width: 100%;
   min-width: 0;
 }
+.knowledge-tool {
+  border-top: 1px solid var(--line-soft);
+}
+.index-action {
+  align-self: flex-start;
+}
 .msg.bad {
   margin: 0;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--danger-soft-bg);
   border: 1px solid var(--danger-soft-border);
   color: var(--danger-soft-fg);
@@ -504,7 +569,7 @@ onActivated(() => {
 .msg.ok {
   margin: 0;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--ok-soft-bg);
   border: 1px solid var(--ok-soft-border);
   color: var(--ok-soft-fg);
@@ -536,7 +601,7 @@ onActivated(() => {
 .search-hit {
   padding: 0.65rem 0.75rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--chip-bg);
 }
 .hit-head {
@@ -558,16 +623,5 @@ onActivated(() => {
 }
 .empty-state.compact {
   padding: 0.5rem 0;
-}
-.skip-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.65rem 0.85rem;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  background: var(--surface-soft);
 }
 </style>

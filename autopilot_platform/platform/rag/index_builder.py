@@ -22,7 +22,11 @@ def ensure_index_vectors(
     idx = load_index(project_id)
     items: dict[str, Any] = dict(idx.get("items") or {})
     embedder_name = str(getattr(embedder, "name", "") or "")
-    if (idx.get("embedder") or "") != embedder_name:
+    embedder_model = str(getattr(embedder, "model", "") or "")
+    invalidated = (idx.get("embedder") or "") != embedder_name or (
+        bool(embedder_model) and (idx.get("embedder_model") or "") != embedder_model
+    )
+    if invalidated:
         items = {}
 
     need_ids: list[str] = []
@@ -59,7 +63,7 @@ def ensure_index_vectors(
     for dead in [k for k in items if k not in live_ids]:
         items.pop(dead, None)
 
-    dim = int(idx.get("embedding_dim") or 0)
+    dim = 0 if invalidated else int(idx.get("embedding_dim") or 0)
     if need_texts:
         vectors = embedder.embed_texts(need_texts)
         for rid, vec in zip(need_ids, vectors):
@@ -75,6 +79,11 @@ def ensure_index_vectors(
 
     save_index(
         project_id,
-        {"embedder": embedder_name, "embedding_dim": dim, "items": items},
+        {
+            "embedder": embedder_name,
+            "embedder_model": embedder_model,
+            "embedding_dim": dim,
+            "items": items,
+        },
     )
     return {rid: list(info.get("vector") or []) for rid, info in items.items() if info.get("vector")}

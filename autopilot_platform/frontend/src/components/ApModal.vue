@@ -5,7 +5,7 @@
  * 提供 Esc 关闭、点遮罩关闭、焦点陷阱、关闭后归还触发元素焦点、aria 关联。
  * 视觉样式在 styles.css 全局（`.ap-modal*`），因为具名插槽内容属父组件作用域。
  */
-import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref, useId } from "vue";
 
 const props = withDefaults(
   defineProps<{
@@ -17,6 +17,7 @@ const props = withDefaults(
     xwide?: boolean;
     /** 叠在其它 ApModal 之上（如远控内 confirm/prompt） */
     stack?: boolean;
+    variant?: "dialog" | "drawer";
     closeOnBackdrop?: boolean;
     closeOnEsc?: boolean;
   }>(),
@@ -34,8 +35,7 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-let idSeq = 0;
-const uid = `ap-modal-${++idSeq}-${Math.random().toString(36).slice(2, 7)}`;
+const uid = `ap-modal-${useId()}`;
 const titleId = `${uid}-title`;
 const descId = `${uid}-desc`;
 
@@ -100,14 +100,14 @@ onBeforeUnmount(() => {
   <Teleport to="body">
     <div
       class="ap-modal-backdrop"
-      :class="{ stacked: stack }"
+      :class="{ stacked: stack, 'ap-drawer-backdrop': variant === 'drawer' }"
       @click.self="onBackdrop"
       @keydown="onKeydown"
     >
       <div
         ref="card"
         class="ap-modal"
-        :class="{ wide, xwide }"
+        :class="{ wide, xwide, 'ap-drawer': variant === 'drawer' }"
         role="dialog"
         aria-modal="true"
         :aria-labelledby="titleId"
@@ -117,7 +117,7 @@ onBeforeUnmount(() => {
         <h3 :id="titleId" class="ap-modal-title">{{ title }}</h3>
         <p v-if="description" :id="descId" class="ap-modal-body">{{ description }}</p>
         <slot />
-        <div class="ap-modal-actions">
+        <div v-if="$slots.actions" class="ap-modal-actions">
           <slot name="actions" />
         </div>
       </div>

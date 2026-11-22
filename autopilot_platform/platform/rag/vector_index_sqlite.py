@@ -16,6 +16,7 @@ import struct
 import threading
 from pathlib import Path
 from typing import Any, Sequence
+from ..core.settings import data_dir
 
 logger = logging.getLogger(__name__)
 _lock = threading.RLock()
@@ -38,9 +39,6 @@ CREATE TABLE IF NOT EXISTS index_items (
 );
 CREATE INDEX IF NOT EXISTS idx_items_project ON index_items(project_id);
 """
-
-
-from ..core.settings import data_dir
 
 
 def db_path() -> Path:

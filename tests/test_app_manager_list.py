@@ -34,7 +34,7 @@ class _FakeSync:
 def test_list_packages_filters_third_party_and_enriches_version(monkeypatch, app_manager):
     calls: list[str] = []
 
-    def fake_shell(_device_id: str, command: str, _timeout: float = 30.0) -> str:
+    def fake_shell(_device_id: str, command: str, timeout: float = 30.0) -> str:
         calls.append(command)
         if command == "pm list packages -f -3":
             return (
@@ -44,6 +44,7 @@ def test_list_packages_filters_third_party_and_enriches_version(monkeypatch, app
         if command == "pm list packages -f -s":
             return "package:/system/app/sys.apk=com.android.sys"
         if command == "dumpsys package packages":
+            assert timeout == 25.0
             return (
                 "  Package [com.user.app]\n"
                 "    versionName=2.1.0\n"
@@ -73,11 +74,12 @@ def test_list_packages_filters_third_party_and_enriches_version(monkeypatch, app
 def test_list_packages_system_scope(monkeypatch, app_manager):
     calls: list[str] = []
 
-    def fake_shell(_device_id: str, command: str, _timeout: float = 30.0) -> str:
+    def fake_shell(_device_id: str, command: str, timeout: float = 30.0) -> str:
         calls.append(command)
         if command == "pm list packages -f -s":
             return "package:/system/app/sys.apk=com.android.sys"
         if command == "dumpsys package packages":
+            assert timeout == 25.0
             return "  Package [com.android.sys]\n    versionName=14"
         raise AssertionError(f"unexpected shell: {command}")
 

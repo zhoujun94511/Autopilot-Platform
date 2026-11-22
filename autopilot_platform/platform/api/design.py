@@ -52,10 +52,9 @@ from ..services.design.knowledge import importing as knowledge_import_svc
 from ..services.design.requirements import crud as req_svc
 from ..services.design.requirements import importing as req_import_svc
 from ..services.design import test_points as test_points_svc
+from . import design_chat_routes, design_config, design_dashboard
 
 router = APIRouter(tags=["design"])
-
-from . import design_chat_routes, design_config, design_dashboard
 
 router.include_router(design_dashboard.router)
 router.include_router(design_config.router)
@@ -183,6 +182,8 @@ def api_update_requirement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     audit_svc.write_audit_auth(
         db, auth, action="design.requirement.update", resource_type="requirement", resource_id=out.id
     )
@@ -463,6 +464,8 @@ def api_update_logical_case(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     audit_svc.write_audit_auth(
         db,
         auth,
@@ -747,6 +750,8 @@ def api_update_knowledge(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     audit_svc.write_audit_auth(
         db, auth, action="design.knowledge.update", resource_type="knowledge", resource_id=out.id
     )
@@ -981,6 +986,8 @@ def api_analyze_document(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     summary = out.get("summary") or {}
     audit_svc.write_audit_auth(
         db,

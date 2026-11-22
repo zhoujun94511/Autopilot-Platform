@@ -237,7 +237,7 @@ def require_auth(
                 username=row.runner_id,
                 role="runner",
                 runner_id=row.runner_id,
-                org_id=(getattr(row, "org_id", None) or "").strip() or (x_org_id or "").strip(),
+                org_id=(getattr(row, "org_id", None) or "").strip(),
                 project_ids=tuple(getattr(row, "project_ids", None) or ()),
             )
 

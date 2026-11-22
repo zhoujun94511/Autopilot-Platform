@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
+import tempfile
 import threading
 import time
 import uuid
 from dataclasses import replace as dc_replace
-from typing import Optional
+from pathlib import Path
+from typing import Any, Optional
 
 import httpx
 
-from autopilot_platform.core.constants import DEFAULT_API_TOKEN, JobStatus
+from autopilot_platform.core.constants import (
+    DEFAULT_API_TOKEN, JOB_CLAIM_GENERATION_CAPABILITY, JOB_LEASE_HEARTBEAT_CAPABILITY, JobStatus,
+)
 from autopilot_platform.core.schemas import HeartbeatIn, JobResultIn, RunnerRegister
 
 from .client import PlatformClient
@@ -21,6 +26,7 @@ from .device_policy import load_device_policy, sync_exclude_udids, update_device
 from .execute import DEVICE_OFFLINE_ERROR, execute_job
 from .instance_lock import RunnerInstanceBusyError, RunnerInstanceLock
 from .job_slots import JobSlotTracker
+from .pending_results import result_directory, stage_result
 
 _HTTP_ERRS = (
     OSError,
@@ -62,11 +68,13 @@ def _upload_report_bundle(
     report_path: str,
     *,
     attempts: int = 3,
+    claimed_at=None,
 ) -> bool:
     """上传 report.html 与 result.json（若存在）；evidence.zip 尽力而为。"""
     if not report_path or not os.path.isfile(report_path):
         return False
     report_dir = os.path.dirname(os.path.abspath(report_path))
+    claim = {"claimed_at": claimed_at} if claimed_at else {}
 
     def _retry(label: str, fn) -> bool:
         last: BaseException | None = None
@@ -86,7 +94,7 @@ def _upload_report_bundle(
         return False
 
     t_up = time.monotonic()
-    html_ok = _retry("report", lambda: client.upload_report(job_id, runner_id, report_path))
+    html_ok = _retry("report", lambda: client.upload_report(job_id, runner_id, report_path, **claim))
     if html_ok:
         print(
             f"[runner] upload report job={job_id} ({time.monotonic() - t_up:.2f}s)",
@@ -97,7 +105,7 @@ def _upload_report_bundle(
     if os.path.isfile(result_json):
         json_ok = _retry(
             "result.json",
-            lambda: client.upload_result_json(job_id, runner_id, result_json),
+            lambda: client.upload_result_json(job_id, runner_id, result_json, **claim),
         )
         if json_ok:
             print(f"[runner] upload result.json job={job_id}", flush=True)
@@ -105,7 +113,7 @@ def _upload_report_bundle(
     if os.path.isfile(evidence_zip):
         if _retry(
             "evidence.zip",
-            lambda: client.upload_evidence_zip(job_id, runner_id, evidence_zip),
+            lambda: client.upload_evidence_zip(job_id, runner_id, evidence_zip, **claim),
         ):
             print(f"[runner] upload evidence.zip job={job_id}", flush=True)
     return bool(html_ok and json_ok)
@@ -127,11 +135,14 @@ class RunnerAgent:
         self.poll_interval = max(0.5, float(poll_interval))
         self.hostname = hostname or socket.gethostname()
         self._slots = JobSlotTracker()
+        self._result_directory = result_directory(server, self.runner_id)
         self._cancel: dict[str, threading.Event] = {}
+        self._job_claim_generations: dict[str, str] = {}
         self._job_udids: dict[str, list[str]] = {}
         self._offline_jobs: set[str] = set()
         self._job_threads: dict[str, threading.Thread] = {}
         self._hb_guard = threading.Lock()
+        self._state_lock = threading.RLock()
         self._hb_stop = threading.Event()
         self._hb_thread: Optional[threading.Thread] = None
         self._hb_client = None
@@ -142,17 +153,20 @@ class RunnerAgent:
         self._device_policy = load_device_policy(self.runner_id)
 
     def _heartbeat_once(self, client: PlatformClient) -> None:
-        self._device_policy = sync_exclude_udids(self.runner_id, self._device_policy)
+        with self._state_lock:
+            policy = sync_exclude_udids(self.runner_id, self._device_policy)
+            self._device_policy = policy
         inventory = list_local_devices()
-        devices = self._device_policy.filter(inventory)
+        devices = policy.filter(inventory)
         caps, host_backends = probe_host_capabilities()
         body = HeartbeatIn(
             runner_id=self.runner_id,
             devices=devices,
             inventory=inventory,
-            policy_revision=self._device_policy.revision,
-            capabilities=caps,
+            policy_revision=policy.revision,
+            capabilities=[*caps, JOB_CLAIM_GENERATION_CAPABILITY, JOB_LEASE_HEARTBEAT_CAPABILITY],
             host_backends=host_backends,
+            active_job_ids=self._slots.job_ids(),
         )
         try:
             response = client.heartbeat(body)
@@ -239,36 +253,51 @@ class RunnerAgent:
         for jid, ev in items:
             if ev is None or ev.is_set():
                 continue
+            claimed_at = self._job_claim_generations.get(jid)
             try:
                 job = client.get_job(jid)
             except (*_HTTP_ERRS,) as exc:
                 print(f"[runner] cancel-poll: {exc}", flush=True)
                 continue
+            if self._cancel.get(jid) is not ev:
+                continue
             st = job.status
-            val = st.value if isinstance(st, JobStatus) else str(st)
+            val = getattr(st, "value", st)
             if val == JobStatus.CANCELLED.value:
                 ev.set()
                 print(f"[runner] job {jid} cancelled remotely; signaling stop", flush=True)
+            elif claimed_at and (
+                job.runner_id != self.runner_id
+                or job.claimed_at != claimed_at
+                or val not in (JobStatus.CLAIMED.value, JobStatus.RUNNING.value)
+            ):
+                ev.set()
+                print(f"[runner] job {jid} claim is no longer active; signaling stop", flush=True)
 
-    def _ensure_exec_heartbeat(self, client: PlatformClient) -> None:
+    def _ensure_exec_heartbeat(self) -> None:
         with self._hb_guard:
             if self._hb_thread is not None and self._hb_thread.is_alive():
                 return
-            self._hb_client = client
+            # 心跳线程使用独立的 PlatformClient（底层 httpx.Client 非线程安全）
+            hb_client = PlatformClient(self.server, self.token)
+            self._hb_client = hb_client
             self._hb_stop.clear()
 
             def _loop() -> None:
-                hb_client = self._hb_client
-                while not self._hb_stop.wait(self.poll_interval):
-                    if hb_client is None:
-                        break
+                try:
+                    while not self._hb_stop.wait(self.poll_interval):
+                        try:
+                            self._heartbeat_once(hb_client)
+                            self._signal_missing_devices()
+                            self._sync_remote_sessions(hb_client)
+                            self._poll_cancel(hb_client)
+                        except (*_HTTP_ERRS,) as exc:
+                            print(f"[runner] exec-heartbeat: {exc}", flush=True)
+                finally:
                     try:
-                        self._heartbeat_once(hb_client)
-                        self._signal_missing_devices()
-                        self._sync_remote_sessions(hb_client)
-                        self._poll_cancel(hb_client)
-                    except (*_HTTP_ERRS,) as exc:
-                        print(f"[runner] exec-heartbeat: {exc}", flush=True)
+                        hb_client.close()
+                    except (OSError, RuntimeError):
+                        pass
 
             self._hb_thread = threading.Thread(
                 target=_loop, name=f"runner-hb-{self.runner_id}", daemon=True
@@ -293,37 +322,113 @@ class RunnerAgent:
             if th is not None:
                 th.join(timeout=0.1)
 
-    def _fail_claimed(self, client: PlatformClient, job_id: str, error: str) -> None:
+    def _submit_result(
+        self, client: PlatformClient, job_id: str, result: Any, *, claimed_at=None,
+        cleanup_report: str = "",
+    ) -> None:
+        body = result.to_dict() if hasattr(result, "to_dict") else result.model_dump(mode="json")
+        claim_time = claimed_at.isoformat() if hasattr(claimed_at, "isoformat") else claimed_at
         try:
-            client.complete(
+            pending = stage_result(self._result_directory, job_id, claim_time, {
+                "job_id": job_id,
+                "claimed_at": claim_time,
+                "result": body,
+                "cleanup_report": cleanup_report,
+            })
+        except OSError as exc:
+            print(f"[runner] could not persist result for {job_id}: {exc}", flush=True)
+            client.complete(job_id, self.runner_id, result, **({"claimed_at": claimed_at} if claimed_at else {}))
+            self._cleanup_uploaded_report(cleanup_report)
+            return
+        self._deliver_result(client, pending, result, job_id, claim_time, cleanup_report)
+
+    @staticmethod
+    def _cleanup_uploaded_report(report_path: str) -> None:
+        if report_path:
+            import shutil
+
+            parent = Path(report_path).resolve().parent
+            if parent.parent == Path(tempfile.gettempdir()).resolve() and parent.name.startswith("mc-report-"):
+                shutil.rmtree(parent, ignore_errors=True)
+
+    def _deliver_result(
+        self, client: PlatformClient, path: Path, result, job_id: str,
+        claimed_at: str | None, cleanup_report: str,
+    ) -> None:
+        claim = {"claimed_at": claimed_at} if claimed_at else {}
+        try:
+            client.complete(job_id, self.runner_id, result, **claim)
+        except httpx.HTTPStatusError as exc:
+            if _http_status_code(exc) not in (400, 403, 404, 409, 422):
+                print(f"[runner] result pending for {job_id}: {exc}", flush=True)
+                return
+            # Preserve rejected results for diagnostics without retrying a stale claim.
+            path.replace(path.with_suffix(".rejected"))
+            print(f"[runner] result rejected for {job_id}: {exc}", flush=True)
+            return
+        except (httpx.RequestError, OSError) as exc:
+            print(f"[runner] result pending for {job_id}: {exc}", flush=True)
+            return
+        path.unlink(missing_ok=True)
+        self._cleanup_uploaded_report(cleanup_report)
+
+    def _retry_pending_results(self, client: PlatformClient) -> None:
+        active = set(self._slots.job_ids())
+        for path in self._result_directory.glob("*.json"):
+            try:
+                pending = json.loads(path.read_text(encoding="utf-8"))
+                job_id = str(pending["job_id"])
+                result = JobResultIn.model_validate(pending["result"])
+                claimed_at = pending.get("claimed_at")
+                cleanup_report = str(pending.get("cleanup_report") or "")
+            except (OSError, ValueError, KeyError, TypeError) as exc:
+                print(f"[runner] invalid pending result {path.name}: {exc}", flush=True)
+                continue
+            if job_id not in active:
+                self._deliver_result(client, path, result, job_id, claimed_at, cleanup_report)
+
+    def _fail_claimed(self, client: PlatformClient, job_id: str, error: str, *, claimed_at=None) -> None:
+        try:
+            self._submit_result(
+                client,
                 job_id,
-                self.runner_id,
                 JobResultIn(
                     status=JobStatus.FAILED,
                     error=error,
                     log=f"[mc] {error}\n",
                 ),
+                claimed_at=claimed_at,
             )
         except (*_HTTP_ERRS,) as exc:
             print(f"[runner] complete failed for {job_id}: {exc}", flush=True)
 
-    def _nack_claimed(self, client: PlatformClient, job_id: str, reason: str) -> None:
+    def _nack_claimed(self, client: PlatformClient, job_id: str, reason: str, *, claimed_at=None) -> None:
         try:
-            client.nack(job_id, self.runner_id, reason=reason)
+            claim = {"claimed_at": claimed_at} if claimed_at else {}
+            client.nack(job_id, self.runner_id, reason=reason, **claim)
         except (*_HTTP_ERRS,) as exc:
             print(f"[runner] nack failed for {job_id}: {exc}", flush=True)
 
     def _run_claimed_job(self, job, cancel_ev: threading.Event) -> None:
+        claimed_at = getattr(job, "claimed_at", None)
+        claim = {"claimed_at": claimed_at} if claimed_at else {}
         with PlatformClient(self.server, self.token) as client:
             try:
                 try:
-                    client.mark_running(job.id, self.runner_id)
+                    client.mark_running(job.id, self.runner_id, **claim)
                 except (*_HTTP_ERRS, PermissionError) as exc:
                     print(f"[runner] skip job {job.id}: {exc}", flush=True)
-                    self._fail_claimed(client, job.id, f"标记运行失败：{exc}")
+                    self._fail_claimed(client, job.id, f"标记运行失败：{exc}", claimed_at=claimed_at)
                     return
                 t_exec = time.monotonic()
-                result = execute_job(job, client, cancel_event=cancel_ev)
+                try:
+                    result = execute_job(job, client, cancel_event=cancel_ev)
+                except Exception as exc:  # noqa: BLE001 — 防止执行线程未交卷崩溃导致任务卡死
+                    print(f"[runner] execute job={job.id} crashed: {exc}", flush=True)
+                    self._fail_claimed(
+                        client, job.id, f"执行器异常：{exc}", claimed_at=claimed_at
+                    )
+                    return
                 print(
                     f"[runner] execute job={job.id} status={result.status} "
                     f"({time.monotonic() - t_exec:.2f}s)",
@@ -343,7 +448,7 @@ class RunnerAgent:
                 try:
                     if report_path:
                         report_uploaded = _upload_report_bundle(
-                            client, job.id, self.runner_id, report_path
+                            client, job.id, self.runner_id, report_path, **claim
                         )
                 except (*_HTTP_ERRS,) as exc:
                     print(
@@ -367,27 +472,20 @@ class RunnerAgent:
                         error=merged,
                         log=(result.log or "") + f"\n[runner] {note}\n",
                     )
-                t_done = time.monotonic()
-                client.complete(job.id, self.runner_id, result)
-                print(
-                    f"[runner] complete job={job.id} ({time.monotonic() - t_done:.2f}s)",
-                    flush=True,
+                self._submit_result(
+                    client, job.id, result, claimed_at=claimed_at,
+                    cleanup_report=report_path if report_uploaded else "",
                 )
-                if report_uploaded:
-                    import shutil
-
-                    parent = os.path.dirname(os.path.abspath(report_path))
-                    base = os.path.basename(parent)
-                    if base.startswith("mc-report-") and os.path.isdir(parent):
-                        shutil.rmtree(parent, ignore_errors=True)
             finally:
                 self._cancel.pop(job.id, None)
+                self._job_claim_generations.pop(job.id, None)
                 self._job_udids.pop(job.id, None)
                 self._offline_jobs.discard(job.id)
                 self._slots.release(job.id)
                 self._maybe_stop_exec_heartbeat()
 
     def run_once(self, client: PlatformClient) -> bool:
+        self._retry_pending_results(client)
         self._heartbeat_once(client)
         self._ensure_remote_sync()
         self._sync_remote_sessions(client)
@@ -406,14 +504,17 @@ class RunnerAgent:
         reason = self._slots.try_reserve(job.id, list(getattr(job, "device_udids", None) or []))
         if reason:
             print(f"[runner] reject job={job.id}: {reason}", flush=True)
-            self._nack_claimed(client, job.id, f"本机设备槽位冲突：{reason}")
+            self._nack_claimed(client, job.id, f"本机设备槽位冲突：{reason}", claimed_at=getattr(job, "claimed_at", None))
             return True
         cancel_ev = threading.Event()
-        self._cancel[job.id] = cancel_ev
-        self._job_udids[job.id] = [
-            str(u).strip() for u in (getattr(job, "device_udids", None) or []) if str(u).strip()
-        ]
-        self._ensure_exec_heartbeat(client)
+        with self._state_lock:
+            if claim_time := getattr(job, "claimed_at", None):
+                self._job_claim_generations[job.id] = claim_time
+            self._cancel[job.id] = cancel_ev
+            self._job_udids[job.id] = [
+                str(u).strip() for u in (getattr(job, "device_udids", None) or []) if str(u).strip()
+            ]
+        self._ensure_exec_heartbeat()
         th = threading.Thread(
             target=self._run_claimed_job,
             args=(job, cancel_ev),
@@ -436,7 +537,7 @@ class RunnerAgent:
                 runner_id=self.runner_id,
                 hostname=self.hostname,
                 version=ver,
-                capabilities=caps,
+                capabilities=[*caps, JOB_CLAIM_GENERATION_CAPABILITY, JOB_LEASE_HEARTBEAT_CAPABILITY],
                 host_backends=host_backends,
                 registration_source="platform",
             )

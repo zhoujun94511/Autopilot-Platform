@@ -232,6 +232,10 @@ let refreshInFlight: Promise<boolean> | null = null;
 /** 会话世代：登录/清会话时递增，用于忽略过期的 in-flight refresh。 */
 let refreshEpoch = 0;
 
+export function getAuthSessionVersion(): number {
+  return refreshEpoch;
+}
+
 export function clearSession(): void {
   // 作废进行中的 refresh，避免失败回调冲掉后续登录写入的新会话
   refreshEpoch += 1;
@@ -405,6 +409,7 @@ export async function tryRefreshSession(): Promise<boolean> {
 }
 
 export async function postLogout(): Promise<void> {
+  const authVersion = getAuthSessionVersion();
   const rt = loadRefresh();
   try {
     if (hasRefreshSession()) {
@@ -418,7 +423,7 @@ export async function postLogout(): Promise<void> {
   } catch {
     /* ignore */
   } finally {
-    clearSession();
+    if (authVersion === getAuthSessionVersion()) clearSession();
   }
 }
 
@@ -428,8 +433,10 @@ export async function sessionFetch(
   options: RequestInit = {},
   retried = false,
 ): Promise<Response> {
+  const authVersion = getAuthSessionVersion();
   if (!retried && hasRefreshSession() && accessTokenNeedsRefresh(loadJwt())) {
     await ensureFreshSession();
+    if (authVersion !== getAuthSessionVersion()) throw new ApiHttpError(401, "会话已失效");
   }
   const headers = new Headers(options.headers || {});
   const bearer = loadJwt();
@@ -437,7 +444,9 @@ export async function sessionFetch(
   const orgId = loadOrgId();
   if (orgId && bearer) headers.set("X-Org-Id", orgId);
   const res = await fetch(resolveApiPath(path), { ...options, headers });
-  if (res.status === 401 && !retried && hasRefreshSession() && (await tryRefreshSession())) {
+  if (res.status === 401 && !retried && authVersion === getAuthSessionVersion() &&
+      hasRefreshSession() && (await tryRefreshSession()) &&
+      authVersion === getAuthSessionVersion()) {
     return sessionFetch(path, options, true);
   }
   return res;
@@ -452,6 +461,7 @@ export async function api<T>(
     _retried?: boolean;
   } = {},
 ): Promise<T> {
+  const authVersion = getAuthSessionVersion();
   const headers = new Headers(options.headers || {});
   // 未显式指定 bearer 时：过期/非 access typ 先单飞换票，再带新 JWT 发请求
   if (
@@ -464,6 +474,7 @@ export async function api<T>(
     !path.includes("/auth/logout")
   ) {
     await ensureFreshSession();
+    if (authVersion !== getAuthSessionVersion()) throw new ApiHttpError(401, "会话已失效");
   }
   const bearer = options.bearer ?? loadJwt();
   if (bearer) {
@@ -484,6 +495,7 @@ export async function api<T>(
   if (
     res.status === 401 &&
     !options._retried &&
+    authVersion === getAuthSessionVersion() &&
     options.bearer === undefined &&
     hasRefreshSession() &&
     !path.includes("/auth/login") &&
@@ -491,7 +503,7 @@ export async function api<T>(
     !path.includes("/auth/logout")
   ) {
     const ok = await tryRefreshSession();
-    if (ok) {
+    if (ok && authVersion === getAuthSessionVersion()) {
       return api<T>(path, { ...options, _retried: true });
     }
   }
@@ -695,6 +707,8 @@ export type Job = {
   web_engine?: string;
   runner_id: string | null;
   parent_job_id?: string | null;
+  created_at?: string | null;
+  error?: string | null;
   webhook_url?: string;
   /** enqueue / 创建 Job 软提示（缺 Binding 等），不影响入队成功 */
   warnings?: string[];

@@ -10,11 +10,12 @@ from autopilot_platform.platform.design.design_models import LogicalCaseRow, new
 from autopilot_platform.platform.design.design_schemas import LogicalCaseCreate, LogicalCaseOut, LogicalCaseUpdate
 from autopilot_platform.platform.core.models import db_get
 from autopilot_platform.platform.services.shared.pagination import apply_sort, clamp_page, paginate, sort_column
-_CASE_SORT = {'updated_at': LogicalCaseRow.updated_at, 'created_at': LogicalCaseRow.created_at, 'title': LogicalCaseRow.title, 'priority': LogicalCaseRow.priority}
 from autopilot_platform.platform.services.shared.actors import actor as _actor
 from autopilot_platform.platform.services.design.cases.mapping import _case_out, _ensure_intent_steps
 from autopilot_platform.platform.services.design.cases.webhooks import _fire_approved_webhook
 from autopilot_platform.platform.services.design import access as design_access
+
+_CASE_SORT = {'updated_at': LogicalCaseRow.updated_at, 'created_at': LogicalCaseRow.created_at, 'title': LogicalCaseRow.title, 'priority': LogicalCaseRow.priority}
 
 def create_logical_case(db: Session, body: LogicalCaseCreate, auth: AuthContext) -> LogicalCaseOut:
     if not body.logical_steps and (not body.intent_steps):

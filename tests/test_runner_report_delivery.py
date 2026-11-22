@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import threading
 import zipfile
+from dataclasses import replace
+from types import SimpleNamespace
 from io import BytesIO
 from typing import cast
 
@@ -58,6 +61,8 @@ class _Client:
 
 
 def _run_with_report(tmp_path, monkeypatch, *, fail_upload: bool, cancelled: bool = False):
+    monkeypatch.setenv("MC_RUNNER_STATE_DIR", str(tmp_path / "runner-state"))
+    monkeypatch.setattr(agent_module.tempfile, "gettempdir", lambda: str(tmp_path))
     report_dir = tmp_path / "mc-report-delivery"
     report_dir.mkdir()
     report_path = report_dir / "report.html"
@@ -125,3 +130,74 @@ def test_platform_runner_uploads_partial_report_when_cancelled(tmp_path, monkeyp
     )
     assert client.calls == ["running", "report", "result", "evidence", "complete"]
     assert not report_dir.exists()
+
+
+def test_runner_replays_persisted_result_after_transport_failure(tmp_path, monkeypatch):
+    monkeypatch.setenv("MC_RUNNER_STATE_DIR", str(tmp_path))
+    claim_time = "2026-11-22T01:02:03Z"
+    calls = []
+
+    class Client:
+        def complete(self, job_id, runner_id, result, *, claimed_at):
+            calls.append((job_id, runner_id, result.status.value, claimed_at))
+            if len(calls) == 1:
+                raise OSError("connection interrupted")
+
+    client = cast(PlatformClient, Client())
+    first = RunnerAgent("http://platform", runner_id="runner-1")
+    first._submit_result(client, "job-1", JobResultIn(status=JobStatus.SUCCEEDED), claimed_at=claim_time)
+    assert len(list(tmp_path.rglob("*.json"))) == 1
+
+    restarted = RunnerAgent("http://platform", runner_id="runner-1")
+    restarted._retry_pending_results(client)
+    restarted._retry_pending_results(client)
+    assert calls == [("job-1", "runner-1", "succeeded", claim_time)] * 2
+    assert not list(tmp_path.rglob("*.json"))
+
+
+def test_runner_stops_when_the_server_reassigns_its_claim(monkeypatch):
+    monkeypatch.setattr(agent_module, "load_device_policy", lambda _runner_id: None)
+    runner = RunnerAgent("http://platform", runner_id="runner-1")
+    claim = JobOut(
+        id="job-1", name="job", status=JobStatus.RUNNING,
+        runner_id=runner.runner_id, claimed_at="2026-11-22T01:02:03Z",
+    )
+    stop = threading.Event()
+    runner._cancel[claim.id] = stop
+    runner._job_claim_generations[claim.id] = claim.claimed_at
+    runner._poll_cancel(cast(PlatformClient, SimpleNamespace(get_job=lambda _jid: claim)))
+    assert not stop.is_set()
+
+    reassigned = replace(claim, claimed_at="2026-11-22T01:03:03Z")
+    runner._poll_cancel(cast(PlatformClient, SimpleNamespace(get_job=lambda _jid: reassigned)))
+    assert stop.is_set()
+
+
+def test_structured_report_failure_preserves_html(tmp_path, monkeypatch):
+    from autopilot_platform.ap import engine, report
+    from autopilot_platform.ap.report import result_json
+    from autopilot_platform.runner import execute
+
+    project = tmp_path / "project"
+    project.mkdir()
+    monkeypatch.setattr(execute.tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(engine, "run_project_directory", lambda *_a, **_k: SimpleNamespace(
+        name="suite", duration_ms=2, case_counts=lambda: {"passed": 1, "failed": 0, "total": 1},
+    ))
+    monkeypatch.setattr(report, "write_report", lambda _suite, path, **_k: open(
+        path, "w", encoding="utf-8",
+    ).close())
+    monkeypatch.setattr(result_json, "cases_from_suite", lambda *_a, **_k: [])
+
+    def fail_json(*_args, **_kwargs):
+        raise OSError("structured report writer failed")
+
+    monkeypatch.setattr(result_json, "write_result_json", fail_json)
+    result = execute.execute_job(JobOut(
+        id="job-2", name="example", status=JobStatus.CLAIMED, project_dir=str(project),
+        platform="http",
+    ))
+    assert result.status == JobStatus.FAILED
+    assert "result.json" in (result.error or "")
+    assert result.report is not None
+    assert (tmp_path / result.report.report_path).is_file()

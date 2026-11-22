@@ -443,6 +443,7 @@ class HeartbeatIn(BaseModel):
     # 可选：心跳刷新本机能力；空列表表示保持注册时的 capabilities。
     capabilities: list[str] = Field(default_factory=list)
     host_backends: list[str] = Field(default_factory=list)
+    active_job_ids: list[str] | None = Field(default=None, max_length=1024)
 
 
 class ArtifactEntryOut(BaseModel):
@@ -543,6 +544,7 @@ class JobOut(BaseModel):
     depends_on: list[str] = Field(default_factory=list)
     created_by: str = ""
     created_at: Optional[datetime] = None
+    claimed_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     # enqueue / 创建 Job 时可附带软提示（缺 Binding 等）；不影响入队成功
     warnings: list[str] = Field(default_factory=list)

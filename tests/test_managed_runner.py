@@ -117,8 +117,19 @@ def test_allow_managed_runner_defaults(monkeypatch):
     assert allow_managed_runner() is False
 
 
+def test_allow_managed_runner_dev_lan_only_outside_production(monkeypatch):
+    monkeypatch.setenv("MC_ALLOW_MANAGED_RUNNER", "1")
+    monkeypatch.setenv("MC_DEV_LAN_MANAGED_RUNNER", "1")
+    monkeypatch.setenv("MC_HOST", "0.0.0.0")
+    monkeypatch.delenv("MC_ENV", raising=False)
+    assert allow_managed_runner() is True
+    monkeypatch.setenv("MC_ENV", "production")
+    assert allow_managed_runner() is False
+
+
 def test_allow_managed_runner_exposed_bind_denied(monkeypatch):
     monkeypatch.setenv("MC_ALLOW_MANAGED_RUNNER", "1")
+    monkeypatch.delenv("MC_DEV_LAN_MANAGED_RUNNER", raising=False)
     monkeypatch.delenv("MC_ENV", raising=False)
     monkeypatch.setenv("MC_HOST", "0.0.0.0")
     assert allow_managed_runner() is False

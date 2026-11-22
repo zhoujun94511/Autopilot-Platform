@@ -6,11 +6,11 @@ import json
 import secrets
 from typing import cast
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from autopilot_platform.core.constants import DEVICE_STATE_OFFLINE
+from autopilot_platform.core.constants import DEVICE_STATE_OFFLINE, JOB_LEASE_HEARTBEAT_CAPABILITY, JobStatus
 from autopilot_platform.core.schemas import (
     DeviceInfo,
     HeartbeatIn,
@@ -77,11 +77,23 @@ def register_runner(
 def heartbeat(db: Session, body: HeartbeatIn) -> RunnerOut:
     """刷新已登记节点的设备列表。未登记不建节点，避免把本机设备心跳成平台共享。"""
 
-    expire_reservations(db)
     row = db_get(db, RunnerRow, body.runner_id)
     if row is None:
         raise LookupError("runner not registered")
     now = utcnow()
+    # Job transitions lock job rows before touching device rows.
+    if body.active_job_ids:
+        db.execute(
+            update(JobRow)
+            .where(
+                JobRow.id.in_(body.active_job_ids),
+                JobRow.runner_id == row.runner_id,
+                JobRow.status.in_((JobStatus.CLAIMED.value, JobStatus.RUNNING.value)),
+                JobRow.updated_at < now,
+            )
+            .values(updated_at=now)
+        )
+    expire_reservations(db, commit=False)
     row.last_heartbeat_at = now
 
     caps = list(body.capabilities or [])
@@ -101,8 +113,11 @@ def heartbeat(db: Session, body: HeartbeatIn) -> RunnerOut:
     if (row.device_selection_mode or "all") == "include":
         # 服务端再次执行 allowlist，避免客户端异常上报把未选设备写回 TR 池。
         reported_devices = [d for d in reported_devices if (d.udid or "").strip() in selected]
-        # Runner 本地策略未同步时可能上报空 devices；用 inventory ∩ allowlist 保活 TR 池。
-        if selected:
+        # Runner 本地策略尚未同步到最新 revision 时可能上报空 devices；仅在 revision 落后时用 inventory ∩ allowlist 保活，
+        # 已同步后若某台设备仍不在 body.devices，说明被 IDE 本地 exclude_udids 主动排除，不得强行复活。
+        runner_rev = int(getattr(body, "policy_revision", 0) or 0)
+        server_rev = int(getattr(row, "device_policy_revision", 0) or 0)
+        if selected and runner_rev < server_rev:
             reported_udids = {
                 str(getattr(d, "udid", "") or "").strip() for d in reported_devices
             }
@@ -125,6 +140,8 @@ def heartbeat(db: Session, body: HeartbeatIn) -> RunnerOut:
     # 先 flush，使本心跳新建的 DeviceRow 参与多 Runner 冲突查询
     db.flush()
     reconcile_multi_runner_udids(db, runner_id=row.runner_id, seen_udids=seen, now=now)
+    if body.active_job_ids is not None and JOB_LEASE_HEARTBEAT_CAPABILITY not in row.capabilities:
+        row.capabilities = [*row.capabilities, JOB_LEASE_HEARTBEAT_CAPABILITY]
 
     db.commit()
     db.refresh(row)

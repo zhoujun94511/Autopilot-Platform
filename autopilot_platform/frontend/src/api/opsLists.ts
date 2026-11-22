@@ -2,6 +2,7 @@
 
 import {
   api,
+  getAuthSessionVersion,
   type AppBuild,
   type Artifact,
   type AuditLog,
@@ -79,11 +80,13 @@ async function fetchAllPages<T>(
   path: string,
   extra?: Record<string, string | number | undefined>,
 ): Promise<T[]> {
+  const authVersion = getAuthSessionVersion();
   const all: T[] = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const raw = await api<PagedResult<T>>(
       `${path}${qs({ ...extra, page, page_size: PAGE_SIZE })}`,
     );
+    if (authVersion !== getAuthSessionVersion()) return [];
     const res = normalizePagedResult(raw, page, PAGE_SIZE);
     all.push(...res.items);
     if (res.items.length < res.page_size || all.length >= res.total) break;

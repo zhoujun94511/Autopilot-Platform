@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 from typing import Any
 
 from .settings import log_format, log_level, platform_logs_root
@@ -53,9 +55,27 @@ def _line_formatter() -> logging.Formatter:
     return logging.Formatter(_TEXT_LINE_FORMAT, _LOG_TIME_FORMAT)
 
 
+def _prune_old_platform_logs(directory: Path, *, keep_days: int = 14) -> None:
+    """清理超过保留天数的 platform_*.log* 历史日志文件。"""
+    import time
+
+    if keep_days <= 0:
+        return
+    cutoff = time.time() - keep_days * 86400
+    for p in directory.glob("platform_*.log*"):
+        if not p.is_file():
+            continue
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def setup_platform_logging(*, force: bool = False) -> str:
-    """幂等装配 ``autopilot_platform`` 根 logger；返回当日日志文件路径。"""
+    """装配根 logger；在进程启动或单元测试重建时调用。"""
     global _configured, _logfile
+
     if _configured and not force:
         return _logfile
 
@@ -71,27 +91,36 @@ def setup_platform_logging(*, force: bool = False) -> str:
             except OSError:
                 pass
         _configured = False
+        _logfile = ""
 
     if _configured:
         return _logfile
 
     level = log_level()
     formatter = _line_formatter()
+    stdout_only = os.environ.get("MC_LOG_TO_STDOUT_ONLY", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
 
-    try:
-        directory = platform_logs_root()
-        _logfile = str(directory / f"platform_{datetime.now():%Y%m%d}.log")
-        fh = RotatingFileHandler(
-            _logfile,
-            maxBytes=5_000_000,
-            backupCount=7,
-            encoding="utf-8",
-        )
-        fh.setLevel(logging.DEBUG)
-        fh.setFormatter(formatter)
-        root.addHandler(fh)
-    except OSError:
-        _logfile = ""
+    if not stdout_only:
+        try:
+            directory = platform_logs_root()
+            keep_days = max(1, int(os.environ.get("MC_PLATFORM_LOG_RETENTION_DAYS", "14") or 14))
+            _prune_old_platform_logs(directory, keep_days=keep_days)
+            _logfile = str(directory / f"platform_{datetime.now():%Y%m%d}.log")
+            fh = RotatingFileHandler(
+                _logfile,
+                maxBytes=5_000_000,
+                backupCount=7,
+                encoding="utf-8",
+            )
+            fh.setLevel(logging.DEBUG)
+            fh.setFormatter(formatter)
+            root.addHandler(fh)
+        except (OSError, ValueError):
+            _logfile = ""
 
     sh = logging.StreamHandler(sys.stderr)
     sh.setLevel(level)

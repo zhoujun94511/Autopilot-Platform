@@ -18,6 +18,8 @@ from .job_platforms import (
 )
 
 API_V1_PREFIX = "/api/v1"
+JOB_CLAIM_GENERATION_CAPABILITY = "job-claim-generation-v1"
+JOB_LEASE_HEARTBEAT_CAPABILITY = "job-lease-heartbeat-v1"
 
 # 开发默认令牌；生产请设环境变量 MC_API_TOKEN
 DEFAULT_API_TOKEN = "dev-mc-token"
@@ -53,6 +55,8 @@ class JobStatus(str, Enum):
 __all__ = [
     "API_V1_PREFIX",
     "DEFAULT_API_TOKEN",
+    "JOB_CLAIM_GENERATION_CAPABILITY",
+    "JOB_LEASE_HEARTBEAT_CAPABILITY",
     "HEARTBEAT_TIMEOUT_SEC",
     "DEVICE_STATE_READY",
     "DEVICE_STATE_BUSY",

@@ -12,6 +12,7 @@ export const devices = ref<Device[]>([]);
 export const dispatchDevices = ref<Device[]>([]);
 export const devicesVersion = ref(0);
 export const jobsListVersion = ref(0);
+export const jobsListTotal = ref(0);
 export const schedulesListVersion = ref(0);
 export const reportsListVersion = ref(0);
 export const artifactsVersion = ref(0);
@@ -63,8 +64,10 @@ export const artifactEntriesError = ref("");
 
 export const uploadName = ref("");
 export const uploadFile = ref<File | null>(null);
+export const uploadingArtifact = ref(false);
 export const appBuildUploadName = ref("");
 export const appBuildUploadFile = ref<File | null>(null);
+export const uploadingAppBuild = ref(false);
 
 export const reportFilter = reactive({
   app_build_id: "",

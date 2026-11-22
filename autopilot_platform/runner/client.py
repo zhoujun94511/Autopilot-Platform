@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
@@ -68,6 +69,13 @@ class PlatformClient:
     def _url(path: str) -> str:
         return f"{API_V1_PREFIX}{path}"
 
+    @staticmethod
+    def _claim_params(runner_id: str, claimed_at: datetime | str | None) -> dict[str, str]:
+        params = {"runner_id": runner_id}
+        if claimed_at:
+            params["claimed_at"] = claimed_at.isoformat() if isinstance(claimed_at, datetime) else claimed_at
+        return params
+
     def register(self, body: RunnerRegister) -> dict[str, Any]:
         r = self._client.post(self._url("/runners/register"), json=body.model_dump())
         _raise_for_status(r)
@@ -107,16 +115,16 @@ class PlatformClient:
         _raise_for_status(r)
         return JobOut.model_validate(r.json())
 
-    def mark_running(self, job_id: str, runner_id: str) -> JobOut:
+    def mark_running(self, job_id: str, runner_id: str, *, claimed_at: datetime | str | None = None) -> JobOut:
         r = self._client.post(
             self._url(f"/jobs/{job_id}/running"),
-            params={"runner_id": runner_id},
+            params=self._claim_params(runner_id, claimed_at),
         )
         _raise_for_status(r)
         return JobOut.model_validate(r.json())
 
-    def nack(self, job_id: str, runner_id: str, *, reason: str = "") -> JobOut:
-        params: dict[str, Any] = {"runner_id": runner_id}
+    def nack(self, job_id: str, runner_id: str, *, reason: str = "", claimed_at: datetime | str | None = None) -> JobOut:
+        params = self._claim_params(runner_id, claimed_at)
         note = (reason or "").strip()
         if note:
             params["reason"] = note
@@ -127,7 +135,7 @@ class PlatformClient:
         _raise_for_status(r)
         return JobOut.model_validate(r.json())
 
-    def complete(self, job_id: str, runner_id: str, body: JobResultIn) -> JobOut:
+    def complete(self, job_id: str, runner_id: str, body: JobResultIn, *, claimed_at: datetime | str | None = None) -> JobOut:
         payload = (
             body.model_dump(mode="json")
             if hasattr(body, "model_dump")
@@ -135,41 +143,41 @@ class PlatformClient:
         )
         r = self._client.post(
             self._url(f"/jobs/{job_id}/complete"),
-            params={"runner_id": runner_id},
+            params=self._claim_params(runner_id, claimed_at),
             json=payload,
         )
         _raise_for_status(r)
         return JobOut.model_validate(r.json())
 
-    def upload_report(self, job_id: str, runner_id: str, html_path: str) -> dict[str, Any]:
+    def upload_report(self, job_id: str, runner_id: str, html_path: str, *, claimed_at: datetime | str | None = None) -> dict[str, Any]:
         p = Path(html_path)
         files = {"file": (p.name or "report.html", p.read_bytes(), "text/html")}
         r = self._client.post(
             self._url(f"/jobs/{job_id}/report"),
-            params={"runner_id": runner_id},
+            params=self._claim_params(runner_id, claimed_at),
             files=files,
         )
         _raise_for_status(r)
         return r.json()
 
-    def upload_result_json(self, job_id: str, runner_id: str, json_path: str) -> dict[str, Any]:
+    def upload_result_json(self, job_id: str, runner_id: str, json_path: str, *, claimed_at: datetime | str | None = None) -> dict[str, Any]:
         p = Path(json_path)
         files = {"file": ("result.json", p.read_bytes(), "application/json")}
         r = self._client.post(
             self._url(f"/jobs/{job_id}/report"),
-            params={"runner_id": runner_id},
+            params=self._claim_params(runner_id, claimed_at),
             files=files,
         )
         _raise_for_status(r)
         return r.json()
 
-    def upload_evidence_zip(self, job_id: str, runner_id: str, zip_path: str) -> dict[str, Any]:
+    def upload_evidence_zip(self, job_id: str, runner_id: str, zip_path: str, *, claimed_at: datetime | str | None = None) -> dict[str, Any]:
         """上传 D3 evidence.zip（内含 reports/evidence/**）。"""
         p = Path(zip_path)
         files = {"file": ("evidence.zip", p.read_bytes(), "application/zip")}
         r = self._client.post(
             self._url(f"/jobs/{job_id}/report"),
-            params={"runner_id": runner_id},
+            params=self._claim_params(runner_id, claimed_at),
             files=files,
         )
         _raise_for_status(r)
@@ -182,8 +190,10 @@ class PlatformClient:
         text: str,
         *,
         replace: bool = False,
+        claimed_at: datetime | str | None = None,
     ) -> dict[str, Any]:
-        params: dict[str, Any] = {"runner_id": runner_id, "replace": "true" if replace else "false"}
+        params = self._claim_params(runner_id, claimed_at)
+        params["replace"] = "true" if replace else "false"
         r = self._client.post(
             self._url(f"/jobs/{job_id}/logs"),
             params=params,

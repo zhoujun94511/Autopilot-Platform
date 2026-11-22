@@ -5,11 +5,13 @@
  */
 import { computed, onBeforeUnmount, reactive, ref } from "vue";
 import { HevcCanvasPlayer } from "../../composables/remote/hevcPlayback";
+import { letterboxRect, mapPointerToDevice } from "../../composables/remote/mapPointerToDevice";
 
 const props = defineProps<{
   useMjpeg: boolean;
   frameUrl: string;
   connecting: boolean;
+  failure?: string;
   readonly?: boolean;
   platform?: string;
   /** 设备坐标系宽（live video 优先，见 onDimensions） */
@@ -184,22 +186,18 @@ const showPlaceholder = computed(() => !hasLiveFrame.value);
 
 const placeholderTitle = computed(() => {
   if (props.connecting) return "正在连接…";
-  if (props.useMjpeg && !mjpegReady.value) return "等待 MJPEG 首帧";
+  if (props.failure) return "画面暂不可用";
   if (!props.streaming) return "等待媒体流";
   return "等待首帧";
 });
 
-const placeholderText = computed(() => {
-  if (props.connecting) return "正在创建远控会话并连接 Runner";
-  if (props.useMjpeg && !mjpegReady.value) {
-    return "Runner 可能正在拉起 WDA，请稍候";
-  }
-  if (!props.streaming) return "WebRTC 已协商，视频轨即将到达";
-  return "设备画面加载中";
-});
-
-function clamp(v: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, v));
+function deviceSize(): { w: number; h: number } {
+  const live = getNativeDimensions();
+  if (live.w > 0 && live.h > 0) return live;
+  return {
+    w: props.resolutionWidth || 0,
+    h: props.resolutionHeight || 0,
+  };
 }
 
 function readSurfaceRect(): DOMRect | null {
@@ -207,41 +205,16 @@ function readSurfaceRect(): DOMRect | null {
   if (!el) return null;
   const box = el.getBoundingClientRect();
   if (!box.width || !box.height) return null;
-
-  const natW = props.resolutionWidth || getNativeDimensions().w;
-  const natH = props.resolutionHeight || getNativeDimensions().h;
-  if (!natW || !natH) return box;
-
-  const boxAspect = box.width / box.height;
-  const contentAspect = natW / natH;
-  let w: number;
-  let h: number;
-  let left: number;
-  let top: number;
-
-  if (contentAspect > boxAspect) {
-    w = box.width;
-    h = box.width / contentAspect;
-    left = box.left;
-    top = box.top + (box.height - h) / 2;
-  } else {
-    h = box.height;
-    w = box.height * contentAspect;
-    top = box.top;
-    left = box.left + (box.width - w) / 2;
-  }
-  return new DOMRect(left, top, w, h);
+  const { w: natW, h: natH } = deviceSize();
+  const fitted = letterboxRect(box, natW, natH);
+  return new DOMRect(fitted.left, fitted.top, fitted.width, fitted.height);
 }
 
 function mapToDevice(event: PointerEvent | WheelEvent, rectOverride: DOMRect | null = null) {
-  const w = props.resolutionWidth || getNativeDimensions().w;
-  const h = props.resolutionHeight || getNativeDimensions().h;
-  if (!w || !h) return null;
+  const { w, h } = deviceSize();
   const rect = rectOverride || readSurfaceRect();
   if (!rect) return null;
-  const x = clamp((event.clientX - rect.left) / rect.width, 0, 1);
-  const y = clamp((event.clientY - rect.top) / rect.height, 0, 1);
-  return { x: Math.round(x * w), y: Math.round(y * h) };
+  return mapPointerToDevice(event.clientX, event.clientY, rect, w, h);
 }
 
 function handlePointerDown(event: PointerEvent) {
@@ -331,12 +304,8 @@ defineExpose({
     <div class="remote-video-wrap" :style="stageAspectStyle">
       <div v-if="showPlaceholder" class="remote-stage-placeholder" aria-hidden="true">
         <div class="remote-placeholder-screen">
-          <div class="remote-placeholder-spinner" aria-hidden="true">
-            <span class="remote-placeholder-spinner-ring" />
-            <span class="remote-placeholder-spinner-dot" />
-          </div>
+          <span v-if="!failure" class="remote-placeholder-spinner" />
           <p class="remote-placeholder-title">{{ placeholderTitle }}</p>
-          <p class="remote-placeholder-text">{{ placeholderText }}</p>
         </div>
       </div>
       <video
@@ -347,8 +316,10 @@ defineExpose({
         autoplay
         playsinline
         muted
+        aria-label="远控设备画面"
         draggable="false"
         @loadedmetadata="onLoadedMetadata"
+        @resize="onLoadedMetadata"
         @pointerdown.prevent="handlePointerDown"
         @pointermove.prevent="handlePointerMove"
         @pointerup.prevent="handlePointerUp"
@@ -360,6 +331,7 @@ defineExpose({
         ref="canvasRef"
         class="remote-video"
         :class="{ 'remote-video--pending': showPlaceholder && !mjpegReady }"
+        aria-label="远控设备画面"
         draggable="false"
         @pointerdown.prevent="handlePointerDown"
         @pointermove.prevent="handlePointerMove"
@@ -382,7 +354,7 @@ defineExpose({
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--remote-stage-bg, #080a0f);
   touch-action: none;
   user-select: none;
@@ -399,11 +371,8 @@ defineExpose({
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   overflow: hidden;
-  box-shadow:
-    0 0 0 1px rgb(255 255 255 / 6%) inset,
-    0 12px 32px rgb(0 0 0 / 35%);
 }
 
 .remote-stage-placeholder {
@@ -416,9 +385,7 @@ defineExpose({
   pointer-events: none;
   border-radius: inherit;
   overflow: hidden;
-  background:
-    radial-gradient(120% 85% at 50% 12%, rgb(255 255 255 / 6%), transparent 55%),
-    linear-gradient(180deg, #161b24 0%, #0e1118 46%, #0a0d12 100%);
+  background: var(--remote-stage-placeholder-bg);
 }
 
 .remote-placeholder-screen {
@@ -433,61 +400,27 @@ defineExpose({
 }
 
 .remote-placeholder-spinner {
-  position: relative;
-  width: 3.25rem;
-  height: 3.25rem;
-  margin-bottom: 0.35rem;
-}
-
-.remote-placeholder-spinner-ring {
-  position: absolute;
-  inset: 0;
-  border: 2px solid rgb(154 168 188 / 22%);
-  border-top-color: rgb(154 168 188 / 88%);
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-top-color: var(--remote-stage-glyph);
+  border-right-color: var(--remote-stage-glyph);
   border-radius: 50%;
-  animation: remote-placeholder-spin 1.1s linear infinite;
-}
-
-.remote-placeholder-spinner-dot {
-  position: absolute;
-  inset: 36%;
-  border-radius: 50%;
-  background: rgb(154 168 188 / 55%);
-  animation: remote-placeholder-pulse 1.6s ease-in-out infinite;
+  animation: remote-placeholder-spin 0.9s linear infinite;
 }
 
 .remote-placeholder-title {
   margin: 0;
-  font-size: clamp(0.92rem, 2.2vw, 1.05rem);
-  font-weight: 650;
-  letter-spacing: 0.01em;
-  color: var(--remote-stage-placeholder-fg, #c5cedb);
-}
-
-.remote-placeholder-text {
-  margin: 0;
-  max-width: min(18rem, 88%);
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: var(--remote-stage-placeholder-muted, #8a96a8);
+  font-size: var(--font-size-body);
+  color: var(--remote-stage-placeholder-fg);
 }
 
 @keyframes remote-placeholder-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  to { transform: rotate(360deg); }
 }
 
-@keyframes remote-placeholder-pulse {
-  0%,
-  100% {
-    opacity: 0.45;
-    transform: scale(0.92);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1);
-  }
+@media (prefers-reduced-motion: reduce) {
+  .remote-placeholder-spinner { animation: none; }
 }
 
 .remote-video {
@@ -514,10 +447,9 @@ defineExpose({
   left: 0.75rem;
   margin: 0;
   padding: 0.35rem 0.6rem;
-  border-radius: 999px;
-  color: #dbeafe;
-  background: rgb(30 64 175 / 75%);
-  backdrop-filter: blur(8px);
+  border-radius: var(--radius-sm);
+  color: var(--remote-stage-placeholder-fg);
+  background: var(--remote-stage-placeholder-bg);
   pointer-events: none;
 }
 </style>

@@ -170,16 +170,10 @@ def resolve_or_create_user(db: Session, claims: dict[str, Any]) -> UserRow:
         return row
 
     username = _username_from_claims(claims)
-    # 若同名本地用户存在且未绑定 OIDC，则绑定
+    # 禁止仅凭同名/邮箱前缀自动绑定已有本地账号（防账号接管）
     existing = db.scalars(select(UserRow).where(UserRow.username == username)).first()
     if existing is not None:
-        if existing.oidc_sub and existing.oidc_sub != sub:
-            username = f"{username}_{secrets.token_hex(2)}"
-        else:
-            existing.oidc_sub = sub
-            db.commit()
-            db.refresh(existing)
-            return existing
+        username = f"{username}_{secrets.token_hex(2)}"
 
     if not oidc_auto_provision():
         raise PermissionError(msg.AUTH_OIDC_USER_NOT_PROVISIONED)

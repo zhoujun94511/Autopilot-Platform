@@ -37,11 +37,8 @@ const displayStarters = computed(() =>
 <template>
   <div ref="rootEl" class="messages">
     <div v-if="generalMode && !messages.length && !streamingText" class="empty-state chat-welcome">
-      <p class="empty-title">你好，我是你的AI测试助手</p>
-      <p class="empty-desc">
-        我可以帮助你解答任何测试相关的问题。
-      </p>
-      <p class="empty-lead">你可以试着这么问我：</p>
+      <p class="empty-title">选择问题开始</p>
+      <p class="empty-lead">快捷提问</p>
       <ul class="starter-list">
         <li v-for="(q, i) in displayStarters" :key="`st-${i}`">
           <button
@@ -57,15 +54,8 @@ const displayStarters = computed(() =>
     </div>
     <div v-else-if="!generalMode && !activeSessionId" class="empty-state chat-welcome">
       <p class="empty-title">{{ projectReady ? "开始对话" : "请先选择项目" }}</p>
-      <p class="empty-desc">
-        {{
-          projectReady
-            ? "点下面的问题，或用提问模板填好再发送；发送时会自动新建会话。"
-            : "请先在顶栏选择项目，再新建或选择会话。"
-        }}
-      </p>
       <template v-if="projectReady">
-        <p class="empty-lead">你可以试着这么问：</p>
+        <p class="empty-lead">快捷提问</p>
         <ul class="starter-list">
           <li v-for="(q, i) in displayStarters" :key="`st-p-${i}`">
             <button
@@ -83,8 +73,7 @@ const displayStarters = computed(() =>
     <template v-else>
       <div v-if="!messages.length && !streamingText" class="empty-state chat-welcome">
         <p class="empty-title">开始对话</p>
-        <p class="empty-desc">点下面的问题，或用提问模板快速起步。</p>
-        <p class="empty-lead">你可以试着这么问：</p>
+        <p class="empty-lead">快捷提问</p>
         <ul class="starter-list">
           <li v-for="(q, i) in displayStarters" :key="`st-s-${i}`">
             <button
@@ -136,7 +125,7 @@ const displayStarters = computed(() =>
 .msg-bubble {
   max-width: 92%;
   padding: 0.5rem 0.7rem;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
 }
 .msg-bubble.user {
@@ -191,7 +180,7 @@ const displayStarters = computed(() =>
   margin: 0.35rem 0;
   padding: 0.45rem 0.55rem;
   overflow-x: auto;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--control-bg);
   border: 1px solid var(--line);
   font-size: 0.78rem;
@@ -235,7 +224,7 @@ const displayStarters = computed(() =>
   border: 1px solid var(--line);
   background: var(--surface);
   color: var(--text);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0.4rem 0.65rem;
   font-size: 0.8rem;
   line-height: 1.4;

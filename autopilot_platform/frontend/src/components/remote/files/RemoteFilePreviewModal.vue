@@ -177,7 +177,6 @@ onUnmounted(() => {
   place-items: center;
   padding: 1.5rem;
   background: rgba(2, 6, 23, 0.66);
-  backdrop-filter: blur(3px);
 }
 
 .remote-file-preview-modal {
@@ -187,7 +186,7 @@ onUnmounted(() => {
   max-height: 88vh;
   overflow: hidden;
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface-primary);
   box-shadow: var(--shadow-lg, 0 16px 48px rgba(0, 0, 0, 0.35));
 }
@@ -222,7 +221,7 @@ onUnmounted(() => {
   height: 2rem;
   padding: 0;
   border: 1px solid var(--line-soft);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   color: var(--muted);
   background: var(--surface-soft);
   cursor: pointer;
@@ -264,7 +263,7 @@ onUnmounted(() => {
   max-width: 100%;
   max-height: calc(88vh - 120px);
   margin: 0 auto;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .remote-file-preview-body audio {
@@ -275,7 +274,7 @@ onUnmounted(() => {
   width: min(88vw, 900px);
   height: calc(88vh - 120px);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: #fff;
 }
 

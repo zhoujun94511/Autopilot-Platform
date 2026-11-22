@@ -10,13 +10,14 @@ from autopilot_platform.platform.design.design_models import DesignDocumentRow, 
 from autopilot_platform.platform.design.design_schemas import DesignDocumentOut, DocumentPreviewOut
 from autopilot_platform.platform.core.models import db_get
 from autopilot_platform.platform.services.shared.pagination import apply_sort, clamp_page, paginate, sort_column
-logger = logging.getLogger(__name__)
-ALLOWED_DOC_EXT = {'.txt', '.md', '.csv', '.json', '.yaml', '.yml', '.docx', '.pdf', '.xlsx', '.xls'}
-_DOC_SORT = {'created_at': DesignDocumentRow.created_at, 'filename': DesignDocumentRow.filename, 'title': DesignDocumentRow.filename, 'file_type': DesignDocumentRow.file_type, 'size_bytes': DesignDocumentRow.size_bytes}
 from autopilot_platform.platform.services.shared.actors import actor as _actor
 from autopilot_platform.platform.services.design.documents.text_extract import uploads_root, extract_text_from_bytes
 from autopilot_platform.platform.services.design import access as design_access
 from autopilot_platform.platform.ops.runtime_config import design_max_memory_mb
+
+logger = logging.getLogger(__name__)
+ALLOWED_DOC_EXT = {'.txt', '.md', '.csv', '.json', '.yaml', '.yml', '.docx', '.pdf', '.xlsx', '.xls'}
+_DOC_SORT = {'created_at': DesignDocumentRow.created_at, 'filename': DesignDocumentRow.filename, 'title': DesignDocumentRow.filename, 'file_type': DesignDocumentRow.file_type, 'size_bytes': DesignDocumentRow.size_bytes}
 
 def _doc_out(row: DesignDocumentRow, *, with_preview: bool=True) -> DesignDocumentOut:
     preview = ''

@@ -252,7 +252,7 @@ def test_capability_registry_includes_remote_routes():
         "/api/v1/device-remote-sessions/{session_id}/commands",
     ) in paths
     assert (
-        "GET",
+        "WEBSOCKET",
         "/api/v1/device-remote-sessions/{session_id}/ws",
     ) in paths
     assert (

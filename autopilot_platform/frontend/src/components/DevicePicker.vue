@@ -273,7 +273,7 @@ watch(
   font-size: 0.68rem;
   font-weight: 700;
   padding: 0.1rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--action-selected, var(--indigo-soft-bg));
   color: var(--accent-text, var(--text));
   border: 1px solid var(--border-weak, var(--line));
@@ -338,7 +338,7 @@ watch(
   font-size: 0.78rem;
   color: var(--muted);
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft, var(--control-bg));
 }
 
@@ -349,7 +349,7 @@ watch(
   max-height: v-bind(listMaxHeight);
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.35rem;
   background: var(--control-bg, var(--surface));
 }
@@ -439,7 +439,7 @@ watch(
 
 .dp-manual {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.45rem 0.65rem;
   background: var(--surface-soft, var(--control-bg));
 }

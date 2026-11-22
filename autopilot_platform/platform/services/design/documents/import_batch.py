@@ -6,9 +6,10 @@ from typing import Any
 from sqlalchemy.orm import Session
 from autopilot_platform.platform.auth import AuthContext
 from autopilot_platform.platform.design.design_schemas import DesignDocumentOut, RequirementOut
-logger = logging.getLogger(__name__)
 from autopilot_platform.platform.services.design.documents.crud import save_document
 from autopilot_platform.platform.services.design.documents.analysis.pipeline import analyze_document
+
+logger = logging.getLogger(__name__)
 
 def import_documents(db: Session, *, project_id: str, files: list[tuple[str, bytes]], auth: AuthContext, auto_analyze: bool=False, max_requirements: int=20, use_llm: bool=True, analysis_type: str='requirements') -> dict[str, Any]:
     """多文件上传（对齐 TestPilot DocumentsUpload）；可选上传后自动分析入库。"""

@@ -120,6 +120,43 @@ def test_scheduler_reclaim_writes_system_audit(client: TestClient):
     assert hit[0].get("actor") == "scheduler"
 
 
+def test_only_active_jobs_get_renewed_by_modern_runner(client: TestClient):
+    runner_id = "r-job-lease"
+    response = client.post("/api/v1/runners/register", headers=TOKEN, json={
+        "runner_id": runner_id, "hostname": "host", "capabilities": ["android"],
+    })
+    assert response.is_success, response.text
+    from autopilot_platform.platform.services.execution.jobs.recovery import reclaim_stale_jobs
+
+    factory = session_factory()
+    assert factory is not None
+    before = utcnow() - timedelta(hours=2)
+    with factory() as db:
+        for job_id in ("active-job", "abandoned-job"):
+            db.add(JobRow(
+                id=job_id, name=job_id, status=JobStatus.RUNNING.value, platform="android",
+                runner_id=runner_id, updated_at=before, claimed_at=before,
+            ))
+        db.add(DeviceRow(id="abandoned-device", udid="test-device", runner_id=runner_id,
+                         platform="android", busy_job_id="abandoned-job", updated_at=before))
+        db.commit()
+
+    response = client.post("/api/v1/runners/heartbeat", headers=TOKEN, json={
+        "runner_id": runner_id, "inventory": [{"udid": "test-device", "platform": "android"}],
+        "devices": [{"udid": "test-device", "platform": "android"}], "active_job_ids": ["active-job"],
+    })
+    assert response.is_success, response.text
+    with factory() as db:
+        assert reclaim_stale_jobs(db, older_than_sec=3600) == ["abandoned-job"]
+        active = db.get(JobRow, "active-job")
+        abandoned = db.get(JobRow, "abandoned-job")
+        device = db.get(DeviceRow, "abandoned-device")
+        assert active is not None and active.status == JobStatus.RUNNING.value
+        assert abandoned is not None and abandoned.status == JobStatus.FAILED.value
+        assert abandoned.claimed_at is None
+        assert device is not None and device.busy_job_id is None
+
+
 def test_orphan_busy_cleared_on_reconcile(client: TestClient):
     rid = "r-orphan-busy"
     client.post(

@@ -38,6 +38,12 @@ import { useCapabilities } from "../../composables/useCapabilities";
 import { useDesignChatFab } from "../../composables/useDesignChatFab";
 import { useDesignChatSessions } from "../../composables/useDesignChatSessions";
 
+const props = defineProps<{ inline?: boolean }>();
+const topbarTrigger = ref<HTMLButtonElement | null>(null);
+const fabTrigger = ref<HTMLButtonElement | null>(null);
+const closeButton = ref<HTMLButtonElement | null>(null);
+const lastTrigger = ref<"topbar" | "fab">("topbar");
+
 const shell = useShellStore();
 const projectsStore = useProjectsStore();
 const { filterProjectId } = storeToRefs(projectsStore);
@@ -84,6 +90,9 @@ const {
 } = useDesignChatFab();
 
 const keyConfigured = computed(() => Boolean(chatOpts.value?.key_configured));
+const chatDockId = computed(() =>
+  props.inline ? "design-chat-dock-inline" : "design-chat-dock",
+);
 /** 无项目 = 测试闲聊（不绑项目、不 RAG、不落设计域；人设仍是测试助手） */
 const generalMode = computed(() => !filterProjectId.value?.trim());
 
@@ -161,24 +170,34 @@ const canSend = computed(
     (keyConfigured.value || (!generalMode.value && actionMode.value)),
 );
 const dockSubtitle = computed(() =>
-  generalMode.value ? "一个可以处理解答任何测试相关问题的AI测试助手" : "设计域对话",
+  generalMode.value ? "临时对话" : "项目对话",
 );
-const dockTitle = computed(() => "AI测试助手");
 function goOpsConfig() {
   shell.openOpsConfig("ai_model");
   minimized.value = true;
 }
 
-function toggleOpen() {
-  if (ignoreClick.value) return;
-  const active = document.activeElement;
-  if (active instanceof HTMLElement) active.blur();
-  open.value = !open.value;
+async function toggleOpen(source: "topbar" | "fab" = "topbar") {
+  if (source === "fab" && ignoreClick.value) return;
+  lastTrigger.value = source;
+  if (open.value && !minimized.value) {
+    closeDock();
+    return;
+  }
+  open.value = true;
+  minimized.value = false;
+  await nextTick();
+  closeButton.value?.focus();
 }
 
 function closeDock() {
   open.value = false;
   minimized.value = false;
+  void nextTick(() =>
+    (lastTrigger.value === "topbar"
+      ? topbarTrigger.value
+      : fabTrigger.value)?.focus(),
+  );
 }
 
 function minimizeDock() {
@@ -190,7 +209,14 @@ function restoreDock() {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape" && open.value) closeDock();
+  if (e.key !== "Escape" || e.defaultPrevented || !open.value) return;
+  if (
+    props.inline &&
+    e.target !== topbarTrigger.value &&
+    e.target !== fabTrigger.value &&
+    !(e.target instanceof HTMLElement && e.target.closest(".chat-dock"))
+  ) return;
+  closeDock();
 }
 
 function setError(err: unknown) {
@@ -225,7 +251,7 @@ async function ensureSession(): Promise<string | null> {
   if (activeSessionId.value) return activeSessionId.value;
   const projectId = filterProjectId.value?.trim();
   if (!projectId || ctx.value?.missing) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     errorRetryable.value = false;
     return null;
   }
@@ -259,7 +285,7 @@ async function scrollToBottom() {
 async function onNewSession() {
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     errorRetryable.value = false;
     return;
   }
@@ -498,7 +524,7 @@ async function onSend(retryText?: string) {
   }
 
   if (!projectReady.value) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     errorRetryable.value = false;
     return;
   }
@@ -712,13 +738,8 @@ function onRetry() {
 }
 
 onMounted(() => {
-  try {
-    localStorage.removeItem("ap-mc-chat-fab-pos");
-  } catch {
-    /* ignore */
-  }
-  readFabPos();
   document.addEventListener("keydown", onKeydown);
+  readFabPos();
   window.addEventListener("resize", onResize);
 });
 
@@ -729,29 +750,43 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <!-- 全局悬浮入口：品牌标 + AI 角标，可拖拽 -->
+  <button
+    v-if="inline"
+    ref="topbarTrigger"
+    type="button"
+    class="chat-trigger ghost"
+    :aria-controls="chatDockId"
+    :aria-expanded="open && !minimized"
+    @click="toggleOpen('topbar')"
+  >助手</button>
   <button
     v-show="!open"
+    ref="fabTrigger"
     type="button"
     class="chat-fab"
-    title="AutoPilot AI 助手（可拖拽）"
+    title="AutoPilot 助手（可拖拽）"
     aria-label="打开 AI 对话"
+    :aria-controls="chatDockId"
     :class="{ dragging }"
     :style="fabStyle"
     @pointerdown="onFabPointerDown"
     @pointermove="onFabPointerMove"
     @pointerup="onFabPointerUp"
     @pointercancel="onFabPointerUp"
-    @click="toggleOpen"
+    @click="toggleOpen('fab')"
   >
-    <BrandMark :size="48" />
-    <span class="fab-badge" aria-hidden="true">AI</span>
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M19 16.5a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2V21l5-4.5z" />
+      <path d="M8 10.5h.01m4 0h.01m4 0h.01" stroke-width="2.5" />
+    </svg>
   </button>
 
+  <Teleport to="body">
   <aside
+    :id="chatDockId"
     v-show="open"
     class="chat-dock"
-    :class="{ minimized }"
+    :class="{ minimized, 'inline-entry': inline }"
     role="complementary"
     aria-label="AI 对话"
   >
@@ -759,7 +794,7 @@ onUnmounted(() => {
       <div class="dock-brand">
         <BrandMark :size="28" />
         <div class="dock-title">
-          <strong>{{ dockTitle }}</strong>
+          <strong>测试助手</strong>
           <span class="dock-sub">{{ dockSubtitle }}</span>
         </div>
       </div>
@@ -784,14 +819,14 @@ onUnmounted(() => {
         >
           □
         </button>
-        <button type="button" class="icon-btn" title="关闭" aria-label="关闭" @click="closeDock">
+        <button ref="closeButton" type="button" class="icon-btn" title="关闭对话" aria-label="关闭对话" @click="closeDock">
           ×
         </button>
       </div>
     </header>
 
     <div v-show="!minimized" class="dock-body">
-      <div v-if="error" class="msg bad">
+      <div v-if="error" class="msg bad" role="alert">
         <span>{{ error }}</span>
         <button
           v-if="errorRetryable && lastFailedText"
@@ -803,7 +838,7 @@ onUnmounted(() => {
           重试
         </button>
       </div>
-      <div v-if="casesJumpVisible" class="msg ok info-row">
+      <div v-if="casesJumpVisible" class="msg ok info-row" role="status">
         <span>已有用例草稿可审阅</span>
         <button
           type="button"
@@ -935,7 +970,10 @@ onUnmounted(() => {
                 {{ pendingAction.plan.risk_level || "—" }}
               </span>
             </p>
-            <pre class="action-args">{{ JSON.stringify(pendingAction.plan.args || {}, null, 2) }}</pre>
+            <details class="action-detail">
+              <summary>查看请求参数</summary>
+              <pre class="action-args">{{ JSON.stringify(pendingAction.plan.args || {}, null, 2) }}</pre>
+            </details>
             <label
               v-if="pendingAction.plan.risk_level === 'high'"
               class="field-label"
@@ -987,32 +1025,41 @@ onUnmounted(() => {
       </div>
     </div>
   </aside>
+  </Teleport>
 </template>
 
 <style scoped>
+.chat-trigger {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.chat-trigger[aria-expanded="true"] {
+  background: var(--brand-soft);
+  color: var(--accent-text);
+}
 .chat-fab {
   position: fixed;
   z-index: 1200;
-  width: 56px;
-  height: 56px;
+  width: 48px;
+  height: 48px;
   padding: 0;
-  border: none;
-  border-radius: 14px;
-  background: transparent;
-  color: var(--on-accent);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+  color: var(--accent-text);
   cursor: grab;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: none;
   user-select: none;
-  /* 与 BrandMark 圆角徽章一致，阴影带品牌色 */
-  filter: drop-shadow(0 6px 14px rgba(21, 101, 192, 0.42));
-  transition: transform 0.18s ease, filter 0.18s ease;
+  box-shadow: var(--panel-shadow);
+  transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
 }
 .chat-fab:hover {
-  transform: translateY(-2px);
-  filter: drop-shadow(0 10px 22px rgba(21, 101, 192, 0.55));
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: var(--control-bg-hover);
 }
 .chat-fab:focus-visible {
   outline: none;
@@ -1022,33 +1069,7 @@ onUnmounted(() => {
 .chat-fab:active {
   cursor: grabbing;
   transform: scale(0.97);
-  filter: drop-shadow(0 4px 10px rgba(21, 101, 192, 0.4));
 }
-.chat-fab :deep(.ap-mark) {
-  display: block;
-  width: 48px;
-  height: 48px;
-  pointer-events: none;
-}
-.fab-badge {
-  position: absolute;
-  right: -2px;
-  bottom: -2px;
-  min-width: 1.35rem;
-  height: 1.15rem;
-  padding: 0 0.28rem;
-  border-radius: 6px;
-  border: 1.5px solid var(--surface-canvas);
-  background: var(--brand-pressed);
-  color: #fff;
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  line-height: 1.15rem;
-  text-align: center;
-  pointer-events: none;
-}
-
 .chat-dock {
   position: fixed;
   z-index: 1190;
@@ -1060,7 +1081,7 @@ onUnmounted(() => {
   flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   box-shadow: var(--panel-shadow);
   overflow: hidden;
   pointer-events: auto;
@@ -1071,6 +1092,21 @@ onUnmounted(() => {
   right: 16px;
   width: min(320px, calc(100vw - 32px));
   height: auto;
+}
+.chat-dock.inline-entry {
+  top: 64px;
+  width: min(860px, calc(100vw - 24px));
+}
+.chat-dock.inline-entry.minimized {
+  top: auto;
+  bottom: 12px;
+  width: min(320px, calc(100vw - 24px));
+}
+
+@media (max-width: 600px) {
+  .chat-dock.inline-entry:not(.minimized) {
+    top: 96px;
+  }
 }
 
 .dock-header {
@@ -1110,7 +1146,7 @@ onUnmounted(() => {
 .icon-btn {
   width: 28px;
   height: 28px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--control-bg);
   color: var(--text);
@@ -1139,7 +1175,7 @@ onUnmounted(() => {
 .msg.warn {
   margin: 0;
   padding: 0.55rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   flex-shrink: 0;
   display: flex;
@@ -1160,7 +1196,7 @@ onUnmounted(() => {
 .msg.ok {
   margin: 0;
   padding: 0.55rem 0.75rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   flex-shrink: 0;
   background: var(--ok-soft-bg, var(--brand-soft));
@@ -1200,12 +1236,16 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+  padding: var(--space-3);
 }
 .chat-header {
-  display: grid;
-  gap: 0.65rem;
-  margin-bottom: 0.85rem;
-  padding-bottom: 0.75rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  padding-bottom: var(--space-2);
   border-bottom: 1px solid var(--line);
 }
 .chat-session-title {
@@ -1272,8 +1312,12 @@ onUnmounted(() => {
   margin: 0.5rem 0;
   padding: 0.75rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
+}
+.action-detail summary {
+  color: var(--accent-text);
+  cursor: pointer;
 }
 .action-title {
   font-weight: 600;
@@ -1295,7 +1339,7 @@ onUnmounted(() => {
   font-size: 0.72rem;
   background: var(--panel);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 .inline-tools {
   display: flex;

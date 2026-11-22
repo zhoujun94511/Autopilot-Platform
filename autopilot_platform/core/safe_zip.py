@@ -30,6 +30,7 @@ def safe_extractall(
         raise ValueError(f"zip has too many entries ({len(infos)} > {max_entries})")
 
     total = 0
+    actual_total = 0
     for info in infos:
         name = info.filename or ""
         if not name or name.endswith("/"):
@@ -54,12 +55,28 @@ def safe_extractall(
         target = (dest / name).resolve()
         parent_dir = Path(str(target.parent))
         parent_dir.mkdir(parents=True, exist_ok=True)
-        with zf.open(info, "r") as src, open(target, "wb") as out:
-            while True:
-                chunk = src.read(1024 * 1024)
-                if not chunk:
-                    break
-                out.write(chunk)
+        entry_actual = 0
+        try:
+            with zf.open(info, "r") as src, open(target, "wb") as out:
+                while True:
+                    chunk = src.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    entry_actual += len(chunk)
+                    actual_total += len(chunk)
+                    if actual_total > max_total_uncompressed:
+                        raise ValueError(
+                            f"zip uncompressed size exceeds limit ({max_total_uncompressed} bytes)"
+                        )
+                    if entry_actual > 0 and (entry_actual // compressed) > max_ratio:
+                        raise ValueError(f"zip entry compression ratio too high: {name!r}")
+                    out.write(chunk)
+        except ValueError:
+            try:
+                target.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
 
 
 def _is_safe_member(name: str, dest: Path) -> bool:

@@ -33,7 +33,7 @@ export function applyTheme(mode: ThemeMode) {
   root.style.colorScheme = mode;
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) {
-    meta.setAttribute("content", mode === "light" ? "#f0f2f5" : "#0e1116");
+    meta.setAttribute("content", mode === "light" ? "#f1f3f6" : "#14161a");
   }
   try {
     localStorage.setItem(STORAGE_KEY, mode);

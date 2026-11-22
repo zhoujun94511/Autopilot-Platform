@@ -46,6 +46,10 @@ type RemoteDialogState = {
 
 export const remoteDialogState = shallowRef<RemoteDialogState | null>(null);
 
+export function closeRemoteDialog() {
+  remoteDialogState.value?.resolve();
+}
+
 function isMobileRemotePlatform(device: Device): boolean {
   const platform = String(device.platform || "").toLowerCase();
   return platform === "android" || platform === "ios";
@@ -158,8 +162,8 @@ function normalizeSession(
   };
 }
 
-export async function closeRemoteSession(sessionId: string): Promise<void> {
-  await apiCloseRemoteSession(sessionId);
+export async function closeRemoteSession(sessionId: string, bearer?: string): Promise<void> {
+  await apiCloseRemoteSession(sessionId, bearer);
 }
 
 export async function getRemoteSession(

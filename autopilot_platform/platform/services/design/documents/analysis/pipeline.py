@@ -5,12 +5,13 @@ from typing import Any
 from sqlalchemy.orm import Session
 from autopilot_platform.platform.auth import AuthContext
 from autopilot_platform.platform.design.design_schemas import RequirementOut
-logger = logging.getLogger(__name__)
 from autopilot_platform.platform.services.design.documents.crud import get_document
 from autopilot_platform.platform.services.design.documents.analysis.heuristics import _normalize_analysis_type, _heuristic_requirement_drafts, _heuristic_test_points, _heuristic_business_rules
 from autopilot_platform.platform.services.design.documents.analysis.persist import _record_analysis, _persist_business_rules, _persist_test_points, _create_requirements_from_drafts
 from autopilot_platform.platform.services.shared.billing_scope import fill_scope, project_org_id
 from autopilot_platform.platform.ai import ai_usage
+
+logger = logging.getLogger(__name__)
 
 def analyze_document(db: Session, document_id: str, auth: AuthContext, *, max_requirements: int=20, use_llm: bool=True, analysis_type: str='requirements') -> dict[str, Any]:
     """按 analysis_type 分流；全程置计费作用域，避免绕过项目/组织日配额。"""

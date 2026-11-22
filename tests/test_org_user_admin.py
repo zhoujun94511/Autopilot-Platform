@@ -98,25 +98,22 @@ def test_org_admin_creates_and_lists_users(client: TestClient):
     assert "newbie" in names
     assert "orgmgr" in names
 
-    # 不可改平台角色
-    r = client.patch(
-        f"/api/v1/auth/users/{newbie_id}",
-        headers=mh,
-        json={"role": "admin"},
-    )
-    assert r.status_code == 403
+    # 组织成员管理权限不授予修改全局账号的权限。
+    path = f"/api/v1/auth/users/{newbie_id}"
+    for change in ({"role": "admin"}, {"disabled": True}, {"password": "Changed12"}):
+        assert client.patch(path, headers=mh, json=change).status_code == 403
 
-    # 可禁用
+    # 平台管理员可以管理全局账号。
     r = client.patch(
-        f"/api/v1/auth/users/{newbie_id}",
-        headers=mh,
+        path,
+        headers=ah,
         json={"disabled": True},
     )
     assert r.status_code == 200
     assert r.json()["disabled"] is True
 
     # 不可删除（仅平台 admin）
-    assert client.delete(f"/api/v1/auth/users/{newbie_id}", headers=mh).status_code == 403
+    assert client.delete(path, headers=mh).status_code == 403
 
     # 审计带 org_id
     r = client.get("/api/v1/audit?action=user.create", headers=mh)

@@ -1,0 +1,726 @@
+/**
+ * Vue Vben Admin v5 (v5.7.0, apps/web-antd) Design System Bridge for AutoPilot Platform
+ *
+ * Single source of truth for Light & Dark theme tokens, Vben card/page/table/drawer
+ * primitives, and unified overrides so every view shares one cohesive enterprise visual language.
+ * Reference: https://github.com/vbenjs/vue-vben-admin (MIT License, v5.7.0)
+ */
+
+:root,
+[data-theme="dark"] {
+  /* —— Vben v5 Dark Palette (apps/web-antd) —— */
+  --vben-bg-deep: #14161a;
+  --vben-bg-surface: #1c1e23;
+  --vben-bg-elevated: #24262d;
+  --vben-bg-muted: #27272a;
+  --vben-bg-hover: #2e3036;
+  --vben-border: #36363a;
+  --vben-border-soft: #2a2c32;
+  --vben-fg: #f2f2f2;
+  --vben-fg-strong: #f8fafc;
+  --vben-fg-muted: #a1a1aa;
+  --vben-fg-subtle: #71717a;
+
+  --vben-primary: #1677ff;
+  --vben-primary-hover: #4096ff;
+  --vben-primary-active: #0958d9;
+  --vben-primary-soft: rgba(22, 119, 255, 0.16);
+  --vben-primary-border: rgba(22, 119, 255, 0.35);
+
+  --vben-shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.32);
+  --vben-shadow-elevated: 0 12px 32px rgba(0, 0, 0, 0.48);
+
+  --vben-sidebar-w: 224px;
+  --vben-sidebar-rail: 64px;
+  --vben-topbar-h: 50px;
+  --vben-tabbar-h: 38px;
+  --vben-radius-sm: 4px;
+  --vben-radius-md: 6px;
+  --vben-radius-lg: 8px;
+  --vben-radius-xl: 12px;
+
+  /* —— Map legacy tokens onto Vben v5 tokens (single theme system) —— */
+  --brand: var(--vben-primary);
+  --brand-hover: var(--vben-primary-hover);
+  --brand-pressed: var(--vben-primary-active);
+  --brand-soft: var(--vben-primary-soft);
+
+  --surface-canvas: var(--vben-bg-deep);
+  --surface-primary: var(--vben-bg-surface);
+  --surface-secondary: var(--vben-bg-elevated);
+  --surface-elevated: var(--vben-bg-elevated);
+
+  --bg: var(--vben-bg-deep);
+  --panel: var(--vben-bg-surface);
+  --elevated: var(--vben-bg-elevated);
+
+  --border-weak: var(--vben-border-soft);
+  --border-medium: var(--vben-border);
+  --border-strong: #4a4b52;
+  --line: var(--vben-border);
+  --line-soft: var(--vben-border-soft);
+
+  --text: var(--vben-fg);
+  --text-secondary: var(--vben-fg-muted);
+  --text-disabled: var(--vben-fg-subtle);
+  --muted: var(--vben-fg-muted);
+
+  --accent: var(--vben-primary);
+  --accent-text: #69b1ff;
+  --focus-ring: 0 0 0 2px var(--vben-bg-surface), 0 0 0 4px rgba(22, 119, 255, 0.45);
+
+  --sidebar-bg: var(--vben-bg-surface);
+  --sidebar-footer-bg: var(--vben-bg-surface);
+  --sidebar-line: var(--vben-border);
+  --sidebar-fg: var(--vben-fg);
+  --sidebar-muted: #b4b8c2;
+  --sidebar-brand: var(--vben-fg-strong);
+  --header-bg: var(--vben-bg-surface);
+  --main-bg: var(--vben-bg-deep);
+  --topbar-height: var(--vben-topbar-h);
+
+  --input-bg: #16181d;
+  --control-bg: rgba(255, 255, 255, 0.04);
+  --control-bg-hover: rgba(255, 255, 255, 0.08);
+  --btn-bg: #24262d;
+  --btn-fg: #e4e6eb;
+  --btn-bg-hover: #2e313a;
+  --btn-border: var(--vben-border);
+
+  --nav-hover: rgba(255, 255, 255, 0.06);
+  --nav-active-bg: #2e3036;
+  --nav-active-fg: #ffffff;
+  --nav-section: #8c929d;
+
+  --table-bg: var(--vben-bg-surface);
+  --table-stripe: rgba(255, 255, 255, 0.018);
+  --table-hover: rgba(255, 255, 255, 0.04);
+  --table-cell: #d4d7de;
+  --th-bg: #22242a;
+
+  --panel-shadow: var(--vben-shadow-card);
+  --elevated-shadow: var(--vben-shadow-elevated);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans", sans-serif;
+}
+
+[data-theme="light"] {
+  /* —— Vben v5 Light Palette (apps/web-antd) —— */
+  --vben-bg-deep: #f1f3f6;
+  --vben-bg-surface: #ffffff;
+  --vben-bg-elevated: #ffffff;
+  --vben-bg-muted: #f4f4f5;
+  --vben-bg-hover: #f0f2f5;
+  --vben-border: #e4e4e7;
+  --vben-border-soft: #eef0f3;
+  --vben-fg: #323639;
+  --vben-fg-strong: #020817;
+  --vben-fg-muted: #71717a;
+  --vben-fg-subtle: #a1a1aa;
+
+  --vben-primary: #006be6;
+  --vben-primary-hover: #005cc8;
+  --vben-primary-active: #004ca8;
+  --vben-primary-soft: #e8f1fd;
+  --vben-primary-border: #bfdbfe;
+
+  --vben-shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --vben-shadow-elevated: 0 12px 32px rgba(15, 23, 42, 0.12);
+
+  /* —— Map legacy tokens onto Vben v5 tokens —— */
+  --brand: var(--vben-primary);
+  --brand-hover: var(--vben-primary-hover);
+  --brand-pressed: var(--vben-primary-active);
+  --brand-soft: var(--vben-primary-soft);
+
+  --surface-canvas: var(--vben-bg-deep);
+  --surface-primary: var(--vben-bg-surface);
+  --surface-secondary: #fafafa;
+  --surface-elevated: var(--vben-bg-elevated);
+
+  --bg: var(--vben-bg-deep);
+  --panel: var(--vben-bg-surface);
+  --elevated: var(--vben-bg-elevated);
+
+  --border-weak: var(--vben-border-soft);
+  --border-medium: var(--vben-border);
+  --border-strong: #d4d4d8;
+  --line: var(--vben-border);
+  --line-soft: var(--vben-border-soft);
+
+  --text: var(--vben-fg);
+  --text-secondary: var(--vben-fg-muted);
+  --text-disabled: var(--vben-fg-subtle);
+  --muted: var(--vben-fg-muted);
+
+  --accent: var(--vben-primary);
+  --accent-text: var(--vben-primary);
+  --focus-ring: 0 0 0 2px #ffffff, 0 0 0 4px rgba(0, 107, 230, 0.35);
+
+  --sidebar-bg: #ffffff;
+  --sidebar-footer-bg: #ffffff;
+  --sidebar-line: var(--vben-border);
+  --sidebar-fg: var(--vben-fg);
+  --sidebar-muted: #525866;
+  --sidebar-brand: var(--vben-fg-strong);
+  --header-bg: #ffffff;
+  --main-bg: var(--vben-bg-deep);
+  --topbar-height: var(--vben-topbar-h);
+
+  --input-bg: #ffffff;
+  --control-bg: #f4f4f5;
+  --control-bg-hover: #e4e4e7;
+  --btn-bg: #ffffff;
+  --btn-fg: #323639;
+  --btn-bg-hover: #f4f4f5;
+  --btn-border: #d4d4d8;
+
+  --nav-hover: #f4f4f5;
+  --nav-active-bg: #e8f1fd;
+  --nav-active-fg: #006be6;
+  --nav-section: #71717a;
+
+  --table-bg: #ffffff;
+  --table-stripe: #fafafa;
+  --table-hover: #f5f8fc;
+  --table-cell: #323639;
+  --th-bg: #fafafa;
+
+  --panel-shadow: var(--vben-shadow-card);
+  --elevated-shadow: var(--vben-shadow-elevated);
+}
+
+/* —— Base Reset Alignment & Comfortable High-DPI Typography —— */
+:root,
+[data-theme="dark"],
+[data-theme="light"] {
+  --font-size-body: 15px;
+  --font-size-meta: 13.5px;
+  --font-size-title: 21px;
+  --vben-fs-base: 15px;
+  --vben-fs-sm: 13.5px;
+  --vben-fs-nav: 14.5px;
+  --vben-fs-tab: 13.5px;
+  --vben-fs-card-title: 17px;
+  --vben-fs-kpi: 32px;
+}
+
+@media (min-width: 1920px) {
+  html {
+    font-size: 18px;
+  }
+  :root,
+  [data-theme="dark"],
+  [data-theme="light"] {
+    --vben-sidebar-w: 244px;
+    --vben-topbar-h: 54px;
+    --vben-tabbar-h: 42px;
+    --control-height: 38px;
+    --table-row-min: 46px;
+    --font-size-body: 16px;
+    --font-size-meta: 14.5px;
+    --font-size-title: 22px;
+    --vben-fs-xs: 13px;
+    --vben-fs-base: 16px;
+    --vben-fs-sm: 14.5px;
+    --vben-fs-nav: 15.5px;
+    --vben-fs-tab: 14.5px;
+    --vben-fs-card-title: 18px;
+    --vben-fs-kpi: 34px;
+  }
+  .vben-nav-item {
+    height: 42px;
+  }
+  .vben-nav-icon {
+    width: 17px;
+    height: 17px;
+  }
+}
+
+@media (min-width: 2400px) {
+  html {
+    font-size: 20px;
+  }
+  :root,
+  [data-theme="dark"],
+  [data-theme="light"] {
+    --vben-sidebar-w: 272px;
+    --vben-topbar-h: 58px;
+    --vben-tabbar-h: 46px;
+    --control-height: 40px;
+    --table-row-min: 50px;
+    --font-size-body: 18px;
+    --font-size-meta: 16px;
+    --font-size-title: 25px;
+    --vben-fs-xs: 14px;
+    --vben-fs-base: 18px;
+    --vben-fs-sm: 16px;
+    --vben-fs-nav: 17.5px;
+    --vben-fs-tab: 16px;
+    --vben-fs-card-title: 20px;
+    --vben-fs-kpi: 38px;
+  }
+  .vben-nav-item {
+    height: 46px;
+  }
+  .vben-nav-icon {
+    width: 19px;
+    height: 19px;
+  }
+}
+
+body {
+  font-family: var(--font);
+  font-size: var(--vben-fs-base);
+  line-height: 1.6;
+  background: var(--vben-bg-deep);
+  color: var(--vben-fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* —— Vben v5 Shared Page & Card Primitives —— */
+.vben-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vben-card {
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+  min-width: 0;
+}
+
+.vben-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--vben-border-soft);
+  flex-wrap: wrap;
+}
+
+.vben-card-title {
+  margin: 0;
+  font-size: var(--vben-fs-card-title, 17px);
+  font-weight: 600;
+  color: var(--vben-fg-strong);
+  line-height: 1.4;
+}
+
+.vben-card-body {
+  padding: 16px 20px;
+}
+
+.vben-filter-card {
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.vben-filter-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.vben-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* —— Vben KPI Metric Cards —— */
+.vben-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.vben-kpi-card {
+  appearance: none;
+  text-align: left;
+  width: 100%;
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+  padding: 18px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 12px;
+  cursor: pointer;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.vben-kpi-card:hover {
+  border-color: var(--vben-primary-border);
+  box-shadow: 0 4px 12px rgba(0, 107, 230, 0.08);
+  transform: translateY(-1px);
+}
+
+.vben-kpi-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.vben-kpi-label {
+  font-size: var(--vben-fs-base, 15px);
+  font-weight: 500;
+  color: var(--vben-fg-muted);
+}
+
+.vben-kpi-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vben-kpi-icon.blue {
+  background: rgba(0, 107, 230, 0.1);
+  color: var(--vben-primary);
+}
+.vben-kpi-icon.green {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+.vben-kpi-icon.amber {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}
+.vben-kpi-icon.red {
+  background: rgba(239, 68, 68, 0.12);
+  color: #ef4444;
+}
+.vben-kpi-icon.indigo {
+  background: rgba(99, 102, 241, 0.12);
+  color: #6366f1;
+}
+
+.vben-kpi-value {
+  font-size: var(--vben-fs-kpi, 32px);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--vben-fg-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.vben-kpi-value.warn {
+  color: #d97706;
+}
+.vben-kpi-value.bad {
+  color: #dc2626;
+}
+
+.vben-kpi-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 10px;
+  border-top: 1px solid var(--vben-border-soft);
+  font-size: var(--vben-fs-sm, 13.5px);
+  color: var(--vben-fg-muted);
+}
+
+/* —— Unified Vben Card / Table / Modal Polish Across All Modules —— */
+.content-wrapper .card,
+.content-wrapper section.panel,
+.content-wrapper .panel-card {
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+}
+
+/* Crisp Antd-style tables globally */
+.content-wrapper table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--vben-bg-surface);
+}
+
+.content-wrapper table thead th {
+  background: var(--th-bg);
+  color: var(--vben-fg-strong);
+  font-size: var(--vben-fs-sm, 14px);
+  font-weight: 600;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--vben-border);
+  white-space: nowrap;
+}
+
+.content-wrapper table tbody td {
+  padding: 12px 14px;
+  font-size: var(--vben-fs-base, 15px);
+  color: var(--table-cell);
+  border-bottom: 1px solid var(--vben-border-soft);
+  vertical-align: middle;
+}
+
+.content-wrapper table tbody tr:hover td {
+  background: var(--table-hover);
+}
+
+/* Uniform Vben Drawer for ApModal variant="drawer" */
+.ap-modal-backdrop.ap-drawer-backdrop {
+  justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
+}
+
+.ap-modal.ap-drawer {
+  width: min(720px, 100vw);
+  max-width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  margin: 0;
+  border-radius: 12px 0 0 12px;
+  border-right: none;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  background: var(--vben-bg-surface);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.22);
+}
+
+.ap-modal.ap-drawer > .ap-modal-title {
+  margin: 0;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--vben-border-soft);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vben-fg-strong);
+  flex-shrink: 0;
+}
+
+.ap-modal.ap-drawer > .ap-modal-body {
+  margin: 0;
+  padding: 10px 24px 0;
+  flex-shrink: 0;
+}
+
+.ap-modal.ap-drawer > .ap-drawer-content,
+.ap-modal.ap-drawer > .job-create-scroll,
+.ap-modal.ap-drawer > form {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 24px 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ap-modal.ap-drawer > dl,
+.ap-modal.ap-drawer > pre {
+  margin-inline: 24px;
+}
+
+.ap-modal.ap-drawer > dl {
+  margin-top: 16px;
+}
+
+.ap-modal.ap-drawer > pre {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 16px;
+}
+
+.ap-modal.ap-drawer .job-form-actions,
+.ap-modal.ap-drawer > form > .ap-modal-actions,
+.ap-modal.ap-drawer > form > footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: auto -24px 0;
+  padding: 12px 24px;
+  background: var(--vben-bg-surface);
+  border-top: 1px solid var(--vben-border);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+}
+
+.ap-modal.ap-drawer > .ap-modal-actions {
+  margin: 0;
+  padding: 12px 24px;
+  border-top: 1px solid var(--vben-border-soft);
+  background: var(--vben-bg-surface);
+  flex-shrink: 0;
+}
+
+/* Global subtle copy icon button */
+.icon-copy-btn {
+  appearance: none;
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  color: var(--vben-fg-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  vertical-align: middle;
+  padding: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-copy-btn:hover {
+  color: var(--vben-primary);
+  background: var(--vben-primary-soft);
+}
+
+/* —— Site-Wide Vben v5 Standardization for All Modules —— */
+.content-wrapper .data-page,
+.content-wrapper .page-stack {
+  gap: 16px;
+}
+
+.content-wrapper .panel.data-page,
+.content-wrapper section.panel.page-stack {
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+  padding: 18px 20px;
+}
+
+.content-wrapper .page-hero {
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--vben-border-soft);
+  margin-bottom: 4px;
+}
+
+.content-wrapper .page-hero h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--vben-fg-strong);
+  letter-spacing: -0.01em;
+}
+
+.content-wrapper .table-wrap {
+  border: 1px solid var(--vben-border-soft);
+  border-radius: 10px;
+  background: var(--vben-bg-surface);
+}
+
+.content-wrapper .empty-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 6px;
+  padding: 32px 24px;
+  border-radius: 10px;
+  border: 1px dashed var(--vben-border);
+  background: var(--vben-bg-muted);
+  color: var(--vben-fg-muted);
+}
+
+.content-wrapper .empty-state.compact,
+.empty-state.compact {
+  padding: 20px 16px;
+}
+
+.content-wrapper .empty-state .empty-title,
+.empty-state .empty-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--vben-fg-strong);
+}
+
+.content-wrapper .empty-state .empty-desc,
+.empty-state .empty-desc {
+  margin: 0;
+  max-width: 36rem;
+  font-size: 13px;
+  color: var(--vben-fg-muted);
+  line-height: 1.55;
+}
+
+.content-wrapper table tbody td.empty {
+  text-align: center;
+  padding: 36px 20px;
+  color: var(--vben-fg-muted);
+}
+
+.content-wrapper .subnav {
+  border-bottom: 1px solid var(--vben-border);
+  gap: 16px;
+}
+
+.content-wrapper .subnav-item.active {
+  color: var(--vben-primary);
+  border-bottom-color: var(--vben-primary);
+  font-weight: 600;
+}
+
+.content-wrapper button.primary {
+  background: var(--vben-primary);
+  border-color: var(--vben-primary);
+  color: #ffffff;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.content-wrapper button.primary:hover:not(:disabled) {
+  background: var(--vben-primary-hover);
+  border-color: var(--vben-primary-hover);
+}
+
+.content-wrapper .field-label.inline {
+  white-space: nowrap;
+}
+
+/* Status Pill harmonization */
+.status-badge.status-pill {
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .vben-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .vben-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

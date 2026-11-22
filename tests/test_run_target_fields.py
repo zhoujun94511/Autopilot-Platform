@@ -60,9 +60,10 @@ def test_run_target_fields_reused_by_job_enqueue_schedule():
     assert "scheduleForm.platform !== 'web'" not in schedules
 
 
-def test_job_create_step4_title_follows_platform():
+def test_job_create_summary_labels_target_by_platform():
     text = (FE / "components" / "JobCreatePanel.vue").read_text(encoding="utf-8")
-    assert 'title: isDeviceless.value ? "执行节点" : "设备"' in text
+    assert "isDevicelessPlatform(form.value.platform)" in text
+    assert '{{ isDeviceless ? "执行节点" : "设备" }}' in text
 
 
 def test_jobs_panel_http_badge_style():

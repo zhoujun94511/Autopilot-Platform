@@ -3,6 +3,7 @@
  * 设备列表表格（AUD-2026-12 Wave 5 + UX 对齐）。
  */
 import type { Device } from "../api";
+import { Copy } from "lucide-vue-next";
 import { useAdminStore } from "../stores/adminStore";
 import { useExecStore } from "../stores/execution";
 import {
@@ -55,7 +56,7 @@ function openBusyJob(d: Device) {
           <th>UDID</th>
           <th>状态</th>
           <th>占用摘要</th>
-          <th>Runner</th>
+          <th>执行节点</th>
           <th>来源 / 所有者</th>
           <th v-if="hasDeviceActions">操作</th>
         </tr>
@@ -80,15 +81,15 @@ function openBusyJob(d: Device) {
           </td>
           <td class="mono">{{ deviceOsLabel(d) || "-" }}</td>
           <td class="mono udid-cell">
-            <span :title="d.udid">{{ udidSummary(d.udid) }}</span>
+            <span class="mono-id" :title="d.udid">{{ udidSummary(d.udid) }}</span>
             <button
               type="button"
-              class="icon-copy"
+              class="icon-copy-btn"
               title="复制 UDID"
               aria-label="复制 UDID"
               @click="admin.copyText(d.udid, '已复制 UDID')"
             >
-              复制
+              <Copy :size="13" aria-hidden="true" />
             </button>
           </td>
           <td>
@@ -116,15 +117,15 @@ function openBusyJob(d: Device) {
             <span v-else class="text-muted-row">—</span>
           </td>
           <td class="mono runner-cell">
-            <span :title="d.runner_id">{{ runnerSummary(d.runner_id) }}</span>
+            <span class="mono-id" :title="d.runner_id">{{ runnerSummary(d.runner_id) }}</span>
             <button
               type="button"
-              class="icon-copy"
-              title="复制 Runner ID"
-              aria-label="复制 Runner ID"
-              @click="admin.copyText(d.runner_id, '已复制 Runner ID')"
+              class="icon-copy-btn"
+              title="复制执行节点编号"
+              aria-label="复制执行节点编号"
+              @click="admin.copyText(d.runner_id, '已复制执行节点编号')"
             >
-              复制
+              <Copy :size="13" aria-hidden="true" />
             </button>
           </td>
           <td>
@@ -211,42 +212,48 @@ function openBusyJob(d: Device) {
 
 .udid-cell,
 .runner-cell {
-  max-width: 180px;
+  max-width: 190px;
+  white-space: nowrap;
 }
 
-.udid-cell span,
-.runner-cell span {
+.udid-cell .mono-id,
+.runner-cell .mono-id {
   display: inline-block;
-  max-width: 120px;
+  max-width: 130px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: bottom;
+  vertical-align: middle;
+  font-size: 12.5px;
 }
 
-.icon-copy {
+.icon-copy-btn {
   appearance: none;
-  margin-left: 0.25rem;
-  border: 1px solid var(--line);
-  background: var(--btn-bg);
-  color: var(--muted);
-  font: inherit;
-  font-size: 0.68rem;
-  font-weight: 650;
-  padding: 0.05rem 0.3rem;
-  border-radius: 3px;
+  margin-left: 6px;
+  border: none;
+  background: transparent;
+  color: var(--vben-fg-muted);
+  width: 24px;
+  height: 24px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
   vertical-align: middle;
+  padding: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.icon-copy:hover {
-  color: var(--text);
-  border-color: var(--border-strong);
+.icon-copy-btn:hover {
+  color: var(--vben-primary);
+  background: var(--vben-primary-soft);
 }
 
 .platform-badge {
   display: inline-flex;
   align-items: center;
+  white-space: nowrap;
   gap: 0.35rem;
   font-size: 0.72rem;
   font-weight: 700;
@@ -259,6 +266,7 @@ function openBusyJob(d: Device) {
 .platform-dot {
   width: 5px;
   height: 5px;
+  flex-shrink: 0;
   border-radius: 50%;
 }
 
@@ -306,7 +314,7 @@ function openBusyJob(d: Device) {
   font-size: 0.72rem;
   font-weight: 700;
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--warning-soft-fg);
   background: var(--warning-soft-bg);
   border: 1px solid var(--warning-soft-border);
@@ -316,7 +324,7 @@ function openBusyJob(d: Device) {
   display: inline-flex;
   margin-left: 0.35rem;
   padding: 0.05rem 0.35rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--chip-bg);
   border: 1px solid var(--line);
   color: var(--muted);

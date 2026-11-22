@@ -21,6 +21,48 @@ _SKIP_WALK_DIRS = {
     "reports",
 }
 
+_PORTABLE_FORBIDDEN_CHARS = set('<>:"/\\|?*')
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def portable_name_error(name: str) -> str:
+    """Return a cross-platform filename error, or ``""`` when valid.
+
+    Project/resource names are stored in user projects that may be opened on
+    Windows, macOS, or Linux.  The common subset therefore rejects Windows
+    device names and characters as well as both path separators, even when
+    the current host would accept them.
+    """
+    value = str(name or "").strip()
+    if not value:
+        return "名称不能为空"
+    if value in {".", ".."}:
+        return "名称不能是 . 或 .."
+    if any(ord(ch) < 32 for ch in value):
+        return "名称不能包含控制字符"
+    bad = sorted({ch for ch in value if ch in _PORTABLE_FORBIDDEN_CHARS})
+    if bad:
+        return f"名称不能包含：{' '.join(bad)}"
+    if value.endswith((".", " ")):
+        return "名称不能以空格或句点结尾"
+    stem = value.split(".", 1)[0].upper()
+    if stem in _WINDOWS_RESERVED_NAMES:
+        return f"名称不能使用系统保留名：{stem}"
+    return ""
+
+
+def validate_portable_name(name: str) -> str:
+    """Validate and return a trimmed name usable on all desktop targets."""
+    value = str(name or "").strip()
+    error = portable_name_error(value)
+    if error:
+        raise ValueError(error)
+    return value
+
 
 def to_posix(path: str) -> str:
     """序列化用：统一为正斜杠（相对路径可跨平台共享）。"""

@@ -6,6 +6,7 @@ from ..core import api_messages as msg
 
 import asyncio
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status as http_status
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -38,6 +39,7 @@ from ..artifacts.upload_stream import UploadTooLarge, spool_upload
 from ..authz import acl as acl_svc
 from ..ops import audit as audit_svc
 from ..services.execution import jobs as jobs_svc
+from ..services.execution.job_claims import lock_job_upload_claim, require_job_upload_claim
 from ..services import reports as reports_svc
 from ..services.shared.mappers import job_to_out
 from ..core.models import JobRow, db_get
@@ -160,6 +162,7 @@ def api_reclaim_stale_jobs(
 def api_mark_running(
     job_id: str,
     runner_id: str = Query(..., min_length=1),
+    claimed_at: datetime | None = Query(None),
     db: Session = Depends(get_session),
     auth: AuthContext = Depends(require_runner),
 ) -> JobOut:
@@ -168,7 +171,7 @@ def api_mark_running(
     if row is not None:
         assert_runner_scope_for_job(db, auth, str(row.project_id or ""))
     try:
-        return jobs_svc.mark_job_running(db, job_id, runner_id)
+        return jobs_svc.mark_job_running(db, job_id, runner_id, claimed_at=claimed_at)
     except LookupError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -182,6 +185,7 @@ def api_nack_job(
     job_id: str,
     runner_id: str = Query(..., min_length=1),
     reason: str = Query("", description="退回原因（写入任务日志，不标失败）"),
+    claimed_at: datetime | None = Query(None),
     db: Session = Depends(get_session),
     auth: AuthContext = Depends(require_runner),
 ) -> JobOut:
@@ -191,7 +195,7 @@ def api_nack_job(
     if row is not None:
         assert_runner_scope_for_job(db, auth, str(row.project_id or ""))
     try:
-        return jobs_svc.nack_job(db, job_id, runner_id, reason=reason)
+        return jobs_svc.nack_job(db, job_id, runner_id, reason=reason, claimed_at=claimed_at)
     except LookupError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -205,6 +209,7 @@ def api_complete(
     job_id: str,
     body: JobResultIn,
     runner_id: str = Query(..., min_length=1),
+    claimed_at: datetime | None = Query(None),
     db: Session = Depends(get_session),
     auth: AuthContext = Depends(require_runner),
 ) -> JobOut:
@@ -213,7 +218,7 @@ def api_complete(
     if row is not None:
         assert_runner_scope_for_job(db, auth, str(row.project_id or ""))
     try:
-        return jobs_svc.complete_job(db, job_id, runner_id, body)
+        return jobs_svc.complete_job(db, job_id, runner_id, body, claimed_at=claimed_at)
     except LookupError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     except PermissionError as exc:
@@ -227,6 +232,7 @@ async def api_upload_job_report(
     job_id: str,
     file: UploadFile = File(...),
     runner_id: str = Query(""),
+    claimed_at: datetime | None = Query(None),
     db: Session = Depends(get_session),
     auth: AuthContext = Depends(require_runner),
 ) -> ReportIndex:
@@ -240,8 +246,7 @@ async def api_upload_job_report(
             raise PermissionError(msg.JOB_RUNNER_ID_REQUIRED_REPORT)
         assert_runner_id_allowed(auth, rid)
         assert_runner_scope_for_job(db, auth, str(j.project_id or ""))
-        if j.runner_id and j.runner_id != rid:
-            raise PermissionError(msg.JOB_NOT_OWNED_BY_RUNNER)
+        current_claim = require_job_upload_claim(db, j, rid, claimed_at)
         max_mb = job_report_max_mb()
         temp_path, _ = await spool_upload(
             file, max_bytes=max_mb * 1024 * 1024 if max_mb > 0 else 0
@@ -252,6 +257,7 @@ async def api_upload_job_report(
             source_path=temp_path,
             filename=file.filename or "report.html",
             runner_id=rid,
+            claimed_at=current_claim,
         )
     except LookupError as exc:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -400,6 +406,7 @@ async def api_upload_job_logs(
     request: Request,
     runner_id: str = Query(""),
     replace: bool = Query(False),
+    claimed_at: datetime | None = Query(None),
     db: Session = Depends(get_session),
     auth: AuthContext = Depends(require_runner),
 ) -> dict:
@@ -408,11 +415,10 @@ async def api_upload_job_logs(
     if j is None:
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail=msg.JOB_NOT_FOUND)
     try:
-        rid = runner_id or (j.runner_id or "")
+        rid = (runner_id or auth.runner_id or j.runner_id or "").strip()
         assert_runner_id_allowed(auth, rid)
         assert_runner_scope_for_job(db, auth, str(j.project_id or ""))
-        if runner_id and j.runner_id and j.runner_id != runner_id:
-            raise PermissionError(msg.JOB_NOT_OWNED_BY_RUNNER)
+        current_claim = require_job_upload_claim(db, j, rid, claimed_at)
         ctype = (request.headers.get("content-type") or "").lower()
         if "application/json" in ctype:
             body = await request.json()
@@ -420,7 +426,10 @@ async def api_upload_job_logs(
         else:
             raw = await request.body()
             text = raw.decode("utf-8", errors="replace")
-        return jobs_svc.append_job_log(job_id, text, replace=replace)
+        lock_job_upload_claim(db, job_id, rid, current_claim)
+        result = jobs_svc.append_job_log(job_id, text, replace=replace)
+        db.commit()
+        return result
     except PermissionError as exc:
         raise HTTPException(status_code=http_status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:

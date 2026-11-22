@@ -2,22 +2,24 @@
 defineOptions({ name: "ArtifactsPanel" });
 
 import { storeToRefs } from "pinia";
-import { computed, ref, watch } from "vue";
+import { computed, onDeactivated, ref, watch } from "vue";
 import type { Artifact } from "../api";
 import { listArtifactsPage, OPS_LIST_PAGE_SIZE } from "../api/opsLists";
 import { useProjectsStore } from "../stores/projectsStore";
 import { useCapabilities } from "../composables/useCapabilities";
 import { usePagedList } from "../composables/usePagedList";
+import { workspaceScopeVersion } from "../composables/mcProjectsState";
 import { useExecStore } from "../stores/execution";
 import { useOpsStore } from "../stores/opsStore";
 import DataPager from "./common/DataPager.vue";
 import ExecProjectGateBanner from "./ExecProjectGateBanner.vue";
+import ApModal from "./ApModal.vue";
 
 const projectsStore = useProjectsStore();
 const { filterProjectId } = storeToRefs(projectsStore);
 const exec = useExecStore();
 const ops = useOpsStore();
-const { artifactsVersion, artMsg, artMsgOk, uploadName } = storeToRefs(exec);
+const { artifactsVersion, artMsg, artMsgOk, uploadName, uploadFile, uploadingArtifact, form } = storeToRefs(exec);
 const caps = useCapabilities();
 const uploadOpen = ref(false);
 const canUpload = computed(() => Boolean(caps.canEditProject));
@@ -31,10 +33,10 @@ const list = usePagedList<Artifact>({
       pageSize,
       projectId: filterProjectId.value.trim() || undefined,
     }),
-  resetSources: [() => filterProjectId.value],
+  resetSources: [workspaceScopeVersion],
 });
 
-const { items, total, page, pageSize, loading, hasLoaded, reload, setPage, setPageSize } = list;
+const { items, total, page, pageSize, loading, hasLoaded, error, reload, setPage, setPageSize } = list;
 
 watch(artifactsVersion, () => void reload(false));
 void reload(true);
@@ -48,48 +50,52 @@ function formatBytes(bytes: number, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + " " + sizes[i];
 }
 
+const manifestLabels: Record<string, string> = { valid: "通过", missing: "缺少清单", invalid: "校验失败" };
+
 function openUpload() {
+  if (uploadingArtifact.value || !canUpload.value) return;
   artMsg.value = "";
   uploadOpen.value = true;
 }
 
 function closeUpload() {
+  if (uploadingArtifact.value) return;
   uploadOpen.value = false;
+  uploadFile.value = null;
 }
 
-watch(artMsg, (m) => {
-  if (uploadOpen.value && artMsgOk.value && String(m || "").startsWith("已上传")) {
-    uploadOpen.value = false;
-  }
-});
+async function submitUpload(event: Event) {
+  if (await exec.onUpload(event)) closeUpload();
+}
+
+function resetUpload() {
+  uploadOpen.value = false;
+  uploadFile.value = null;
+}
+
+onDeactivated(resetUpload);
+watch(workspaceScopeVersion, resetUpload);
 </script>
 
 <template>
-  <section class="panel page-stack artifacts-panel">
+  <section class="panel page-stack data-page">
     <header class="page-hero">
       <div class="page-hero-copy">
         <h2>工程制品</h2>
-        <p class="lede">存放从 IDE 上传的工程压缩包，可上传或清理过期文件。</p>
       </div>
       <div class="page-hero-actions">
         <button
           v-if="canUpload"
           type="button"
           class="primary small"
+          :disabled="uploadingArtifact"
           @click="openUpload"
-        >
-          上传制品
-        </button>
+        >上传制品</button>
         <details v-if="caps.canOps" class="action-menu">
           <summary class="small">更多</summary>
           <div class="action-menu-panel">
-            <button
-              type="button"
-              class="danger-item"
-              title="按保留天数清理过期压缩包"
-              @click="exec.onPurgeArtifacts"
-            >
-              清理超期
+            <button type="button" class="danger-item" @click="exec.onPurgeArtifacts">
+              清理过期制品
             </button>
           </div>
         </details>
@@ -97,94 +103,70 @@ watch(artMsg, (m) => {
     </header>
 
     <ExecProjectGateBanner action-hint="上传制品" />
+    <p v-if="artMsg && artMsgOk && !uploadOpen" class="msg ok" role="status">{{ artMsg }}</p>
 
     <div class="table-wrap">
-      <table>
+      <table aria-label="工程制品" :aria-busy="loading">
         <thead>
           <tr>
-            <th>编号</th>
-            <th>名称</th>
-            <th>文件名</th>
-            <th>大小</th>
-            <th>校验</th>
-            <th>上传人</th>
-            <th>操作</th>
+            <th scope="col">制品</th>
+            <th scope="col">校验</th>
+            <th scope="col">大小</th>
+            <th scope="col">上传者</th>
+            <th scope="col">操作</th>
           </tr>
         </thead>
         <tbody>
+          <tr v-if="!items.length && !hasLoaded">
+            <td class="empty" colspan="5">正在加载制品…</td>
+          </tr>
           <tr v-if="!items.length && hasLoaded">
-            <td class="empty" colspan="7">
-              <div class="empty-stack">
-                <span>还没有工程压缩包</span>
-                <button type="button" class="linkish-cta" @click="openUpload">去上传</button>
+            <td class="empty" colspan="5">
+              <div v-if="error" class="empty-stack">
+                <span role="alert">{{ error }}</span>
+                <button type="button" class="linkish" @click="reload()">重试</button>
               </div>
+              <span v-else>暂无工程制品</span>
             </td>
           </tr>
-          <tr v-for="a in items" :key="a.id">
-            <td class="mono">
-              <button
-                type="button"
-                class="small art-id-btn"
-                title="选中后，创建任务时可直接用这个压缩包"
-                @click="exec.selectArtifact(a.id)"
-              >
-                {{ a.id.slice(0, 8) }}…
-              </button>
+          <tr v-for="artifact in items" :key="artifact.id">
+            <td>
+              <span class="entry-name">{{ artifact.name || artifact.filename }}</span>
+              <span v-if="artifact.name && artifact.name !== artifact.filename" class="entry-meta mono">
+                {{ artifact.filename }}
+              </span>
+              <span class="entry-meta mono" :title="artifact.id">{{ artifact.id.slice(0, 8) }}…</span>
             </td>
-            <td class="art-name-cell">{{ a.name || "-" }}</td>
-            <td class="mono font-semibold">{{ a.filename }}</td>
-            <td>{{ formatBytes(a.size_bytes) }}</td>
             <td>
               <span
-                class="manifest-pill"
-                :class="a.manifest_status || 'unknown'"
-                :title="
-                  [...(a.manifest_errors || []), ...(a.manifest_warnings || [])].join('\n') ||
-                  '无校验信息'
-                "
+                class="manifest-state"
+                :class="artifact.manifest_status"
+                :title="[...(artifact.manifest_errors || []), ...(artifact.manifest_warnings || [])].join('\n')"
               >
-                {{ a.manifest_status || "n/a"
-                }}{{ a.manifest_version ? ` @${a.manifest_version}` : "" }}
+                {{ manifestLabels[artifact.manifest_status || ""] || artifact.manifest_status || "未校验" }}
               </span>
+              <span v-if="artifact.manifest_version" class="entry-meta">{{ artifact.manifest_version }}</span>
             </td>
+            <td class="mono size-cell">{{ formatBytes(artifact.size_bytes) }}</td>
+            <td>{{ artifact.uploaded_by || "—" }}</td>
             <td>
-              <span class="user-pill">{{ a.uploaded_by }}</span>
-            </td>
-            <td>
-              <div class="action-btn-group">
+              <div class="row-actions">
                 <button
                   type="button"
-                  class="small"
-                  title="选中后可把这个压缩包分享给别人"
-                  @click="ops.selectArtifactForShare(a.id)"
-                >
-                  <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2" fill="none">
-                    <circle cx="18" cy="5" r="3" />
-                    <circle cx="6" cy="12" r="3" />
-                    <circle cx="18" cy="19" r="3" />
-                    <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-                    <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-                  </svg>
-                  分享
-                </button>
-                <button
-                  type="button"
-                  class="small danger"
-                  title="删除这个压缩包"
-                  @click="exec.onDeleteArtifact(a.id)"
-                >
-                  <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2" fill="none">
-                    <polyline points="3 6 5 6 21 6" />
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                  </svg>
-                  删除
-                </button>
+                  class="linkish small"
+                  :title="artifact.id"
+                  :aria-pressed="form.artifact_id === artifact.id"
+                  @click="exec.selectArtifact(artifact.id)"
+                >{{ form.artifact_id === artifact.id ? "已选用" : "选用" }}</button>
+                <button type="button" class="linkish small" @click="ops.selectArtifactForShare(artifact.id)">分享</button>
+                <button type="button" class="linkish small danger-item" @click="exec.onDeleteArtifact(artifact.id)">删除</button>
               </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+    <p v-if="items.length && error" class="msg bad" role="alert">{{ error }}</p>
     <DataPager
       v-if="total > 0"
       :total="total"
@@ -195,232 +177,75 @@ watch(artMsg, (m) => {
       @update:page-size="setPageSize"
     />
 
-    <Teleport to="body">
-      <div v-if="uploadOpen" class="modal-mask" @click.self="closeUpload">
-        <section
-          class="modal-card"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="artifact-upload-title"
-        >
-          <header class="modal-head">
-            <div>
-              <h3 id="artifact-upload-title">上传工程制品</h3>
-              <p class="modal-sub">上传 zip 用例归档包，可选填写显示名称。</p>
-            </div>
-            <button type="button" class="icon-btn" aria-label="关闭" @click="closeUpload">✕</button>
-          </header>
-          <form class="modal-body" @submit.prevent="exec.onUpload">
-            <label class="field-label">
-              名称
-              <input v-model="uploadName" placeholder="例如: Release_v1.0.4_B3" />
-            </label>
-            <label class="field-label">
-              Zip 用例归档包 *
-              <input
-                type="file"
-                accept=".zip,application/zip"
-                required
-                class="real-file-input"
-                @change="exec.onFileChange"
-              />
-            </label>
-            <p v-if="artMsg" class="msg" :class="artMsgOk ? 'ok' : 'bad'">
-              {{ artMsg }}
-            </p>
-            <footer class="modal-actions">
-              <button type="button" class="ghost" @click="closeUpload">取消</button>
-              <button type="submit" class="primary">开始上传</button>
-            </footer>
-          </form>
-        </section>
-      </div>
-    </Teleport>
+    <ApModal
+      v-if="uploadOpen"
+      title="上传工程制品"
+      wide
+      :close-on-backdrop="!uploadingArtifact"
+      :close-on-esc="!uploadingArtifact"
+      @close="closeUpload"
+    >
+      <form class="upload-form" :aria-busy="uploadingArtifact" @submit.prevent="submitUpload">
+        <label class="field-label">
+          显示名称
+          <input v-model="uploadName" :disabled="uploadingArtifact" autocomplete="off" placeholder="默认使用文件名" />
+        </label>
+        <label class="field-label">
+          ZIP 文件
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            required
+            :disabled="uploadingArtifact"
+            @change="exec.onFileChange"
+          />
+        </label>
+        <p v-if="artMsg && !artMsgOk" class="msg bad" role="alert">{{ artMsg }}</p>
+        <footer class="ap-modal-actions">
+          <button type="button" class="ghost" :disabled="uploadingArtifact" @click="closeUpload">取消</button>
+          <button type="submit" class="primary" :disabled="uploadingArtifact || !uploadFile">
+            {{ uploadingArtifact ? "正在上传…" : "开始上传" }}
+          </button>
+        </footer>
+      </form>
+    </ApModal>
   </section>
 </template>
 
 <style scoped>
-.artifacts-panel {
-  width: 100%;
-  max-width: none;
-}
-
-.art-id-btn {
-  background-color: var(--indigo-soft-bg);
-  border-color: var(--indigo-soft-border);
-  color: var(--indigo-soft-fg);
-  font-weight: 700;
-}
-
-.art-id-btn:hover {
-  background-color: var(--indigo-soft-fg);
-  border-color: transparent;
-  color: var(--on-accent);
-}
-
-.art-name-cell {
+.entry-name {
   font-weight: 600;
-  color: var(--text);
+  overflow-wrap: anywhere;
 }
 
-.font-semibold {
-  font-weight: 600;
-}
-
-.user-pill {
-  font-size: 0.75rem;
-  background-color: var(--control-bg);
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  border: 1px solid var(--line);
+.entry-meta {
+  display: block;
+  margin-top: var(--space-1);
   color: var(--muted);
+  font-size: var(--font-size-caption, 0.75rem);
+  overflow-wrap: anywhere;
 }
 
-.manifest-pill {
-  font-size: 0.75rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  border: 1px solid var(--line);
-  text-transform: lowercase;
-}
-.manifest-pill.valid {
-  color: var(--ok-soft-fg);
-  background: var(--ok-soft-bg);
-  border-color: var(--ok-soft-border);
-}
-.manifest-pill.missing {
-  color: var(--warning-soft-fg);
-  background: var(--warning-soft-bg);
-  border-color: var(--warning-soft-border);
-}
-.manifest-pill.invalid {
-  color: var(--danger-soft-fg);
-  background: var(--danger-soft-bg);
-  border-color: var(--danger-soft-border);
-}
-.manifest-pill.unknown,
-.manifest-pill.n\/a {
-  color: var(--muted);
+.size-cell {
+  white-space: nowrap;
 }
 
-.action-btn-group {
-  display: flex;
-  gap: 0.4rem;
+.manifest-state.valid { color: var(--ok-soft-fg); }
+.manifest-state.missing { color: var(--warning-soft-fg); }
+.manifest-state.invalid,
+.danger-item { color: var(--danger-soft-fg); }
+
+.upload-form,
+.field-label {
+  display: grid;
+  gap: var(--space-2);
 }
 
-.linkish-cta {
-  background: none;
-  border: none;
-  color: var(--accent-text, #1565c0);
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 0;
-  margin: 0;
-}
-
-td.empty {
-  text-align: center;
-}
-
-.danger-item {
-  color: var(--bad) !important;
-}
-
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1.25rem;
-  background: var(--overlay);
-}
-
-.modal-card {
-  width: min(480px, 100%);
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elevated-shadow);
-}
-
-.modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1.1rem 1.2rem 0.85rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.modal-head h3 {
-  margin: 0 0 0.3rem;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.modal-sub {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.icon-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.2rem 0.4rem;
-  border-radius: var(--radius-sm);
-}
-
-.icon-btn:hover {
-  color: var(--text);
-  background: var(--action-hover);
-}
-
-.modal-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-  padding: 1.1rem 1.2rem 1.2rem;
+.upload-form {
+  gap: var(--space-4);
 }
 
 .field-label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--muted);
-}
-
-.real-file-input {
-  cursor: pointer;
-  padding: 0.4rem 0;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  margin-top: 0.25rem;
-}
-
-.msg {
-  margin: 0;
-  font-size: 0.82rem;
-}
-.msg.ok {
-  color: var(--ok);
-}
-.msg.bad {
-  color: var(--bad);
+  font-size: 0.85rem;
 }
 </style>

@@ -58,14 +58,25 @@ def _ah(client: TestClient) -> dict:
     return {"Authorization": f"Bearer {login['access_token']}"}
 
 
-def test_upload_and_get_evidence(client: TestClient):
-    ah = _ah(client)
-    client.post(
+def _register_runner(client: TestClient, runner_id: str, platform: str) -> None:
+    registered = client.post(
+        "/api/v1/runners/register",
+        headers=TOKEN,
+        json={"runner_id": runner_id, "hostname": runner_id, "capabilities": [platform]},
+    )
+    assert registered.status_code == 200, registered.text
+    heartbeat = client.post(
         "/api/v1/runners/heartbeat",
         headers=TOKEN,
-        json={"runner_id": "r-ev", "inventory": [], "devices": [], "capabilities": ["web"]},
+        json={"runner_id": runner_id, "inventory": [], "devices": []},
     )
-    job = client.post(
+    assert heartbeat.status_code == 200, heartbeat.text
+
+
+def test_upload_and_get_evidence(client: TestClient):
+    ah = _ah(client)
+    _register_runner(client, "r-ev", "web")
+    created = client.post(
         "/api/v1/jobs",
         headers=ah,
         json={ "project_id": "p-mc",
@@ -74,11 +85,14 @@ def test_upload_and_get_evidence(client: TestClient):
             "platform": "web",
             "preferred_runner_id": "r-ev",
         },
-    ).json()
+    )
+    assert created.status_code == 200, created.text
+    job = created.json()
     claimed = client.post(
         "/api/v1/jobs/claim?runner_id=r-ev", headers=TOKEN
-    ).json()
-    assert claimed["id"] == job["id"]
+    )
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["id"] == job["id"]
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
@@ -109,12 +123,8 @@ def test_upload_and_get_evidence(client: TestClient):
 
 def test_evidence_list_and_mp4_mime(client: TestClient):
     ah = _ah(client)
-    client.post(
-        "/api/v1/runners/heartbeat",
-        headers=TOKEN,
-        json={"runner_id": "r-ev2", "inventory": [], "devices": [], "capabilities": ["android"]},
-    )
-    job = client.post(
+    _register_runner(client, "r-ev2", "android")
+    created = client.post(
         "/api/v1/jobs",
         headers=ah,
         json={ "project_id": "p-mc",
@@ -123,11 +133,14 @@ def test_evidence_list_and_mp4_mime(client: TestClient):
             "platform": "android",
             "preferred_runner_id": "r-ev2",
         },
-    ).json()
+    )
+    assert created.status_code == 200, created.text
+    job = created.json()
     claimed = client.post(
         "/api/v1/jobs/claim?runner_id=r-ev2", headers=TOKEN
-    ).json()
-    assert claimed["id"] == job["id"]
+    )
+    assert claimed.status_code == 200, claimed.text
+    assert claimed.json()["id"] == job["id"]
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:

@@ -27,7 +27,9 @@ def get_embedder():
         return HashingEmbedder()
     if mode == "openai":
         return OpenAIEmbedder()
-    # auto：优先远程，不可用则本地
+    # auto：优先远程，不可用或当前厂商不支持 /embeddings 时回退本地
+    if ai_config.ai_provider() in ("deepseek", "anthropic") and not ai_config.ai_base_url().endswith("/v1"):
+        return HashingEmbedder()
     if ai_config.ai_api_key():
         try:
             emb = OpenAIEmbedder()

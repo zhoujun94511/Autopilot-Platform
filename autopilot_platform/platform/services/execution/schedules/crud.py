@@ -155,6 +155,8 @@ def create_schedule(db: Session, body: ScheduleCreate, auth: AuthContext) -> Sch
         created_at=now,
         updated_at=now,
     )
+    if auth.kind != "user" or not (auth.username or "").strip():
+        raise PermissionError(msg.SCHEDULE_CREATOR_UNAVAILABLE)
     row.device_udids = list(body.device_udids or [])
     row.entry_paths = list(body.entry_paths or [])
     apply_deviceless_run_target(row)
@@ -386,6 +388,7 @@ def _fire_once(db: Session, row: ScheduleRow) -> str:
         body,
         auth=auth,
         created_by=auth.username,
+        commit=False,
     )
     row.runs_done = int(row.runs_done or 0) + 1
     row.last_job_id = job.id
@@ -419,31 +422,43 @@ def run_schedule_now(db: Session, schedule_id: str, auth: AuthContext) -> Schedu
         owner_username=str(row.created_by or ""),
         need_write=True,
     )
+    if not _claim_schedule_fire(db, row, utcnow(), manual=True):
+        db.rollback()
+        raise ValueError(msg.SCHEDULE_FIRE_CONFLICT)
+    if _has_active_run(db, row):
+        db.rollback()
+        raise ValueError(msg.SCHEDULE_RUN_ACTIVE)
     _fire_once(db, row)
     db.refresh(row)
     return schedule_to_out(row)
 
 
-def _claim_schedule_fire(db: Session, row: ScheduleRow, now) -> bool:
-    """用条件 UPDATE 领取本次触发租约，防止多实例同时创建同一拍 Job。"""
-
-    lease_until = now + timedelta(seconds=60)
+def _claim_schedule_fire(db: Session, row: ScheduleRow, now, *, manual: bool = False) -> bool:
+    """Hold the schedule write lock until the job and schedule commit together."""
+    predicates = [
+        ScheduleRow.id == row.id,
+        ScheduleRow.runs_done == row.runs_done,
+        ScheduleRow.updated_at == row.updated_at,
+    ]
+    if not manual:
+        predicates.extend((ScheduleRow.enabled.is_(True), ScheduleRow.next_run_at <= now))
     result = db.execute(
         update(ScheduleRow)
-        .where(
-            ScheduleRow.id == row.id,
-            ScheduleRow.enabled.is_(True),
-            ScheduleRow.next_run_at.is_not(None),
-            ScheduleRow.next_run_at <= now,
-        )
-        .values(next_run_at=lease_until, updated_at=now)
+        .where(*predicates)
+        .values(updated_at=now)
         .execution_options(synchronize_session=False)
     )
-    db.commit()
     if int(getattr(result, "rowcount", 0) or 0) != 1:
         return False
     db.refresh(row)
     return True
+
+
+def _has_active_run(db: Session, row: ScheduleRow) -> bool:
+    previous = db_get(db, JobRow, row.last_job_id) if row.last_job_id else None
+    return previous is not None and previous.status in (
+        JobStatus.PENDING.value, JobStatus.CLAIMED.value, JobStatus.RUNNING.value,
+    )
 
 
 def tick_due_schedules(db: Session, *, now=None) -> list[str]:
@@ -461,33 +476,42 @@ def tick_due_schedules(db: Session, *, now=None) -> list[str]:
     )
     job_ids: list[str] = []
     for row in rows:
-        if not _claim_schedule_fire(db, row, now):
-            continue
-        if row.last_job_id:
-            prev = db_get(db, JobRow, row.last_job_id)
-            if prev is not None and prev.status in (
-                JobStatus.PENDING.value,
-                JobStatus.CLAIMED.value,
-                JobStatus.RUNNING.value,
-            ):
+        schedule_id = row.id
+        try:
+            if not _claim_schedule_fire(db, row, now):
+                db.rollback()
+                continue
+            if _has_active_run(db, row):
                 # 上一拍未结束：延后，避免重叠
                 row.next_run_at = now + timedelta(seconds=max(5, int(row.interval_sec or 5)))
                 row.updated_at = now
                 db.commit()
                 continue
-        try:
             jid = _fire_once(db, row)
             job_ids.append(jid)
         except _FIRE_ERRS:
-            row.updated_at = utcnow()
+            db.rollback()
+            db.execute(
+                update(ScheduleRow)
+                .where(
+                    ScheduleRow.id == schedule_id,
+                    ScheduleRow.enabled.is_(True),
+                    ScheduleRow.next_run_at <= now,
+                )
+                .values(next_run_at=now + timedelta(seconds=60), updated_at=utcnow())
+            )
             db.commit()
     return job_ids
 
 
-def on_job_finished(db: Session, job_id: str, *, passed: bool | None) -> None:
+def on_job_finished(
+    db: Session, job_id: str, *, passed: bool | None, commit: bool = True
+) -> None:
     """任务终态回调：更新引用该 job 的计划的 last_passed，并可能停计。"""
     rows = list(
-        db.scalars(select(ScheduleRow).where(ScheduleRow.last_job_id == job_id)).all()
+        db.scalars(
+            select(ScheduleRow).where(ScheduleRow.last_job_id == job_id).with_for_update()
+        ).all()
     )
     if not rows:
         return
@@ -500,4 +524,5 @@ def on_job_finished(db: Session, job_id: str, *, passed: bool | None) -> None:
         elif row.enabled and not _should_continue(row):
             row.enabled = False
             row.next_run_at = None
-    db.commit()
+    if commit:
+        db.commit()

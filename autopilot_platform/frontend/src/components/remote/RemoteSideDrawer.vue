@@ -75,20 +75,19 @@ onMounted(() => {
 <template>
   <aside class="remote-drawer">
     <header class="remote-drawer-head">
-      <strong>更多</strong>
+      <strong>远控工具</strong>
       <button type="button" class="drawer-close" title="关闭" aria-label="关闭侧栏" @click="emit('close')">
         ×
       </button>
     </header>
-    <nav class="remote-tabs" role="tablist" aria-label="远控工具">
+    <nav class="remote-tabs" aria-label="远控工具">
       <button
         v-for="[id, label] in tabs"
         :key="id"
         type="button"
-        role="tab"
         class="remote-tab"
         :class="{ active: active === id }"
-        :aria-selected="active === id"
+        :aria-pressed="active === id"
         @click="active = id"
       >
         {{ label }}
@@ -139,6 +138,10 @@ onMounted(() => {
   border-radius: var(--radius-lg, 8px);
   background: var(--surface-secondary);
   overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .remote-drawer { max-height: min(460px, 60dvh); }
 }
 
 .remote-drawer-head {
@@ -472,7 +475,7 @@ onMounted(() => {
   align-items: center;
   flex-shrink: 0;
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1.3;
@@ -665,7 +668,7 @@ onMounted(() => {
   height: 2.1rem;
   padding: 0;
   border: 0;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-size: 1rem;
   line-height: 1;
   color: var(--on-accent);

@@ -23,10 +23,6 @@ if TYPE_CHECKING:
 def _resolve_project_dir(
     job: JobOut, client: Optional[PlatformClient]
 ) -> tuple[str, Optional[str], Optional[str]]:
-    project_dir = (job.project_dir or "").strip()
-    if project_dir and os.path.isdir(project_dir):
-        return project_dir, None, None
-
     aid = (job.artifact_id or "").strip()
     if aid and client is not None:
         try:
@@ -35,6 +31,10 @@ def _resolve_project_dir(
             return path, None, dest
         except (OSError, RuntimeError, ValueError, httpx.HTTPError) as exc:
             return "", f"制品下载失败：{exc}", None
+
+    project_dir = (job.project_dir or "").strip()
+    if project_dir and os.path.isdir(project_dir):
+        return project_dir, None, None
 
     if project_dir:
         return "", f"工程目录不存在或不是目录：{project_dir!r}", None
@@ -154,9 +154,11 @@ def _make_log_flusher(job: JobOut, client: Optional["PlatformClient"]):
     if not job_id:
         return None
     runner_id = str(getattr(job, "runner_id", "") or "")
+    claimed_at = getattr(job, "claimed_at", None)
 
     def _flush(text: str) -> None:
-        fn(job_id, runner_id, text, replace=False)
+        claim = {"claimed_at": claimed_at} if claimed_at else {}
+        fn(job_id, runner_id, text, replace=False, **claim)
 
     return _flush
 
@@ -360,6 +362,7 @@ def execute_job(
                 log="\n".join(lines) + "\n",
             )
 
+        cleanup.remove(report_tmp)
         failed = int(counts.get("failed", 0))
         status = JobStatus.SUCCEEDED if failed == 0 else JobStatus.FAILED
         summary = (
@@ -424,8 +427,6 @@ def execute_job(
         except (OSError, ValueError, TypeError, RuntimeError) as ev_err:
             lines.append(f"[runner] WARN evidence.zip: {ev_err}")
         lines.append(f"[runner] done status={status.value} summary={summary}")
-        keep_report = report_tmp
-        cleanup[:] = [entry for entry in cleanup if entry != keep_report]
         return JobResultIn(
             status=status,
             error=None if failed == 0 else f"{failed} 个用例失败",

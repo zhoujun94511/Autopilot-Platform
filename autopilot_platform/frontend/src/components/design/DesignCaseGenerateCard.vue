@@ -187,7 +187,7 @@ textarea {
   gap: 0.25rem;
   background: var(--chip-bg);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0.15rem;
 }
 .mode-tab {
@@ -196,7 +196,7 @@ textarea {
   color: var(--muted);
   font-size: 0.78rem;
   padding: 0.25rem 0.65rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 .mode-tab.active {

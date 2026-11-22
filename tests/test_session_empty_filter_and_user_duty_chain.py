@@ -116,7 +116,7 @@ def test_frontend_create_user_posts_duty_only():
     """UI 选项 → onCreateUser 只 POST duty（+ 项目时的 project_id），不再发 role。"""
     panel = _src(USERS_PANEL)
     assert "dutyOptions" in panel
-    assert "这个人来干什么" in panel
+    assert 'aria-label="账号角色"' in panel
     for duty in (
         "user",
         "sys_admin",
@@ -323,3 +323,52 @@ def test_duty_project_roles_one_transaction(client: TestClient):
         json=user_create_body("noproj", "Noproj12", duty="project_owner"),
     )
     assert missing.status_code == 400
+
+
+def test_delete_project_viewer_cleans_up_login_sessions(client: TestClient):
+    admin = _login(client)
+    org_id = "delete-user-org"
+    project_id = "delete-user-project"
+    username = "delete-test-viewer"
+    password = "ViewerTest123"
+    org = client.post("/api/v1/orgs", headers=admin, json={"id": org_id, "name": "Delete test"})
+    assert org.status_code == 200, org.text
+
+    scoped = {**admin, "X-Org-Id": org_id}
+    project = client.post(
+        "/api/v1/projects",
+        headers=scoped,
+        json={"id": project_id, "name": "Delete test", "org_id": org_id},
+    )
+    assert project.status_code == 200, project.text
+    created = client.post(
+        "/api/v1/auth/users",
+        headers=scoped,
+        json=user_create_body(username, password, duty="project_viewer", project_id=project_id),
+    )
+    assert created.status_code == 200, created.text
+    user_id = created.json()["id"]
+    login = client.post("/api/v1/auth/login", json={"username": username, "password": password})
+    assert login.status_code == 200, login.text
+    original_token = login.json()["refresh_token"]
+    renewed = client.post("/api/v1/auth/refresh", json={"refresh_token": original_token})
+    assert renewed.status_code == 200, renewed.text
+    active_token = renewed.json()["refresh_token"]
+    active_session = {"Authorization": f"Bearer {renewed.json()['access_token']}"}
+    assert client.get("/api/v1/auth/me", headers=active_session).status_code == 200
+
+    removed = client.delete(f"/api/v1/auth/users/{user_id}", headers=scoped)
+    assert removed.status_code == 204, removed.text
+    assert client.get("/api/v1/auth/me", headers=active_session).status_code == 401
+    for token in (original_token, active_token):
+        refresh = client.post("/api/v1/auth/refresh", json={"refresh_token": token})
+        assert refresh.status_code == 401, refresh.text
+
+    for path in (
+        "/api/v1/auth/users",
+        f"/api/v1/orgs/{org_id}/members",
+        f"/api/v1/projects/{project_id}/members",
+    ):
+        response = client.get(path, headers=scoped)
+        assert response.status_code == 200, response.text
+        assert all(row["username"] != username for row in page_items(response.json())), path

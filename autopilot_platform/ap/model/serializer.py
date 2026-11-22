@@ -414,8 +414,22 @@ def dict_to_keyworddef(d: dict[str, Any]) -> KeywordDef:
 # ---------- YAML 读写 ----------
 
 def _dump_yaml(data: dict, path: str) -> None:
-    with open(path, "w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+    import os
+    import tempfile
+
+    parent = os.path.dirname(os.path.abspath(path)) or "."
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".autopilot-", suffix=".tmp", dir=parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def save_testcase(tc: TestCase, path: str) -> None:
@@ -442,6 +456,8 @@ def load(path: str):
     """按文件内 type 字段反序列化为对应模型对象。"""
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"无效的 YAML 模型文件（应为映射）：{path}")
     obj_type = data.get("type")
     if obj_type == "testcase":
         obj = dict_to_testcase(data)

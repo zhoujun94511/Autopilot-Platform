@@ -5,6 +5,7 @@ defineProps<{
   platform: string;
   readonly?: boolean;
   drawerOpen?: boolean;
+  drawerAvailable?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -18,6 +19,11 @@ const emit = defineEmits<{
 }>();
 
 const dpadOpen = ref(false);
+const drawerButton = ref<HTMLButtonElement | null>(null);
+
+defineExpose({
+  focusDrawerToggle: () => drawerButton.value?.focus(),
+});
 
 function closeDpad() {
   dpadOpen.value = false;
@@ -44,6 +50,7 @@ function onToggleDrawer() {
         type="button"
         class="ap-btn ghost"
         :class="{ active: dpadOpen }"
+        :aria-expanded="dpadOpen"
         :disabled="readonly"
         @click="dpadOpen = !dpadOpen"
       >
@@ -71,6 +78,10 @@ function onToggleDrawer() {
         type="button"
         class="ap-btn ghost"
         :class="{ active: drawerOpen }"
+        ref="drawerButton"
+        :aria-expanded="drawerOpen"
+        :aria-controls="drawerAvailable ? 'remote-tools' : undefined"
+        :disabled="!drawerAvailable"
         @click="onToggleDrawer"
       >
         更多
@@ -100,6 +111,7 @@ function onToggleDrawer() {
         type="button"
         class="ap-btn ghost"
         :class="{ active: dpadOpen }"
+        :aria-expanded="dpadOpen"
         :disabled="readonly"
         @click="dpadOpen = !dpadOpen"
       >
@@ -110,6 +122,10 @@ function onToggleDrawer() {
         type="button"
         class="ap-btn ghost"
         :class="{ active: drawerOpen }"
+        ref="drawerButton"
+        :aria-expanded="drawerOpen"
+        :aria-controls="drawerAvailable ? 'remote-tools' : undefined"
+        :disabled="!drawerAvailable"
         @click="onToggleDrawer"
       >
         更多
@@ -118,10 +134,10 @@ function onToggleDrawer() {
 
     <div v-if="dpadOpen" class="remote-dpad-wrap">
       <div class="remote-dpad" role="group" aria-label="方向键">
-        <button type="button" class="dpad-key up" :disabled="readonly" @click="dpad('up', platform === 'ios')">
+        <button type="button" class="dpad-key up" aria-label="向上滑动" :disabled="readonly" @click="dpad('up', platform === 'ios')">
           ↑
         </button>
-        <button type="button" class="dpad-key left" :disabled="readonly" @click="dpad('left', platform === 'ios')">
+        <button type="button" class="dpad-key left" aria-label="向左滑动" :disabled="readonly" @click="dpad('left', platform === 'ios')">
           ←
         </button>
         <button
@@ -134,10 +150,10 @@ function onToggleDrawer() {
         >
           ×
         </button>
-        <button type="button" class="dpad-key right" :disabled="readonly" @click="dpad('right', platform === 'ios')">
+        <button type="button" class="dpad-key right" aria-label="向右滑动" :disabled="readonly" @click="dpad('right', platform === 'ios')">
           →
         </button>
-        <button type="button" class="dpad-key down" :disabled="readonly" @click="dpad('down', platform === 'ios')">
+        <button type="button" class="dpad-key down" aria-label="向下滑动" :disabled="readonly" @click="dpad('down', platform === 'ios')">
           ↓
         </button>
       </div>
@@ -149,15 +165,15 @@ function onToggleDrawer() {
 .remote-toolbar {
   position: relative;
   display: grid;
-  gap: 0.55rem;
-  padding-top: 0.75rem;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
   flex-shrink: 0;
 }
 
 .remote-toolbar-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--space-1);
   align-items: center;
 }
 

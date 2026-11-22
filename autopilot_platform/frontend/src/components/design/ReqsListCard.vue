@@ -105,10 +105,8 @@ const docSelectOptions = computed(() => [
 </script>
 
 <template>
-  <section class="surface-card">
-    <div class="card-title-row">
-      <h3>需求条目</h3>
-      <div v-if="!readonly" class="inline-tools">
+  <section aria-label="需求条目">
+    <div v-if="!readonly && selectedIds.length" class="list-toolbar" aria-label="批量操作">
         <button
           type="button"
           class="primary"
@@ -125,7 +123,6 @@ const docSelectOptions = computed(() => [
         >
           批量删除（{{ selectedIds.length }}）
         </button>
-      </div>
     </div>
 
     <div class="list-toolbar">
@@ -137,6 +134,7 @@ const docSelectOptions = computed(() => [
         <input
           :value="q"
           type="search"
+          aria-label="搜索需求条目"
           placeholder="搜索编号 / 标题 / 内容…"
           @input="emit('update:q', ($event.target as HTMLInputElement).value)"
         />

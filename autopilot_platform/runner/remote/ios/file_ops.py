@@ -19,6 +19,23 @@ _guard = threading.RLock()
 _uploads: dict[str, tuple[Any, str, str, str, int, int]] = {}
 
 
+def cleanup_uploads() -> None:
+    """远控会话结束时清理未完成的 iOS 分片上传临时文件。"""
+    with _guard:
+        items = list(_uploads.values())
+        _uploads.clear()
+    for fp, tmp_path, _remote, _app, _size, _written in items:
+        try:
+            fp.close()
+        except OSError:
+            pass
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+
 def afc_src_candidates(path: str, app: str = "") -> list[str]:
     """go-ios AFC Stat 对无前导 ``/`` 的路径常报 error code 8（OBJECT_NOT_FOUND）。
 

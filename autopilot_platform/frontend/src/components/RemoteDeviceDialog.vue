@@ -3,7 +3,7 @@
  * Platform Web 远控面板：Android WebRTC / iOS 27 HEVC 或 WDA MJPEG + 触控。
  * DataChannel 对齐 WebAppFlaskscrcpy：Runner 创建 input，浏览器 ondatachannel 接收。
  */
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from "vue";
 import ApModal from "./ApModal.vue";
 import RemoteSideDrawer from "./remote/RemoteSideDrawer.vue";
 import RemoteStage from "./remote/RemoteStage.vue";
@@ -50,6 +50,7 @@ import {
   summaryRemoteCold,
 } from "../composables/remote/remoteColdTrace";
 import { apiLeaveRemoteParticipant, apiPostRemoteCommand } from "../api/remote";
+import { ApiHttpError, getAuthSessionVersion, loadJwt } from "../api";
 import { setOverlayBusy } from "../composables/mcPolling";
 
 const RTC_CONFIG: RTCConfiguration = {
@@ -91,6 +92,8 @@ let statusTimer: number | null = null;
 let statsTimer: number | null = null;
 let transport: RemoteTransport | null = null;
 let sessionId = "";
+const activeSession = shallowRef<RemoteSessionInfo | null>(null);
+const participantRole = ref<"controller" | "viewer" | null>(null);
 let lastStatsBytes = 0;
 let lastStatsTs = 0;
 let pendingMjpeg: { bytes: Uint8Array; mime: string } | null = null;
@@ -157,9 +160,16 @@ const TOUCH_MOVE_INTERVAL_MS = 50;
 
 /** 对齐 Flask：右侧抽屉默认收起，底栏「更多」切换。 */
 const drawerOpen = ref(false);
+const toolbarEl = ref<InstanceType<typeof RemoteToolbar> | null>(null);
+
+async function closeTools() {
+  drawerOpen.value = false;
+  await nextTick();
+  toolbarEl.value?.focusDrawerToggle();
+}
 
 const readonlySession = computed(
-  () => remoteDialogState.value?.session?.participant_role === "viewer",
+  () => (participantRole.value ?? remoteDialogState.value?.mode) === "viewer",
 );
 
 const stageStreaming = computed(() => {
@@ -207,6 +217,7 @@ const title = computed(() => {
 });
 
 let sessionEnding = false;
+let activeSessionAuth: { version: number; bearer: string } | null = null;
 
 function handleRemoteSessionEnded(reason: string) {
   if (sessionEnding) return;
@@ -230,29 +241,38 @@ function isSignalingForThisPeer(msg: Record<string, unknown>): boolean {
 watch(
   () => Boolean(remoteDialogState.value),
   (open) => setOverlayBusy(open),
-  { immediate: true },
+  { immediate: true, flush: "sync" },
 );
 
 watch(
   () => remoteDialogState.value,
-  async (s) => {
+  async (s, _previous, onCleanup) => {
+    let cancelled = false;
+    onCleanup(() => { cancelled = true; });
     drawerOpen.value = false;
     await teardown();
-    if (!s) return;
+    if (!s || cancelled || remoteDialogState.value !== s) return;
     sessionEnding = false;
-    await loadPlatformBootstrap();
     connecting.value = true;
     errorText.value = "";
     statusText.value =
       s.mode === "viewer" ? "加入旁观会话…" : "创建远控会话…";
     try {
+      await loadPlatformBootstrap();
+      if (cancelled || sessionEnding || remoteDialogState.value !== s) return;
       resetRemoteColdTrace("pending");
       markRemoteCold("ui.api.create.begin");
       const tApi = performance.now();
+      const auth = { version: getAuthSessionVersion(), bearer: loadJwt() };
       const session =
         s.mode === "viewer"
           ? await joinRemoteSession(s.device)
           : await createRemoteSession(s.device);
+      if (cancelled || sessionEnding || remoteDialogState.value !== s ||
+          auth.version !== getAuthSessionVersion()) {
+        await releaseParticipant(session, auth);
+        return;
+      }
       resetRemoteColdTrace(session.id);
       markRemoteCold("ui.session.created", {
         platform: session.platform,
@@ -260,6 +280,9 @@ watch(
       });
       s.session = session;
       sessionId = session.id;
+      activeSession.value = session;
+      activeSessionAuth = auth;
+      participantRole.value = session.participant_role;
       useMjpeg.value = prefersMjpeg(session);
       startTransport(session);
       configureRemoteCommandSender(sendReliableCommand);
@@ -268,9 +291,11 @@ watch(
         statusText.value = "等待 Runner 准备画面…";
         await startMjpeg(session);
         if (String(session.platform || "").toLowerCase() === "ios") {
-          await publishIosPictureChoice();
+          await publishIosPictureChoice(session);
+          if (activeSession.value !== session) return;
           if (statusText.value === "等待 Runner 准备画面…") {
-            statusText.value = preparingText(await resolveIosPicture());
+            const picture = await resolveIosPicture();
+            if (activeSession.value === session) statusText.value = preparingText(picture);
           }
         }
       } else {
@@ -278,6 +303,7 @@ watch(
         await startWebRtc(session);
       }
     } catch (e) {
+      if (cancelled || sessionEnding || remoteDialogState.value !== s) return;
       errorText.value = e instanceof Error ? e.message : String(e);
       statusText.value = "失败";
       notify(errorText.value, "error");
@@ -286,9 +312,10 @@ watch(
         return;
       }
     } finally {
-      connecting.value = false;
+      if (!cancelled && remoteDialogState.value === s) connecting.value = false;
     }
   },
+  { flush: "sync" },
 );
 
 const STATUS_WATCH_CONNECTING_MS = 1_500;
@@ -300,6 +327,7 @@ function applyParticipantRole(next: "controller" | "viewer") {
   if (!current) return;
   const prev = current.participant_role;
   current.participant_role = next;
+  participantRole.value = next;
   if (prev === next || connecting.value) return;
   if (useMjpeg.value) {
     statusText.value = next === "viewer" ? "已连接 · 旁观中" : statusText.value;
@@ -315,6 +343,10 @@ function startStatusWatch(sid: string) {
   const tick = async () => {
     try {
       const info = await getRemoteSession(sid);
+      if (sid !== sessionId) return;
+      if (activeSessionAuth?.version === getAuthSessionVersion()) {
+        activeSessionAuth.bearer = loadJwt();
+      }
       const current = remoteDialogState.value?.session;
       if (current) {
         if (info.participant_id) current.participant_id = info.participant_id;
@@ -326,7 +358,7 @@ function startStatusWatch(sid: string) {
       if (info.status === "ready" && PRE_READY_STATUS.has(statusText.value)) {
         markRemoteCold("ui.runner.ready");
         const picture = await currentPictureWait();
-        if (PRE_READY_STATUS.has(statusText.value)) {
+        if (sid === sessionId && PRE_READY_STATUS.has(statusText.value)) {
           statusText.value = runnerReadyText(picture);
         }
       }
@@ -359,16 +391,19 @@ function startStatusWatch(sid: string) {
         window.clearInterval(statusTimer);
         statusTimer = window.setInterval(() => void tick(), intervalMs);
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      if (sid === sessionId && e instanceof ApiHttpError && (e.status === 401 || e.status === 403)) {
+        handleRemoteSessionEnded("远控会话权限已失效");
+      }
     }
   };
 
   statusTimer = window.setInterval(() => void tick(), intervalMs);
 }
 
-async function publishIosPictureChoice() {
+async function publishIosPictureChoice(session: RemoteSessionInfo) {
   const hevcOk = await hevcSupport();
+  if (activeSession.value !== session) return;
   if (!hevcOk || hevcGaveUp) {
     hevcGaveUp = true;
     sendReliableCommand({ t: "stream.configure", provider: "mjpeg" });
@@ -382,19 +417,23 @@ async function publishIosPictureChoice() {
 function startTransport(session: RemoteSessionInfo) {
   transport?.close();
   transport = connectRemoteTransport(session, {
-    onMessage: handleTransportMessage,
+    onMessage: (message) => {
+      if (activeSession.value === session) handleTransportMessage(message);
+    },
     onState: (state) => {
+      if (activeSession.value !== session) return;
       if (state === "connecting") {
         statusText.value = "正在连接 WebSocket…";
         syncFallbackPoll(session.id);
       } else if (state === "open") {
         transportMode.value = "ws";
         if (String(session.platform || "").toLowerCase() === "ios") {
-          void publishIosPictureChoice();
+          void publishIosPictureChoice(session);
         }
         markRemoteCold("ui.transport.open", { mode: "ws" });
         void currentPictureWait().then((picture) => {
-          if (transportMode.value === "ws" && PRE_READY_STATUS.has(statusText.value)) {
+          if (activeSession.value === session && transportMode.value === "ws" &&
+              PRE_READY_STATUS.has(statusText.value)) {
             statusText.value = wsConnectedText(picture);
           }
         });
@@ -541,9 +580,10 @@ async function renegotiateWebRtc(session: RemoteSessionInfo, force = false) {
 
 async function waitForRunnerReady(sid: string, timeoutMs = 65000): Promise<boolean> {
   const t0 = performance.now();
-  while (performance.now() - t0 < timeoutMs) {
+  while (sid === sessionId && performance.now() - t0 < timeoutMs) {
     try {
       const info = await getRemoteSession(sid);
+      if (sid !== sessionId) return false;
       if (info.status === "ready" || info.status === "connected") {
         markRemoteCold("ui.runner.ready.wait", {
           waited_ms: Math.round(performance.now() - t0),
@@ -711,12 +751,13 @@ function sendWsEnvelope(
 
 async function startWebRtc(session: RemoteSessionInfo) {
   const sid = session.id;
+  if (activeSession.value !== session) return;
+  const iceServers = session.ice_servers.length ? session.ice_servers : RTC_CONFIG.iceServers;
+  const peer = new RTCPeerConnection({ ...RTC_CONFIG, iceServers });
+  pc = peer;
+  const isCurrent = () => activeSession.value === session && pc === peer;
   webrtcBootstrapPending = true;
   try {
-  const iceServers = session.ice_servers.length
-    ? session.ice_servers
-    : RTC_CONFIG.iceServers;
-  pc = new RTCPeerConnection({ ...RTC_CONFIG, iceServers });
   pc.addTransceiver("video", { direction: "recvonly" });
   // 对齐 WebAppFlaskscrcpy：浏览器只建 bootstrap；input 由 Runner 创建。
   const bootstrap = pc.createDataChannel("client-bootstrap", { ordered: true });
@@ -728,10 +769,12 @@ async function startWebRtc(session: RemoteSessionInfo) {
     }
   });
   pc.ondatachannel = (ev) => {
+    if (!isCurrent()) return;
     const ch = ev.channel;
     if (ch.label === "input") {
       inputChannel = ch;
       ch.addEventListener("open", () => {
+        if (!isCurrent()) return;
         inputReady.value = true;
         clearInputRecoverTimer();
         errorText.value = "";
@@ -751,6 +794,7 @@ async function startWebRtc(session: RemoteSessionInfo) {
     if (ch.label === "adb") {
       adbChannel = ch;
       ch.addEventListener("message", (message) => {
+        if (!isCurrent()) return;
         try {
           const parsed = JSON.parse(String(message.data || "{}"));
           if (parsed && typeof parsed === "object") {
@@ -764,6 +808,7 @@ async function startWebRtc(session: RemoteSessionInfo) {
   };
 
   pc.ontrack = (ev) => {
+    if (!isCurrent()) return;
     const stream = ev.streams[0] || new MediaStream([ev.track]);
     stageEl.value?.setMediaStream(stream);
     webrtcConnected.value = true;
@@ -776,7 +821,7 @@ async function startWebRtc(session: RemoteSessionInfo) {
   };
 
   pc.onicecandidate = (ev) => {
-    if (!ev.candidate || !sid) return;
+    if (!isCurrent() || !ev.candidate || !sid) return;
     const body = {
       type: "ice",
       candidate: ev.candidate.toJSON() as Record<string, unknown>,
@@ -789,6 +834,7 @@ async function startWebRtc(session: RemoteSessionInfo) {
   };
 
   pc.onconnectionstatechange = () => {
+    if (!isCurrent()) return;
     const st = pc?.connectionState || "";
     const session = remoteDialogState.value?.session;
     webrtcConnected.value = st === "connected";
@@ -811,14 +857,17 @@ async function startWebRtc(session: RemoteSessionInfo) {
 
   statusText.value = "等待 Runner 就绪…";
   const runnerReady = await waitForRunnerReady(sid);
+  if (!isCurrent()) return;
   if (!runnerReady) {
     errorText.value = "Runner 未在时限内就绪，请关闭后重试";
     statusText.value = "Runner 未就绪";
     return;
   }
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
+  const offer = await peer.createOffer();
+  if (!isCurrent()) return;
+  await peer.setLocalDescription(offer);
+  if (!isCurrent()) return;
   const offerBody = {
     type: "offer",
     sdp: offer.sdp || "",
@@ -829,11 +878,12 @@ async function startWebRtc(session: RemoteSessionInfo) {
   if (!sendWsEnvelope("signaling", "offer", offerBody)) {
     await postSignaling(sid, "offer", offerBody);
   }
+  if (!isCurrent()) return;
   markRemoteCold("ui.offer.sent", { sdp_bytes: (offer.sdp || "").length });
   startOfferRetry(sid);
   void drainSignaling(sid);
   } finally {
-    webrtcBootstrapPending = false;
+    if (isCurrent()) webrtcBootstrapPending = false;
   }
 }
 
@@ -925,6 +975,7 @@ async function drainSignaling(sid: string) {
   if (!pc) return;
   try {
     const { messages, session_status } = await pollSignaling(sid);
+    if (sid !== sessionId) return;
     if (session_status === "failed" || session_status === "closed") {
       handleRemoteSessionEnded(
         session_status === "closed" ? "远控会话已结束" : `会话 ${session_status}`,
@@ -1050,6 +1101,7 @@ function sendReliableCommand(message: RemoteCommandMessage): boolean | Promise<b
 async function drainMedia(sid: string) {
   try {
     const { messages, session_status } = await pollMedia(sid);
+    if (sid !== sessionId) return;
     if (session_status === "failed" || session_status === "closed") {
       handleRemoteSessionEnded(
         session_status === "closed" ? "远控会话已结束" : `会话 ${session_status}`,
@@ -1220,7 +1272,34 @@ function sendIosSwipe(direction: "up" | "down" | "left" | "right") {
   });
 }
 
+async function releaseParticipant(
+  session: RemoteSessionInfo,
+  auth: NonNullable<typeof activeSessionAuth>,
+) {
+  // Late create/join responses belong to the original browser session.
+  const bearer = auth.version === getAuthSessionVersion() ? undefined : auth.bearer;
+  if (bearer === "") return;
+  try {
+    if (session.participant_role === "viewer") {
+      if (session.participant_id) {
+        await apiLeaveRemoteParticipant(session.id, session.participant_id, bearer);
+      }
+    } else {
+      await closeRemoteSession(session.id, bearer);
+    }
+  } catch {
+    /* Session may already have ended on the runner. */
+  }
+}
+
 async function teardown() {
+  const session = activeSession.value;
+  const auth = activeSessionAuth;
+  activeSession.value = null;
+  activeSessionAuth = null;
+  sessionId = "";
+  webrtcBootstrapPending = false;
+  setRemoteStreamControlReady(false);
   configureRemoteCommandSender(null);
   transport?.close();
   transport = null;
@@ -1262,34 +1341,22 @@ async function teardown() {
   stageEl.value?.clearMjpegFrame();
   stageEl.value?.closeHevc();
   frameUrl.value = "";
+  connecting.value = false;
   useMjpeg.value = false;
   hevcGaveUp = false;
   hevcSupportPromise = null;
   pendingMjpeg = null;
   mjpegPaintScheduled = false;
   mjpegConnectedHint = false;
-  if (sessionId) {
-    const sid = sessionId;
-    sessionId = "";
-    try {
-      const session = remoteDialogState.value?.session;
-      if (session?.participant_role === "viewer") {
-        if (session?.participant_id) {
-          await apiLeaveRemoteParticipant(sid, session.participant_id);
-        }
-      } else {
-        await closeRemoteSession(sid);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
+  participantRole.value = null;
+  if (session && auth) await releaseParticipant(session, auth);
 }
 
 async function onClose() {
+  const dialog = remoteDialogState.value;
   sessionEnding = true;
   await teardown();
-  remoteDialogState.value?.resolve();
+  if (remoteDialogState.value === dialog) dialog?.resolve();
 }
 
 onBeforeUnmount(() => {
@@ -1311,17 +1378,18 @@ function onDimensions(width: number, height: number) {
     @close="onClose"
   >
     <div class="remote-head">
-      <p class="remote-status" :class="{ ok: statusText.includes('已连接') }">{{ statusText }}</p>
+      <p class="remote-status" :class="{ ok: stageStreaming }" role="status">{{ statusText }}</p>
       <p v-if="errorText" class="ap-field-error" role="alert">{{ errorText }}</p>
     </div>
     <div class="remote-workbench" :class="{ 'with-drawer': drawerOpen }">
-      <main class="remote-main">
+      <div class="remote-main">
         <RemoteStage
           ref="stageEl"
           :use-mjpeg="useMjpeg"
           :frame-url="frameUrl"
           :connecting="connecting"
-          :platform="remoteDialogState.session?.platform || 'android'"
+          :platform="activeSession?.platform || remoteDialogState.device.platform"
+          :failure="errorText && !stageStreaming && !connecting ? errorText : undefined"
           :readonly="readonlySession"
           :streaming="stageStreaming"
           :resolution-width="videoWidth"
@@ -1333,9 +1401,11 @@ function onDimensions(width: number, height: number) {
           @scroll="sendScroll"
         />
         <RemoteToolbar
-          :platform="remoteDialogState.session?.platform || ''"
-          :readonly="readonlySession"
+          ref="toolbarEl"
+          :platform="activeSession?.platform || remoteDialogState.device.platform"
+          :readonly="readonlySession || !stageStreaming"
           :drawer-open="drawerOpen"
+          :drawer-available="Boolean(activeSession)"
           @android-key="sendAndroidKey"
           @android-action="sendAndroidAction"
           @android-swipe="sendAndroidSwipe"
@@ -1344,16 +1414,17 @@ function onDimensions(width: number, height: number) {
           @ios-swipe="sendIosSwipe"
           @toggle-drawer="drawerOpen = !drawerOpen"
         />
-      </main>
-      <template v-if="remoteDialogState.session">
+      </div>
+      <template v-if="activeSession">
         <RemoteSideDrawer
+          id="remote-tools"
           v-show="drawerOpen"
-          :platform="remoteDialogState.session.platform"
+          :platform="activeSession.platform"
           :readonly="readonlySession"
           :status="statusText"
           :error="errorText"
           :transport-mode="transportMode"
-          @close="drawerOpen = false"
+          @close="closeTools"
           @android-key="sendAndroidKey"
           @android-power="sendAndroidPower"
           @android-action="sendAndroidAction"
@@ -1374,9 +1445,14 @@ function onDimensions(width: number, height: number) {
   flex-shrink: 0;
 }
 
+.remote-head .ap-field-error {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .remote-status {
   margin: 0;
-  font-size: 0.88rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
 }
 
@@ -1387,14 +1463,10 @@ function onDimensions(width: number, height: number) {
 .remote-workbench {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 1rem;
+  gap: var(--space-3);
   flex: 1;
-  min-height: min(68vh, 720px);
+  height: clamp(340px, calc(100dvh - 212px), 760px);
   align-items: stretch;
-}
-
-.remote-workbench.with-drawer {
-  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
 }
 
 .remote-main {
@@ -1405,21 +1477,22 @@ function onDimensions(width: number, height: number) {
   min-height: 0;
 }
 
-@media (max-width: 900px) {
-  .remote-workbench {
-    grid-template-columns: 1fr;
-    min-height: auto;
+@media (min-width: 901px) {
+  .remote-workbench.with-drawer {
+    grid-template-columns: minmax(0, 1fr) clamp(280px, 30vw, 380px);
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 900px) {
   .remote-workbench {
-    min-height: calc(100dvh - 11rem);
+    height: auto;
+    grid-auto-rows: minmax(0, auto);
   }
-
-  :deep(.remote-drawer) {
-    border-radius: 14px 14px 0 0;
-    max-height: 44vh;
+  .remote-main {
+    height: max(320px, calc(100dvh - 210px));
+  }
+  .remote-workbench.with-drawer .remote-main {
+    height: clamp(260px, 50dvh, 480px);
   }
 }
 </style>

@@ -1,10 +1,12 @@
 <script setup lang="ts">
 defineOptions({ name: "DesignDocsPanel" });
 
-import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useProjectsStore } from "../../stores/projectsStore";
 import { useShellStore } from "../../stores/shellStore";
+import { workspaceScopeVersion } from "../../composables/mcProjectsState";
+import { useManualPageRefresh } from "../../composables/useManualPageRefresh";
 import { useDebouncedValue } from "../../composables/useDesignListQuery";
 import { confirmDialog } from "../../composables/useNotify";
 import { DEFAULT_PAGE_SIZE } from "../../api/designList";
@@ -38,11 +40,11 @@ import RequirementsImportCard from "./RequirementsImportCard.vue";
 import DocsListCard from "./DocsListCard.vue";
 import ReqsListCard from "./ReqsListCard.vue";
 import ReqEditForm from "./ReqEditForm.vue";
-import DesignWorkflowBar from "./DesignWorkflowBar.vue";
 import ProjectContextBanner from "./ProjectContextBanner.vue";
 import ProjectReadonlyBanner from "./ProjectReadonlyBanner.vue";
 import ListPager from "./ListPager.vue";
 import ApSelect from "../common/ApSelect.vue";
+import ApModal from "../ApModal.vue";
 import { useCapabilities } from "../../composables/useCapabilities";
 
 const shell = useShellStore();
@@ -98,32 +100,28 @@ const analysisTypes = [
   { value: "comprehensive", label: "综合分析" },
 ];
 
-/** 三阶段工作区，避免一页纵向堆满 */
-type DocsWorkspaceTab = "import" | "docs" | "reqs";
+type DocsWorkspaceTab = "docs" | "reqs";
 type ImportMode = "document" | "structured";
-const workspaceTab = ref<DocsWorkspaceTab>("import");
+const workspaceTab = ref<DocsWorkspaceTab>("docs");
+const importOpen = ref(false);
 const importMode = ref<ImportMode>("document");
 const historyOpen = ref(false);
-const tabTouched = ref(false);
 
 function selectWorkspace(tab: DocsWorkspaceTab) {
-  tabTouched.value = true;
   workspaceTab.value = tab;
 }
 
 function openDocsImport() {
-  selectWorkspace("import");
+  if (!canEdit.value || busy.value) return;
+  error.value = "";
   importMode.value = "document";
+  importOpen.value = true;
 }
 
-function preferWorkspaceTab() {
-  if (tabTouched.value || loading.value) return;
-  if (reqsTotal.value > 0) workspaceTab.value = "reqs";
-  else if (docsTotal.value > 0) workspaceTab.value = "docs";
-  else workspaceTab.value = "import";
-}
-
-watch([docsTotal, reqsTotal, loading], () => preferWorkspaceTab());
+onDeactivated(() => {
+  importOpen.value = false;
+  closePreview();
+});
 
 const docNameById = computed(() => {
   const m: Record<string, string> = {};
@@ -132,14 +130,39 @@ const docNameById = computed(() => {
   return m;
 });
 
+function makeScopedReader() {
+  let requestId = 0;
+  return async <T>(request: () => Promise<T>, apply: (result: T) => void) => {
+    if (!filterProjectId.value.trim()) return;
+    const scope = workspaceScopeVersion.value;
+    const id = ++requestId;
+    const current = () => scope === workspaceScopeVersion.value && id === requestId;
+    try {
+      const result = await request();
+      if (current()) apply(result);
+    } catch (cause) {
+      if (current()) throw cause;
+    }
+  };
+}
+
+const readDocOptions = makeScopedReader();
+const readDocs = makeScopedReader();
+const readReqs = makeScopedReader();
+const readHistory = makeScopedReader();
+let reloadRequestId = 0;
+let previewRequestId = 0;
+
 async function reloadDocOptions() {
   const pid = filterProjectId.value?.trim();
-  docOptions.value = await listDocuments(pid);
+  await readDocOptions(() => listDocuments(pid), (items) => {
+    docOptions.value = items;
+  });
 }
 
 async function reloadDocs() {
   const pid = filterProjectId.value?.trim();
-  const out = await listDocumentsPage({
+  await readDocs(() => listDocumentsPage({
     projectId: pid,
     q: docsQDebounced.value,
     fileType: docsFileType.value || undefined,
@@ -147,20 +170,19 @@ async function reloadDocs() {
     order: docsOrder.value,
     page: docsPage.value,
     pageSize: docsPageSize.value,
+  }), (out) => {
+    docs.value = out.items;
+    docsTotal.value = out.total;
+    docsPageSize.value = out.page_size;
+    docsPage.value = out.items.length === 0 && out.total > 0 && out.page > 1
+      ? Math.max(1, Math.ceil(out.total / out.page_size))
+      : out.page;
   });
-  docs.value = out.items;
-  docsTotal.value = out.total;
-  docsPageSize.value = out.page_size;
-  if (out.items.length === 0 && out.total > 0 && out.page > 1) {
-    docsPage.value = Math.max(1, Math.ceil(out.total / out.page_size));
-    return;
-  }
-  docsPage.value = out.page;
 }
 
 async function reloadReqs() {
   const pid = filterProjectId.value?.trim();
-  const out = await listRequirementsPage({
+  await readReqs(() => listRequirementsPage({
     projectId: pid,
     sourceDocumentId: sourceDocFilter.value.trim() || undefined,
     q: reqsQDebounced.value,
@@ -169,44 +191,48 @@ async function reloadReqs() {
     order: reqsOrder.value,
     page: reqsPage.value,
     pageSize: reqsPageSize.value,
+  }), (out) => {
+    reqs.value = out.items;
+    reqsTotal.value = out.total;
+    reqsPageSize.value = out.page_size;
+    reqsPage.value = out.items.length === 0 && out.total > 0 && out.page > 1
+      ? Math.max(1, Math.ceil(out.total / out.page_size))
+      : out.page;
   });
-  reqs.value = out.items;
-  reqsTotal.value = out.total;
-  reqsPageSize.value = out.page_size;
-  if (out.items.length === 0 && out.total > 0 && out.page > 1) {
-    reqsPage.value = Math.max(1, Math.ceil(out.total / out.page_size));
-    return;
-  }
-  reqsPage.value = out.page;
 }
 
 async function reloadHistory() {
-  const out = await listAnalysisHistoryPage({
+  await readHistory(() => listAnalysisHistoryPage({
     projectId: filterProjectId.value?.trim(),
     documentId: sourceDocFilter.value.trim() || undefined,
     page: historyPage.value,
     pageSize: historyPageSize.value,
+  }), (out) => {
+    history.value = out.items;
+    historyTotal.value = out.total;
+    historyPageSize.value = out.page_size;
+    historyPage.value = out.items.length === 0 && out.total > 0 && out.page > 1
+      ? Math.max(1, Math.ceil(out.total / out.page_size))
+      : out.page;
   });
-  history.value = out.items;
-  historyTotal.value = out.total;
-  historyPageSize.value = out.page_size;
-  if (out.items.length === 0 && out.total > 0 && out.page > 1) {
-    historyPage.value = Math.max(1, Math.ceil(out.total / out.page_size));
-    return;
-  }
-  historyPage.value = out.page;
 }
 
 async function reload() {
+  if (!filterProjectId.value.trim()) return;
+  const scope = workspaceScopeVersion.value;
+  const id = ++reloadRequestId;
+  const current = () => scope === workspaceScopeVersion.value && id === reloadRequestId;
   loading.value = true;
   error.value = "";
   try {
     await Promise.all([reloadDocOptions(), reloadDocs(), reloadReqs(), reloadHistory()]);
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (current()) error.value = e?.message || String(e);
   } finally {
-    loading.value = false;
-    hasLoaded.value = true;
+    if (current()) {
+      loading.value = false;
+      hasLoaded.value = true;
+    }
   }
 }
 
@@ -252,11 +278,31 @@ watch(historyPageSize, () => {
 });
 
 watch(
-  () => filterProjectId.value,
+  workspaceScopeVersion,
   () => {
     docsPage.value = 1;
     reqsPage.value = 1;
     historyPage.value = 1;
+    docs.value = [];
+    reqs.value = [];
+    history.value = [];
+    docOptions.value = [];
+    docsTotal.value = 0;
+    reqsTotal.value = 0;
+    historyTotal.value = 0;
+    sourceDocFilter.value = "";
+    hasLoaded.value = false;
+    loading.value = false;
+    error.value = "";
+    info.value = "";
+    infoGotoCases.value = false;
+    editingReq.value = null;
+    importOpen.value = false;
+    docsList.value?.clearSelection();
+    reqsList.value?.clearSelection();
+    docsImport.value?.clearFiles();
+    reqsImport.value?.clearFiles();
+    closePreview();
     void reload();
   },
 );
@@ -277,8 +323,10 @@ async function onDocsImport(payload: {
   analysisType: string;
   maxRequirements: number;
 }) {
+  if (busy.value) return;
   const projectId = requireProject();
   if (!projectId) return;
+  const scope = workspaceScopeVersion.value;
   busy.value = true;
   error.value = "";
   info.value = "";
@@ -292,38 +340,44 @@ async function onDocsImport(payload: {
       analysisType: payload.analysisType,
       maxRequirements: payload.maxRequirements,
     });
+    if (scope !== workspaceScopeVersion.value) return;
     const base = out.message || "文档导入完成";
     info.value =
       out.degraded || out.summary?.degraded
         ? `${base}${base.includes("degraded") ? "" : " ⚠ AI 已降级为启发式——请人工审阅"}`
         : base;
     docsImport.value?.clearFiles();
+    importOpen.value = false;
     await reload();
-    tabTouched.value = true;
-    workspaceTab.value = reqsTotal.value > 0 ? "reqs" : "docs";
+    if (scope === workspaceScopeVersion.value) {
+      workspaceTab.value = reqsTotal.value > 0 ? "reqs" : "docs";
+    }
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
 }
 
 async function onReqsImport(payload: { files: File[] }) {
+  if (busy.value) return;
   const projectId = requireProject();
   if (!projectId) return;
+  const scope = workspaceScopeVersion.value;
   busy.value = true;
   error.value = "";
   info.value = "";
   infoGotoCases.value = false;
   try {
     const out = await importRequirementFiles({ projectId, files: payload.files });
+    if (scope !== workspaceScopeVersion.value) return;
     info.value = out.message || "需求导入完成";
     reqsImport.value?.clearFiles();
+    importOpen.value = false;
     await reload();
-    tabTouched.value = true;
-    workspaceTab.value = "reqs";
+    if (scope === workspaceScopeVersion.value) workspaceTab.value = "reqs";
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (scope === workspaceScopeVersion.value) error.value = e?.message || String(e);
   } finally {
     busy.value = false;
   }
@@ -341,7 +395,6 @@ async function onAnalyze(doc: DesignDocument) {
     });
     info.value = formatAnalysisNotice(out, `已分析「${doc.filename}」`);
     await reload();
-    tabTouched.value = true;
     workspaceTab.value = "reqs";
   } catch (e: any) {
     error.value = e?.message || String(e);
@@ -368,7 +421,6 @@ async function onReanalyze(doc: DesignDocument) {
     const total = out.summary?.total_count ?? out.requirements?.length ?? 0;
     info.value = formatAnalysisNotice(out, `重新分析完成，共 ${total} 项`);
     await reload();
-    tabTouched.value = true;
     workspaceTab.value = "reqs";
   } catch (e: any) {
     error.value = e?.message || String(e);
@@ -378,22 +430,30 @@ async function onReanalyze(doc: DesignDocument) {
 }
 
 async function onPreview(doc: DesignDocument) {
+  const scope = workspaceScopeVersion.value;
+  const id = ++previewRequestId;
+  const current = () => scope === workspaceScopeVersion.value && id === previewRequestId;
   previewOpen.value = true;
   previewLoading.value = true;
   previewData.value = null;
   error.value = "";
   try {
-    previewData.value = await previewDocument(doc.id);
+    const preview = await previewDocument(doc.id);
+    if (current()) previewData.value = preview;
   } catch (e: any) {
-    error.value = e?.message || String(e);
-    previewOpen.value = false;
+    if (current()) {
+      error.value = e?.message || String(e);
+      previewOpen.value = false;
+    }
   } finally {
-    previewLoading.value = false;
+    if (current()) previewLoading.value = false;
   }
 }
 
 function closePreview() {
+  previewRequestId += 1;
   previewOpen.value = false;
+  previewLoading.value = false;
   previewData.value = null;
 }
 
@@ -581,6 +641,7 @@ function formatTime(iso: string): string {
 }
 
 let _skipActivateReload = false;
+useManualPageRefresh("design-docs", reload);
 onMounted(() => {
   _skipActivateReload = true;
   void reload();
@@ -595,23 +656,34 @@ onActivated(() => {
 </script>
 
 <template>
-  <div class="page-stack docs-panel">
+  <div class="page-stack data-page docs-panel">
     <header class="page-hero">
       <div class="page-hero-copy">
         <h2>需求文档</h2>
-        <p class="lede">上传需求文档，整理后可用来生成用例。</p>
       </div>
       <div class="page-hero-actions">
+        <button v-if="canEdit" type="button" class="ghost small" @click="shell.activeTab = 'design-cases'">
+          生成意图用例
+        </button>
         <button type="button" class="small" :disabled="loading || busy" @click="onExportReqs">
           导出需求 Excel
         </button>
         <button type="button" class="ghost small" :disabled="loading || busy" @click="reload">
           刷新
         </button>
+        <button
+          v-if="canEdit"
+          type="button"
+          class="primary small"
+          :disabled="busy"
+          @click="openDocsImport"
+        >
+          导入
+        </button>
       </div>
     </header>
 
-    <div v-if="error" class="msg bad">{{ error }}</div>
+    <div v-if="error && !importOpen" class="msg bad" role="alert">{{ error }}</div>
     <div
       v-else-if="info"
       class="msg info-row"
@@ -630,25 +702,14 @@ onActivated(() => {
 
     <ProjectContextBanner />
     <ProjectReadonlyBanner />
-    <DesignWorkflowBar page="docs" compact />
-
     <nav class="docs-tabs" aria-label="需求文档工作区">
       <button
         type="button"
         class="docs-tab"
-        :class="{ active: workspaceTab === 'import' }"
-        @click="selectWorkspace('import')"
-      >
-        <span class="docs-tab-idx">1</span>
-        入库
-      </button>
-      <button
-        type="button"
-        class="docs-tab"
         :class="{ active: workspaceTab === 'docs' }"
+        :aria-pressed="workspaceTab === 'docs'"
         @click="selectWorkspace('docs')"
       >
-        <span class="docs-tab-idx">2</span>
         文档
         <span class="docs-tab-count">{{ docsTotal }}</span>
       </button>
@@ -656,30 +717,31 @@ onActivated(() => {
         type="button"
         class="docs-tab"
         :class="{ active: workspaceTab === 'reqs' }"
+        :aria-pressed="workspaceTab === 'reqs'"
         @click="selectWorkspace('reqs')"
       >
-        <span class="docs-tab-idx">3</span>
         需求条目
         <span class="docs-tab-count">{{ reqsTotal }}</span>
       </button>
     </nav>
 
-    <!-- 1. 入库 -->
-    <section v-if="workspaceTab === 'import'" class="surface-card docs-stage">
-      <div class="stage-head">
-        <div>
-          <h3 class="stage-title">选择导入方式</h3>
-          <p class="stage-sub">
-            {{ canEdit ? "二选一即可，不必两种都走。" : "当前为只读成员，无法入库。" }}
-          </p>
-        </div>
-      </div>
-      <template v-if="canEdit">
-        <div class="import-mode-tabs">
+    <ApModal
+      v-if="importOpen && canEdit"
+      title="导入需求文档"
+      variant="drawer"
+      :close-on-backdrop="false"
+      :close-on-esc="!busy"
+      @close="importOpen = false"
+    >
+      <div class="docs-stage">
+        <p v-if="error" class="msg bad" role="alert">{{ error }}</p>
+        <div class="import-mode-tabs" role="group" aria-label="导入方式">
           <button
             type="button"
             class="mode-chip"
             :class="{ active: importMode === 'document' }"
+            :aria-pressed="importMode === 'document'"
+            :disabled="busy"
             @click="importMode = 'document'"
           >
             上传原文并分析
@@ -688,13 +750,15 @@ onActivated(() => {
             type="button"
             class="mode-chip"
             :class="{ active: importMode === 'structured' }"
+            :aria-pressed="importMode === 'structured'"
+            :disabled="busy"
             @click="importMode = 'structured'"
           >
             结构化批量导入
           </button>
         </div>
         <DocsImportCard
-          v-if="importMode === 'document'"
+          v-show="importMode === 'document'"
           ref="docsImport"
           bare
           :busy="busy"
@@ -702,46 +766,20 @@ onActivated(() => {
           @import="onDocsImport"
         />
         <RequirementsImportCard
-          v-else
+          v-show="importMode === 'structured'"
           ref="reqsImport"
           bare
           :busy="busy"
           :disabled="!filterProjectId?.trim()"
           @import="onReqsImport"
         />
-      </template>
-      <div class="stage-foot">
-        <button
-          type="button"
-          class="small"
-          :disabled="!docsTotal && !reqsTotal"
-          @click="selectWorkspace(reqsTotal ? 'reqs' : 'docs')"
-        >
-          已有内容？查看列表
-        </button>
-        <button type="button" class="small" @click="shell.activeTab = 'design-cases'">
-          短需求去粘贴生成
-        </button>
       </div>
-    </section>
+      <template #actions>
+        <button type="button" :disabled="busy" @click="importOpen = false">关闭</button>
+      </template>
+    </ApModal>
 
-    <!-- 2. 文档 -->
-    <div v-else-if="workspaceTab === 'docs'" class="docs-stage-stack">
-      <section class="surface-card analysis-type-bar">
-        <label class="field-label inline">
-          列表分析类型
-          <ApSelect
-            size="compact"
-            :disabled="busy"
-            aria-label="列表分析类型"
-            v-model="analysisType"
-            :options="analysisTypes"
-          />
-        </label>
-        <span class="meta-line">对下方「分析 / 重新分析」生效。</span>
-        <button type="button" class="small" @click="selectWorkspace('import')">去入库</button>
-      </section>
-
+    <div v-if="workspaceTab === 'docs'" class="docs-stage-stack">
       <DocsListCard
         ref="docsList"
         v-model:q="docsQ"
@@ -762,10 +800,23 @@ onActivated(() => {
         @remove="onRemove"
         @batch-delete="onBatchDeleteDocs"
         @open-import="openDocsImport"
-      />
+      >
+        <template v-if="canEdit" #analysis-filter>
+          <label class="field-label inline">
+            分析类型
+            <ApSelect
+              size="toolbar"
+              :disabled="busy"
+              aria-label="分析类型"
+              v-model="analysisType"
+              :options="analysisTypes"
+            />
+          </label>
+        </template>
+      </DocsListCard>
 
       <details
-        class="fold-card surface-card"
+        class="fold-card docs-history"
         :open="historyOpen"
         @toggle="historyOpen = ($event.target as HTMLDetailsElement).open"
       >
@@ -774,7 +825,7 @@ onActivated(() => {
           <span class="fold-hint">{{ historyTotal ? `${historyTotal} 条记录` : "暂无记录" }}</span>
         </summary>
         <div v-if="!history.length && hasLoaded" class="empty-state compact">
-          <p class="empty-desc">分析文档后会在此留下记录。</p>
+          <p class="empty-desc">暂无分析记录</p>
         </div>
         <div v-else-if="history.length" class="table-wrap" style="margin-top: 0">
           <table>
@@ -820,7 +871,6 @@ onActivated(() => {
       </details>
     </div>
 
-    <!-- 3. 需求条目 -->
     <div v-else class="docs-stage-stack">
       <ReqEditForm
         :item="editingReq"
@@ -852,23 +902,22 @@ onActivated(() => {
       />
     </div>
 
-    <Teleport to="body">
-      <div v-if="previewOpen" class="drawer-mask" @click="closePreview">
-        <aside class="drawer preview-drawer" @click.stop>
-          <header class="drawer-head">
-            <div class="drawer-head-main">
-              <h3 class="drawer-title">{{ previewData?.filename || "文档预览" }}</h3>
-              <span v-if="previewData?.is_truncated" class="pill">内容已截断</span>
-            </div>
-            <button type="button" class="icon-btn" aria-label="关闭" @click="closePreview">✕</button>
-          </header>
-          <div class="drawer-body">
-            <p v-if="previewLoading" class="meta-line">加载中…</p>
-            <pre v-else-if="previewData" class="preview-content">{{ previewData.content }}</pre>
-          </div>
-        </aside>
-      </div>
-    </Teleport>
+    <ApModal
+      v-if="previewOpen"
+      :title="previewData?.filename || '文档预览'"
+      variant="drawer"
+      wide
+      @close="closePreview"
+    >
+      <p v-if="previewLoading" class="meta-line" role="status">加载中…</p>
+      <template v-else-if="previewData">
+        <p v-if="previewData.is_truncated" class="meta-line">预览未包含文档末尾。</p>
+        <pre class="preview-content">{{ previewData.content }}</pre>
+      </template>
+      <template #actions>
+        <button type="button" @click="closePreview">关闭</button>
+      </template>
+    </ApModal>
   </div>
 </template>
 
@@ -877,7 +926,7 @@ onActivated(() => {
 .msg.ok {
   margin: 0;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
 }
 .msg.bad {
@@ -939,25 +988,10 @@ onActivated(() => {
   border-bottom-color: var(--accent);
   box-shadow: none;
 }
-.docs-tab-idx {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.2rem;
-  height: 1.2rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  font-size: 0.7rem;
-}
-.docs-tab.active .docs-tab-idx {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent, #fff);
-}
 .docs-tab-count {
   min-width: 1.25rem;
   padding: 0.05rem 0.35rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--chip-bg);
   border: 1px solid var(--line-soft);
   font-size: 0.72rem;
@@ -976,20 +1010,6 @@ onActivated(() => {
   flex-direction: column;
   gap: 0.85rem;
 }
-.stage-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-.stage-title {
-  margin: 0;
-  font-size: 0.98rem;
-}
-.stage-sub {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
 .import-mode-tabs {
   display: flex;
   flex-wrap: wrap;
@@ -998,7 +1018,7 @@ onActivated(() => {
 .mode-chip {
   margin: 0;
   padding: 0.4rem 0.7rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   background: var(--control-bg);
   color: var(--muted);
@@ -1012,13 +1032,6 @@ onActivated(() => {
   color: var(--text);
   font-weight: 600;
 }
-.stage-foot {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  padding-top: 0.35rem;
-  border-top: 1px solid var(--line-soft);
-}
 .field-label.inline {
   display: inline-flex;
   align-items: center;
@@ -1030,74 +1043,11 @@ onActivated(() => {
 .field-label.inline .ap-select {
   min-width: 10rem;
 }
-.analysis-type-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
+.docs-history {
+  border-top: 1px solid var(--line-soft);
 }
 .empty-state.compact {
   padding: 0.5rem 0;
-}
-.drawer-mask {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay);
-  z-index: 200;
-  display: flex;
-  justify-content: flex-end;
-}
-.drawer {
-  width: min(720px, 92vw);
-  height: 100%;
-  background: var(--panel);
-  border-left: 1px solid var(--line);
-  display: flex;
-  flex-direction: column;
-  animation: drawer-in 0.18s ease-out;
-}
-@keyframes drawer-in {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
-}
-.drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.1rem;
-  border-bottom: 1px solid var(--line);
-}
-.drawer-head-main {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-width: 0;
-}
-.drawer-title {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.icon-btn {
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 1.1rem;
-  padding: 0.25rem 0.4rem;
-  border-radius: 6px;
-}
-.icon-btn:hover {
-  background: var(--chip-bg);
-  color: var(--text);
-}
-.drawer-body {
-  flex: 1;
-  overflow: auto;
-  padding: 1rem 1.1rem;
 }
 .preview-content {
   margin: 0;

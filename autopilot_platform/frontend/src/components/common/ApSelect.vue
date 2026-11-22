@@ -2,7 +2,7 @@
 /**
  * 管理台自定义下拉：替代原生 &lt;select&gt;，避免系统弹层与暗色主题打架。
  */
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onDeactivated, ref, useId, watch } from "vue";
 
 export type ApSelectOption = {
   value: string;
@@ -47,7 +47,7 @@ const rootRef = ref<HTMLElement | null>(null);
 const triggerRef = ref<HTMLButtonElement | null>(null);
 const menuRef = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});
-const uid = `ap-sel-${Math.random().toString(36).slice(2, 9)}`;
+const uid = `ap-sel-${useId()}`;
 
 const selected = computed(
   () => props.options.find((o) => o.value === props.modelValue) || null,
@@ -61,6 +61,10 @@ const displayLabel = computed(() => {
 });
 
 const isPlaceholder = computed(() => !selected.value);
+const activeOptionId = computed(() => {
+  const option = props.options[activeIndex.value];
+  return open.value && option && !option.disabled ? `${uid}-option-${activeIndex.value}` : undefined;
+});
 
 function enabledIndexes(): number[] {
   return props.options.map((o, i) => (o.disabled ? -1 : i)).filter((i) => i >= 0);
@@ -90,18 +94,24 @@ function placeMenu() {
   const above = r.top - 8;
   const maxH = 16 * 16;
   const openUp = below < 8 * 16 && above > below;
+  const backdrop = el.closest(".ap-modal-backdrop");
+  const modalLayer = backdrop ? Number.parseInt(getComputedStyle(backdrop).zIndex, 10) : NaN;
+  // The menu teleports to body, so it must sit above its originating dialog.
+  const position = {
+    left: `${left}px`,
+    width: `${width}px`,
+    ...(Number.isFinite(modalLayer) && !props.stack ? { zIndex: String(modalLayer + 1) } : {}),
+  };
   if (openUp) {
     menuStyle.value = {
-      left: `${left}px`,
+      ...position,
       bottom: `${vh - r.top + 4}px`,
-      width: `${width}px`,
       maxHeight: `${Math.min(maxH, Math.max(120, above))}px`,
     };
   } else {
     menuStyle.value = {
-      left: `${left}px`,
+      ...position,
       top: `${r.bottom + 4}px`,
-      width: `${width}px`,
       maxHeight: `${Math.min(maxH, Math.max(120, below))}px`,
     };
   }
@@ -171,8 +181,13 @@ function onTriggerKey(ev: KeyboardEvent) {
   if (ev.key === "Escape") {
     if (open.value) {
       ev.preventDefault();
+      ev.stopPropagation();
       close();
     }
+    return;
+  }
+  if (ev.key === "Tab") {
+    close();
     return;
   }
   if (ev.key === "Home" && open.value) {
@@ -211,6 +226,8 @@ watch(open, (v) => {
   }
 });
 
+onDeactivated(close);
+
 onBeforeUnmount(() => {
   document.removeEventListener("pointerdown", onDocPointer, true);
   window.removeEventListener("resize", onWinChange);
@@ -238,6 +255,7 @@ onBeforeUnmount(() => {
       :id="id"
       ref="triggerRef"
       type="button"
+      role="combobox"
       class="ap-select-trigger"
       :disabled="disabled"
       :title="title"
@@ -245,6 +263,7 @@ onBeforeUnmount(() => {
       :aria-describedby="ariaDescribedby"
       :aria-expanded="open"
       :aria-controls="uid"
+      :aria-activedescendant="activeOptionId"
       :aria-required="required || undefined"
       aria-haspopup="listbox"
       @click="toggle"
@@ -263,12 +282,13 @@ onBeforeUnmount(() => {
         class="ap-select-menu"
         :class="{ stacked: stack }"
         role="listbox"
-        :aria-labelledby="id"
+        :aria-label="ariaLabel || displayLabel"
         :style="menuStyle"
       >
         <li
           v-for="(opt, i) in options"
           :key="`${opt.value || '_empty'}-${i}`"
+          :id="`${uid}-option-${i}`"
           :data-idx="i"
           class="ap-select-option"
           role="option"

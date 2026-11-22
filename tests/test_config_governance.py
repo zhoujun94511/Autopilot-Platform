@@ -137,7 +137,10 @@ def test_platform_admin_register_not_blocked_by_org_gate():
     pools = (FE / "components" / "ResourcePoolsPanel.vue").read_text(encoding="utf-8")
     assert "不是「在线设备」列表" in pools
     hub = (FE / "components" / "DevicesHub.vue").read_text(encoding="utf-8")
-    assert "不是在线设备列表" in hub
+    assert "setSection('devices')" in hub
+    assert "setSection('pools')" in hub
+    assert '<DevicesPanel v-if="section === \'devices\'"' in hub
+    assert '<ResourcePoolsPanel v-if="section === \'pools\'"' in hub
 
 
 def test_device_register_flow_frontend_has_no_inventory_poll_or_duplicate_submit():

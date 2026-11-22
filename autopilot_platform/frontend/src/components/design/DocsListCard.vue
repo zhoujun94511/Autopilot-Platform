@@ -96,21 +96,7 @@ const orderOptions = [
 </script>
 
 <template>
-  <section class="surface-card">
-    <div class="card-title-row">
-      <h3>已上传文档</h3>
-      <div v-if="!readonly" class="inline-tools">
-        <button
-          type="button"
-          class="small danger"
-          :disabled="busy || !selectedIds.length"
-          @click="emit('batch-delete', selectedIds)"
-        >
-          批量删除（{{ selectedIds.length }}）
-        </button>
-      </div>
-    </div>
-
+  <section aria-label="已上传文档">
     <div class="list-toolbar">
       <label class="toolbar-search">
         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
@@ -120,6 +106,7 @@ const orderOptions = [
         <input
           :value="q"
           type="search"
+          aria-label="搜索需求文档"
           placeholder="搜索文件名 / 内容…"
           @input="emit('update:q', ($event.target as HTMLInputElement).value)"
         />
@@ -148,6 +135,16 @@ const orderOptions = [
         aria-label="排序方向"
         @update:model-value="emit('update:order', $event as 'asc' | 'desc')"
       />
+      <slot name="analysis-filter" />
+      <button
+        v-if="!readonly && selectedIds.length"
+        type="button"
+        class="small danger"
+        :disabled="busy"
+        @click="emit('batch-delete', selectedIds)"
+      >
+        删除所选（{{ selectedIds.length }}）
+      </button>
     </div>
 
     <div v-if="hasLoaded === false || (hasLoaded !== true && loading && !docs.length)" class="empty-state">
@@ -155,13 +152,7 @@ const orderOptions = [
     </div>
     <div v-else-if="!docs.length" class="empty-state">
       <p class="empty-title">{{ total ? "无匹配文档" : "还没有需求文档" }}</p>
-      <p class="empty-desc">
-        {{
-          total
-            ? "请调整搜索或筛选条件。"
-            : "上传或粘贴需求，分析后可勾选生成意图用例。支持 Markdown / Word / PDF / Excel 等。"
-        }}
-      </p>
+      <p v-if="total" class="empty-desc">请调整搜索或筛选条件。</p>
       <div v-if="!total && !readonly" class="empty-actions">
         <button type="button" class="primary small" @click="emit('open-import')">上传文档</button>
       </div>

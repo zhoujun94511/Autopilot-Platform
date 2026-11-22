@@ -1,19 +1,59 @@
 /**
  * 运维配置 / 告警 / 共享 ACL 动作。
  */
-import type { Ref } from "vue";
-import { api, apiErrorMessage } from "../api";
+import { watch, type Ref } from "vue";
+import { api, apiErrorMessage, getAuthSessionVersion } from "../api";
 import { fetchAllAclGrants } from "../api/opsLists";
 import { confirmDialog, notify } from "./useNotify";
 import * as O from "./mcOpsState";
 import * as E from "./mcExecState";
+import { workspaceScopeVersion } from "./mcProjectsState";
 
 export type OpsDeps = {
   isAdmin: () => boolean;
+  isLoggedIn: () => boolean;
   activeTab: Ref<string>;
 };
 
 let d: OpsDeps;
+let aclSelectionVersion = 0;
+let aclRequestId = 0;
+
+function clearAclSelection() {
+  aclSelectionVersion += 1;
+  O.aclRows.value = [];
+  O.aclLoading.value = false;
+  O.aclError.value = "";
+  O.shareMsg.value = "";
+}
+
+watch(
+  [() => O.shareForm.resource_type, () => O.shareForm.resource_id.trim()],
+  clearAclSelection,
+  { flush: "sync" },
+);
+watch(workspaceScopeVersion, () => {
+  clearAclSelection();
+  O.resetShareForm();
+}, { flush: "sync" });
+
+export function resetOpsSession() {
+  clearAclSelection();
+  O.resetShareForm();
+  O.resetOpsConfig();
+}
+
+function captureAclSelection() {
+  const authVersion = getAuthSessionVersion();
+  const selection = aclSelectionVersion;
+  return () => d.isLoggedIn() &&
+    authVersion === getAuthSessionVersion() && selection === aclSelectionVersion;
+}
+
+function captureAdminSession() {
+  const authVersion = getAuthSessionVersion();
+  return () => d.isAdmin() && authVersion === getAuthSessionVersion();
+}
 
 export function bindOpsDeps(deps: OpsDeps): void {
   d = deps;
@@ -26,36 +66,42 @@ function requireDeps(): OpsDeps {
 
 export async function refreshOps() {
   requireDeps();
+  const current = captureAdminSession();
   if (!d.isAdmin()) {
     O.ops.value = null;
     return;
   }
   try {
-    O.ops.value = await api("/api/v1/ops/summary");
+    const summary = await api<typeof O.ops.value>("/api/v1/ops/summary");
+    if (current()) O.ops.value = summary;
   } catch {
-    O.ops.value = null;
+    if (current()) O.ops.value = null;
   }
 }
 
 export async function onAlertTest() {
   requireDeps();
+  const current = captureAdminSession();
+  if (!current()) return;
   try {
     const out = await api<{ ok: boolean; channel: string }>("/api/v1/ops/alert-test", {
       method: "POST",
     });
+    if (!current()) return;
     notify(
       out.ok ? `测试已发送（${out.channel}）` : "发送失败，请查平台日志",
       out.ok ? "success" : "error",
       { toast: true },
     );
   } catch (e) {
-    notify(apiErrorMessage(e), "error");
+    if (current()) notify(apiErrorMessage(e), "error");
   }
 }
 
 export async function refreshOpsConfig() {
   requireDeps();
-  if (!d.isAdmin()) return;
+  const current = captureAdminSession();
+  if (!current()) return;
   try {
     const out = await api<{
       values: Record<string, string>;
@@ -71,6 +117,7 @@ export async function refreshOpsConfig() {
         api_key_configured?: boolean;
       };
     }>("/api/v1/ops/config");
+    if (!current()) return;
     const vals = out.values || {};
     const secretKeys = new Set(
       out.secret_keys || ["MC_WEBHOOK_SECRET", "MC_ALERT_SECRET", "AP_AI_API_KEY"],
@@ -103,70 +150,90 @@ export async function refreshOpsConfig() {
       };
     }
   } catch (e) {
-    notify(apiErrorMessage(e), "error");
+    if (current()) notify(apiErrorMessage(e), "error");
   }
 }
 
 export async function onSaveOpsConfig(ev: Event) {
   requireDeps();
   ev.preventDefault();
+  const current = captureAdminSession();
+  if (!current()) return;
   try {
     await api("/api/v1/ops/config", {
       method: "PUT",
       body: JSON.stringify({ values: { ...O.opsConfig } }),
     });
+    if (!current()) return;
     O.opsConfigMsg.value = "已保存（立即生效，无需重启）";
     await refreshOpsConfig();
-    await refreshOps();
+    if (current()) await refreshOps();
   } catch (e) {
-    O.opsConfigMsg.value = apiErrorMessage(e);
+    if (current()) O.opsConfigMsg.value = apiErrorMessage(e);
   }
 }
 
 export async function refreshAcl() {
   requireDeps();
   const rid = O.shareForm.resource_id.trim();
-  if (!rid) {
-    O.aclRows.value = [];
-    return;
-  }
+  if (!rid || !d.isLoggedIn()) return;
+  const resourceType = O.shareForm.resource_type;
+  const sameSelection = captureAclSelection();
+  const requestId = ++aclRequestId;
+  const current = () => sameSelection() && requestId === aclRequestId;
+  O.aclLoading.value = true;
+  O.aclError.value = "";
   try {
-    O.aclRows.value = await fetchAllAclGrants(O.shareForm.resource_type, rid);
+    const rows = await fetchAllAclGrants(resourceType, rid);
+    if (current()) O.aclRows.value = rows;
   } catch (e) {
-    O.aclRows.value = [];
-    notify(apiErrorMessage(e), "error");
+    if (current()) {
+      O.aclRows.value = [];
+      O.aclError.value = apiErrorMessage(e);
+    }
+  } finally {
+    if (current()) O.aclLoading.value = false;
   }
 }
 
 export async function onShare(ev: Event) {
   requireDeps();
   ev.preventDefault();
+  const current = captureAclSelection();
+  const resourceId = O.shareForm.resource_id.trim();
+  const username = O.shareForm.username.trim();
+  if (!current() || !resourceId || !username) return;
   try {
     await api("/api/v1/acl", {
       method: "POST",
       body: JSON.stringify({
         resource_type: O.shareForm.resource_type,
-        resource_id: O.shareForm.resource_id.trim(),
-        username: O.shareForm.username.trim(),
+        resource_id: resourceId,
+        username,
         permission: O.shareForm.permission,
       }),
     });
-    O.shareMsg.value = `已分享给 ${O.shareForm.username.trim()}`;
+    if (!current()) return;
+    O.shareMsg.value = `已分享给 ${username}`;
     await refreshAcl();
   } catch (e) {
-    O.shareMsg.value = apiErrorMessage(e);
+    if (current()) O.shareMsg.value = apiErrorMessage(e);
   }
 }
 
 export async function onRevokeAcl(aclId: string) {
   requireDeps();
+  const current = captureAclSelection();
+  if (!current() || !O.aclRows.value.some((row) => row.id === aclId)) return;
   if (!(await confirmDialog("撤销该分享？"))) return;
+  if (!current() || !O.aclRows.value.some((row) => row.id === aclId)) return;
   try {
     await api(`/api/v1/acl/${encodeURIComponent(aclId)}`, { method: "DELETE" });
+    if (!current()) return;
     notify("已撤销分享", "success");
     await refreshAcl();
   } catch (e) {
-    notify(apiErrorMessage(e), "error");
+    if (current()) notify(apiErrorMessage(e), "error");
   }
 }
 

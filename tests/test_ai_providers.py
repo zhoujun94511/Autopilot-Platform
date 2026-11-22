@@ -29,6 +29,9 @@ _CLEAR_KEYS = (
     "OPENAI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENAI_MODEL",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_MODEL",
     "DEEPSEEK_API_KEY",
     "DEEPSEEK_BASE_URL",
     "DEEPSEEK_MODEL",
@@ -100,17 +103,22 @@ def test_qwen_and_ollama_and_openai_defaults(monkeypatch):
 def test_list_ai_providers_catalog():
     providers = ai_config.list_ai_providers()
     ids = [p["id"] for p in providers]
-    assert ids == ["openai", "deepseek", "qwen", "gemini", "ollama"]
+    assert ids == ["openai", "anthropic", "deepseek", "qwen", "gemini", "ollama"]
     by_id = {p["id"]: p for p in providers}
+    assert by_id["anthropic"]["default_base_url"] == "https://api.anthropic.com"
+    assert by_id["anthropic"]["default_model"] == "claude-sonnet-5-5"
+    assert "claude-opus-5-5" in by_id["anthropic"]["models"]
+    assert by_id["anthropic"]["accepts_images"] is True
     assert by_id["deepseek"]["default_base_url"] == "https://api.deepseek.com"
     assert by_id["deepseek"]["default_model"] == "deepseek-v4-flash"
+    assert "deepseek-flash" in by_id["deepseek"]["models"]
     assert "deepseek-v4-pro" in by_id["deepseek"]["models"]
     assert by_id["deepseek"]["accepts_images"] is False
     assert "deepseek-v4-flash-vision-exp" in by_id["deepseek"]["vision_models"]
     assert "deepseek-v4-flash-vision-exp" in by_id["deepseek"]["models"]
     assert by_id["qwen"]["default_model"] == "qwen-plus"
     assert "qwen-vl-plus" in by_id["qwen"]["vision_models"]
-    assert by_id["gemini"]["default_model"] == "gemini-3.5-flash"
+    assert by_id["gemini"]["default_model"] == "gemini-3.8-flash"
     assert by_id["ollama"]["default_base_url"].endswith("/v1")
     assert by_id["openai"]["default_model"] == "gpt-5.4-mini"
     # catalog defaults must match runtime resolvers
@@ -118,6 +126,72 @@ def test_list_ai_providers_catalog():
         assert ai_config.provider_default_base_url(p["id"]) == p["default_base_url"]
         assert ai_config.provider_default_model(p["id"]) == p["default_model"]
         assert ai_config.provider_recommended_models(p["id"]) == p["models"]
+
+
+def test_anthropic_messages_api_non_stream_and_stream(monkeypatch):
+    from autopilot_platform.platform.ops.runtime_config import reload_runtime_config
+
+    monkeypatch.setenv("AP_AI_PROVIDER", "anthropic")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    reload_runtime_config()
+
+    assert ai_config.ai_provider() == "anthropic"
+    assert ai_config.ai_base_url() == "https://api.anthropic.com"
+    assert ai_config.ai_model() == "claude-sonnet-5-5"
+    assert ai_config.ai_api_key() == "sk-ant-test"
+
+    captured: dict = {}
+
+    class _FakeResp:
+        status_code = 200
+        request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+
+        @staticmethod
+        def raise_for_status():
+            return None
+
+        @staticmethod
+        def json():
+            return {
+                "id": "msg_1",
+                "type": "message",
+                "role": "assistant",
+                "content": [{"type": "text", "text": "Claude OK"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 12, "output_tokens": 5},
+            }
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        @staticmethod
+        def post(url, headers=None, json=None):
+            captured["url"] = url
+            captured["headers"] = headers
+            captured["json"] = json
+            return _FakeResp()
+
+    monkeypatch.setattr(httpx, "Client", _FakeClient)
+    out = chat_completions(
+        [
+            {"role": "system", "content": "You are a QA assistant."},
+            {"role": "user", "content": "hello"},
+        ]
+    )
+    assert out == "Claude OK"
+    assert captured["url"] == "https://api.anthropic.com/v1/messages"
+    assert captured["headers"]["x-api-key"] == "sk-ant-test"
+    assert captured["headers"]["anthropic-version"] == "2023-06-01"
+    assert captured["json"]["system"] == "You are a QA assistant."
+    assert captured["json"]["model"] == "claude-sonnet-5-5"
+    assert "temperature" not in captured["json"]
 
 
 def test_deepseek_pro_enables_thinking(monkeypatch):
@@ -153,7 +227,7 @@ def test_gemini_defaults(monkeypatch):
     reload_runtime_config()
     assert ai_config.ai_provider() == "gemini"
     assert "v1beta/openai" in ai_config.ai_base_url()
-    assert ai_config.ai_model() == "gemini-3.5-flash"
+    assert ai_config.ai_model() == "gemini-3.8-flash"
     assert ai_config.ai_api_key() == "AIza"
 
 
@@ -191,7 +265,9 @@ def test_chat_completions_retries_empty(monkeypatch):
             return False
 
         @staticmethod
-        def post(_url, _headers=None, _json=None):
+        def post(_url, *, headers, json):
+            assert headers["Authorization"] == "Bearer sk-test"
+            assert json["messages"] == [{"role": "user", "content": "x"}]
             calls["n"] += 1
             if calls["n"] == 1:
                 return _Resp(
@@ -247,8 +323,10 @@ def test_chat_completions_stream_parses_sse(monkeypatch):
             return False
 
         @staticmethod
-        def stream(_method, _url, _headers=None, json=None):
-            assert json is not None and json.get("stream") is True
+        def stream(method, _url, *, headers, json):
+            assert method == "POST"
+            assert headers["Accept"] == "text/event-stream"
+            assert json.get("stream") is True
             return _StreamResp()
 
     monkeypatch.setattr(httpx, "Client", _Client)

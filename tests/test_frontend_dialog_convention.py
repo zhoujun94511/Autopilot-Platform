@@ -11,12 +11,6 @@ NOTIFY_MD = ROOT / "autopilot_platform" / "frontend" / "NOTIFY.md"
 
 # 自制遮罩只允许业务表单 / 预览 / 查看器，禁止做成第二套确认框。
 ALLOWED_HOMEMADE_OVERLAYS = {
-    "components/ResourcePoolsPanel.vue": "设备池表单",
-    "components/JobLogViewer.vue": "任务日志查看器",
-    "components/projects/CreateProjectModal.vue": "创建项目表单",
-    "components/JobsPanel.vue": "新建批跑表单",
-    "components/ArtifactsPanel.vue": "上传制品表单",
-    "components/SchedulesPanel.vue": "计划表单",
     "components/remote/files/RemoteFilePreviewModal.vue": "文件预览",
 }
 

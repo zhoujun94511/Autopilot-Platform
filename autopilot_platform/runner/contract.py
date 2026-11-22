@@ -183,6 +183,7 @@ class JobOut:
     wda_bundle: str = ""
     preferred_runner_id: Optional[str] = None
     runner_id: Optional[str] = None
+    claimed_at: str = ""
     error: Optional[str] = None
     webhook_url: str = ""
     parent_job_id: Optional[str] = None
@@ -218,6 +219,7 @@ class JobOut:
                 str(data["preferred_runner_id"]) if data.get("preferred_runner_id") else None
             ),
             runner_id=(str(data["runner_id"]) if data.get("runner_id") else None),
+            claimed_at=str(data.get("claimed_at") or ""),
             error=(str(data["error"]) if data.get("error") else None),
             webhook_url=str(data.get("webhook_url") or ""),
             parent_job_id=(str(data["parent_job_id"]) if data.get("parent_job_id") else None),

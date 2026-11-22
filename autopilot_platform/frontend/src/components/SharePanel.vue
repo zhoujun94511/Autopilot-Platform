@@ -2,13 +2,14 @@
 defineOptions({ name: "SharePanel" });
 
 import { storeToRefs } from "pinia";
-import { computed } from "vue";
+import { computed, onDeactivated, ref, watch } from "vue";
 import { useAuthStore } from "../stores/auth";
 import { useShellStore } from "../stores/shellStore";
 import { useCapabilities } from "../composables/useCapabilities";
 import { useAdminStore } from "../stores/adminStore";
 import { useOpsStore } from "../stores/opsStore";
 import ApSelect from "./common/ApSelect.vue";
+import ApModal from "./ApModal.vue";
 
 const auth = useAuthStore();
 const { canManageUsers } = storeToRefs(auth);
@@ -16,16 +17,26 @@ const shell = useShellStore();
 const { activeTab } = storeToRefs(shell);
 const ops = useOpsStore();
 const admin = useAdminStore();
-const { shareForm, shareMsg, aclRows } = storeToRefs(ops);
+const { shareForm, shareMsg, aclRows, aclLoading, aclError } = storeToRefs(ops);
 const { auditFilter } = storeToRefs(admin);
 const caps = useCapabilities();
+const grantOpen = ref(false);
+const saving = ref(false);
+const resourceOptions = [
+  { value: "artifact", label: "工程制品" },
+  { value: "app_build", label: "应用资源" },
+  { value: "job", label: "批跑任务" },
+  { value: "schedule", label: "定时计划" },
+];
+const permissionOptions = [
+  { value: "read", label: "只读" },
+  { value: "write", label: "读写" },
+];
 
 const readOnlyHint = computed(() => {
   if (caps.canShareWrite) return "";
-  if (caps.isProjectViewer) {
-    return "当前项目为只读：可以查看已分享内容，但不能新增或取消分享。";
-  }
-  return "输入或点选资源后可以查看已有分享；建立或撤销共享需要该资源所属项目的写权限。";
+  if (caps.isProjectViewer) return "只读项目，无法修改共享";
+  return "无共享权限";
 });
 
 function openShareAudit() {
@@ -35,487 +46,187 @@ function openShareAudit() {
   activeTab.value = "audit";
   void admin.refreshAudits();
 }
+
+function openGrant() {
+  if (!caps.canShareWrite || !shareForm.value.resource_id.trim()) return;
+  shareMsg.value = "";
+  grantOpen.value = true;
+}
+
+function closeGrant() {
+  if (saving.value) return;
+  grantOpen.value = false;
+  shareMsg.value = "";
+}
+
+async function submitGrant(event: Event) {
+  if (saving.value || !caps.canShareWrite || !shareForm.value.resource_id.trim()) return;
+  shareMsg.value = "";
+  saving.value = true;
+  try {
+    await ops.onShare(event);
+    if (shareMsg.value.startsWith("已分享给 ")) grantOpen.value = false;
+  } finally {
+    saving.value = false;
+  }
+}
+
+onDeactivated(() => { grantOpen.value = false; });
+watch(
+  [() => shareForm.value.resource_type, () => shareForm.value.resource_id.trim()],
+  () => { grantOpen.value = false; },
+  { flush: "sync" },
+);
 </script>
 
-
-
 <template>
-
-  <section class="panel page-stack">
+  <section class="panel page-stack data-page">
     <header class="page-hero">
-      <div class="page-hero-copy">
-        <h2>共享</h2>
-        <p class="lede">
-          把指定的制品、任务或计划分享给其他人。
-        </p>
+      <h2>共享</h2>
+      <div class="page-hero-actions">
+        <button v-if="canManageUsers" type="button" class="ghost" @click="openShareAudit">查看共享记录</button>
         <button
-          v-if="canManageUsers"
+          v-if="caps.canShareWrite"
           type="button"
-          class="linkish lede-link"
-          @click="openShareAudit"
-        >
-          查看共享记录
-        </button>
+          class="primary"
+          :disabled="!shareForm.resource_id.trim()"
+          @click="openGrant"
+        >建立授权</button>
       </div>
     </header>
 
-    <p v-if="readOnlyHint" class="share-lead warn">
-
-      {{ readOnlyHint }}
-
-    </p>
-
-
-
-    <div class="nested-form-card">
-
-      <div class="share-grid share-lookup-row">
-
-        <div class="share-field">
-
-          <label>资源类型</label>
-
-          <ApSelect
-            v-model="shareForm.resource_type"
-            aria-label="资源类型"
-            :options="[
-              { value: 'artifact', label: '工程制品' },
-              { value: 'app_build', label: '应用资源' },
-              { value: 'job', label: '任务' },
-              { value: 'schedule', label: '计划' },
-            ]"
-            @change="ops.refreshAcl"
-          />
-
-        </div>
-
-        <div class="share-field flex-two">
-
-          <label>要分享的内容</label>
-
-          <input
-
-            v-model="shareForm.resource_id"
-
-            placeholder="从上表点选，或粘贴编号"
-
-            @change="ops.refreshAcl"
-
-          />
-
-        </div>
-
-        <div class="share-button-group">
-
-          <button type="button" @click="ops.refreshAcl" title="同步当前资源的共享列表">
-
-            刷新列表
-
-          </button>
-
-        </div>
-
+    <form class="share-toolbar" @submit.prevent="ops.refreshAcl">
+      <div class="share-field">
+        <span>资源类型</span>
+        <ApSelect
+          v-model="shareForm.resource_type"
+          aria-label="资源类型"
+          :options="resourceOptions"
+          @change="ops.refreshAcl"
+        />
       </div>
+      <label class="share-field share-resource">
+        资源 ID
+        <input v-model="shareForm.resource_id" placeholder="输入资源 ID" @change="ops.refreshAcl" />
+      </label>
+      <button type="submit">刷新列表</button>
+    </form>
 
-
-
-      <form v-if="caps.canShareWrite" class="share-creation-form" @submit.prevent="ops.onShare">
-
-        <div class="share-grid">
-
-          <div class="share-field">
-
-            <label>被授权用户名 *</label>
-
-            <input v-model="shareForm.username" required placeholder="例如: developer_a" />
-
-          </div>
-
-          <div class="share-field">
-
-            <label>授予级别 *</label>
-
-            <ApSelect
-              v-model="shareForm.permission"
-              aria-label="授予级别"
-              :options="[
-                { value: 'read', label: '只读' },
-                { value: 'write', label: '读写' },
-              ]"
-            />
-
-          </div>
-
-          <div class="share-button-group">
-
-            <button type="submit" class="primary">
-
-              <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" stroke-width="2.5" fill="none">
-
-                <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
-
-                <polyline points="16 6 12 2 8 6" />
-
-                <line x1="12" y1="2" x2="12" y2="15" />
-
-              </svg>
-
-              建立授权
-
-            </button>
-
-          </div>
-
-        </div>
-
-      </form>
-
-      <p v-if="shareMsg" class="msg ok">{{ shareMsg }}</p>
-
-    </div>
-
-
-
-    <h3 class="section-title">已共享</h3>
-
+    <p v-if="readOnlyHint" class="share-note">{{ readOnlyHint }}</p>
+    <p v-if="shareMsg && !grantOpen" class="msg ok" role="status">{{ shareMsg }}</p>
+    <p v-if="aclError" class="msg bad" role="alert">{{ aclError }}</p>
     <div class="table-wrap">
-
-      <table>
-
+      <table aria-label="共享授权" :aria-busy="aclLoading">
         <thead>
-
           <tr>
-
-            <th>被授权协作用户</th>
-
-            <th>获得授权等级</th>
-
-            <th>授权目标资源类型与 ID</th>
-
-            <th>管理操作</th>
-
+            <th scope="col">用户</th>
+            <th scope="col">权限</th>
+            <th scope="col">资源</th>
+            <th v-if="caps.canShareWrite" scope="col">操作</th>
           </tr>
-
         </thead>
-
         <tbody>
-
-          <tr v-if="!shareForm.resource_id.trim()">
-
-            <td class="empty" colspan="4">先从上表点选要分享的内容，或粘贴编号</td>
-
+          <tr v-if="!aclRows.length">
+            <td :colspan="caps.canShareWrite ? 4 : 3" class="empty">
+              <template v-if="aclLoading">正在加载授权…</template>
+              <template v-else-if="aclError">授权加载失败</template>
+              <template v-else>{{ shareForm.resource_id.trim() ? "暂无共享授权" : "输入资源 ID 后查看授权" }}</template>
+            </td>
           </tr>
-
-          <tr v-else-if="!aclRows.length">
-
-            <td class="empty" colspan="4">
-              <div class="empty-stack">
-                <span>这条内容还没有分享给任何人。</span>
-                <span v-if="caps.canShareWrite">填写用户名后点「建立授权」即可。</span>
-              </div>
+          <tr v-for="grant in aclRows" :key="grant.id">
+            <td class="share-user">{{ grant.username }}</td>
+            <td>{{ grant.permission === "write" ? "读写" : "只读" }}</td>
+            <td>
+              {{ resourceOptions.find((option) => option.value === grant.resource_type)?.label || grant.resource_type }}
+              <span class="mono" :title="grant.resource_id">{{ grant.resource_id }}</span>
             </td>
-
+            <td v-if="caps.canShareWrite">
+              <button type="button" class="linkish revoke" @click="ops.onRevokeAcl(grant.id)">撤销授权</button>
+            </td>
           </tr>
-
-          <tr v-for="g in aclRows" :key="g.id">
-
-            <td>
-
-              <span class="user-badge">{{ g.username }}</span>
-
-            </td>
-
-            <td>
-
-              <span class="pill" :class="g.permission === 'write' ? 'ok' : ''">
-
-                {{ g.permission === 'write' ? '读写' : '只读' }}
-
-              </span>
-
-            </td>
-
-            <td class="mono resource-cell">
-
-              <span class="type-tag">{{ g.resource_type }}</span>
-
-              <span class="id-val">{{ g.resource_id.slice(0, 8) }}…</span>
-
-            </td>
-
-            <td>
-
-              <button
-
-                v-if="caps.canShareWrite"
-
-                type="button"
-
-                class="small danger"
-
-                @click="ops.onRevokeAcl(g.id)"
-
-                title="撤销此条共享规则"
-
-              >
-
-                <svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.5" fill="none">
-
-                  <polyline points="3 6 5 6 21 6" />
-
-                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-
-                </svg>
-
-                撤销授权
-
-              </button>
-
-              <span v-else class="meta-line">只读</span>
-
-            </td>
-
-          </tr>
-
         </tbody>
-
       </table>
-
     </div>
 
+    <ApModal
+      v-if="grantOpen && caps.canShareWrite"
+      title="建立授权"
+      :description="shareForm.resource_id"
+      :close-on-backdrop="!saving"
+      :close-on-esc="!saving"
+      @close="closeGrant"
+    >
+      <form class="share-grant-form" :aria-busy="saving" @submit.prevent="submitGrant">
+        <label class="share-field">
+          用户名
+          <input v-model="shareForm.username" required :disabled="saving" data-autofocus />
+        </label>
+        <div class="share-field">
+          <span>权限</span>
+          <ApSelect
+            v-model="shareForm.permission"
+            aria-label="权限"
+            :options="permissionOptions"
+            :disabled="saving"
+          />
+        </div>
+        <p v-if="shareMsg" class="msg bad" role="alert">{{ shareMsg }}</p>
+        <footer class="ap-modal-actions">
+          <button type="button" class="ghost" :disabled="saving" @click="closeGrant">取消</button>
+          <button type="submit" class="primary" :disabled="saving">{{ saving ? "正在授权…" : "确认授权" }}</button>
+        </footer>
+      </form>
+    </ApModal>
   </section>
-
 </template>
 
-
-
 <style scoped>
-
-.share-lead {
-
-  margin: -0.25rem 0 1rem;
-
-  color: var(--muted);
-
-  font-size: 0.85rem;
-
-}
-
-.share-lead.warn {
-
-  color: var(--warning-soft-fg, var(--muted));
-
-  margin-top: 0;
-
-  line-height: 1.45;
-
-}
-
-.share-lead .linkish {
-  margin-left: 0.5rem;
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--accent, #2563eb);
-  cursor: pointer;
-  font: inherit;
-  text-decoration: underline;
-}
-
-
-
-.nested-form-card {
-
-  background-color: var(--surface-soft);
-
-  border: 1px solid var(--line-soft);
-
-  border-radius: 8px;
-
-  padding: 1.25rem;
-
-  margin-bottom: 1.5rem;
-
-  width: 100%;
-
-}
-
-
-
-.share-creation-form {
-
-  width: 100%;
-
-  margin-top: 1rem;
-
-  padding-top: 1rem;
-
-  border-top: 1px dashed var(--line-soft);
-
-}
-
-
-
-.share-grid {
+.share-toolbar {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
-  width: 100%;
-  align-items: flex-end;
+  align-items: end;
+  gap: 0.625rem 1rem;
 }
-
-
 
 .share-field {
-
   display: flex;
-
   flex-direction: column;
-
-  gap: 0.4rem;
-
-  flex: 1;
-
-  min-width: 150px;
-
-}
-
-
-
-.share-field label {
-
-  font-size: 0.78rem;
-
-  font-weight: 600;
-
+  gap: 0.25rem;
+  min-width: 0;
   color: var(--muted);
-
+  font-size: var(--font-size-meta);
 }
 
-
-
-.flex-two {
-
-  flex: 2;
-
-  min-width: 250px;
-
+.share-toolbar .share-field:first-child {
+  flex: 0 1 10rem;
 }
 
-
-
-.share-button-group {
-
-  display: flex;
-
-  gap: 0.5rem;
-
-  height: 38px;
-
-  margin-bottom: 2px;
-
+.share-resource {
+  flex: 1 1 12rem;
+  max-width: 30rem;
 }
 
-
-
-.section-title {
-
-  margin: 1.5rem 0 0.5rem !important;
-
-  font-size: 1rem !important;
-
-  font-weight: 700;
-
-  color: var(--text);
-
+.share-grant-form {
+  display: grid;
+  gap: 0.875rem;
 }
 
+.share-note {
+  margin: 0;
+  color: var(--muted);
+}
 
-
-.user-badge {
-
+.share-user {
   font-weight: 600;
-
-  background-color: var(--control-bg);
-
-  padding: 0.15rem 0.5rem;
-
-  border-radius: 4px;
-
-  border: 1px solid var(--line);
-
 }
 
-
-
-.resource-cell {
-
-  display: flex;
-
-  align-items: center;
-
-  gap: 0.45rem;
-
+.mono {
+  color: var(--muted);
+  margin-inline-start: 0.35rem;
 }
 
-
-
-.type-tag {
-
-  font-family: var(--font);
-
-  font-size: 0.72rem;
-
-  font-weight: 700;
-
-  text-transform: uppercase;
-
-  color: var(--accent-text);
-
-  background-color: var(--info-soft-bg);
-
-  padding: 0.05rem 0.35rem;
-
-  border-radius: 3px;
-
-  border: 1px solid var(--info-soft-border);
-
+.revoke {
+  color: var(--danger-soft-fg);
+  white-space: nowrap;
 }
-
-
-
-.id-val {
-
-  color: var(--mono);
-
-}
-
-
-
-@media (max-width: 768px) {
-
-  .share-grid {
-
-    flex-direction: column;
-
-    align-items: stretch;
-
-  }
-
-  .share-button-group {
-
-    width: 100%;
-
-  }
-
-  .share-button-group button {
-
-    flex: 1;
-
-  }
-
-}
-
 </style>
-
-

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
+import { FolderKanban } from "lucide-vue-next";
 import { useProjectsStore } from "../../stores/projectsStore";
 import ApSelect from "../common/ApSelect.vue";
 
@@ -18,18 +19,7 @@ const options = computed(() => [
 
 <template>
   <div class="project-select" title="切换当前项目" role="search">
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      stroke="currentColor"
-      stroke-width="2.5"
-      fill="none"
-      class="icon"
-      aria-hidden="true"
-    >
-      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-    </svg>
+    <FolderKanban :size="14" class="icon" aria-hidden="true" />
     <ApSelect
       size="compact"
       aria-label="当前项目"
@@ -42,19 +32,23 @@ const options = computed(() => [
 
 <style scoped>
 .project-select {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.55rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  min-width: 180px;
-  max-width: 280px;
+  gap: 6px;
+  padding: 0 8px;
+  height: 30px;
+  border-radius: 6px;
+  background: transparent;
+  min-width: 148px;
+  max-width: 240px;
+  transition: background-color 0.15s ease;
+}
+.project-select:hover {
+  background: var(--vben-bg-hover);
 }
 .project-select .icon {
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--vben-fg-muted);
 }
 .project-select :deep(.ap-select) {
   flex: 1;
@@ -64,8 +58,10 @@ const options = computed(() => [
   border: none;
   background: transparent;
   min-height: 0;
-  padding: 0.1rem 0;
-  font-size: 0.82rem;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vben-fg);
   box-shadow: none;
 }
 .project-select :deep(.ap-select-trigger:hover:not(:disabled)),

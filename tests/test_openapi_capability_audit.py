@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -13,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_export_openapi_writes_json(tmp_path):
     out = tmp_path / "openapi.json"
     proc = subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "export_openapi.py"), "--out", str(out), "--pretty"],
+        [sys.executable, str(ROOT / "tools" / "export_openapi.py"), "--out", str(out), "--pretty", "--no-contract"],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -28,7 +29,7 @@ def test_export_openapi_writes_json(tmp_path):
 def test_audit_capability_routes_against_export(tmp_path):
     out = tmp_path / "openapi.json"
     subprocess.run(
-        [sys.executable, str(ROOT / "tools" / "export_openapi.py"), "--out", str(out)],
+        [sys.executable, str(ROOT / "tools" / "export_openapi.py"), "--out", str(out), "--no-contract"],
         cwd=str(ROOT),
         check=True,
     )
@@ -40,8 +41,9 @@ def test_audit_capability_routes_against_export(tmp_path):
             str(out),
         ],
         cwd=str(ROOT),
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
         capture_output=True,
-        text=True,
+        encoding="utf-8",
         check=False,
     )
     assert proc.returncode == 0, proc.stderr or proc.stdout

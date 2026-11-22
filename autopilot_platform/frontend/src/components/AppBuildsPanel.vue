@@ -2,17 +2,19 @@
 defineOptions({ name: "AppBuildsPanel" });
 
 import { storeToRefs } from "pinia";
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, onDeactivated, ref, watch } from "vue";
 import type { AppBuild } from "../api";
 import { listAppBuildsPage, OPS_LIST_PAGE_SIZE } from "../api/opsLists";
 import { useProjectsStore } from "../stores/projectsStore";
 import { useCapabilities } from "../composables/useCapabilities";
 import { usePagedList } from "../composables/usePagedList";
+import { workspaceScopeVersion } from "../composables/mcProjectsState";
 import { useExecStore } from "../stores/execution";
 import { useOpsStore } from "../stores/opsStore";
 import DataPager from "./common/DataPager.vue";
 import ExecProjectGateBanner from "./ExecProjectGateBanner.vue";
 import ApSelect from "./common/ApSelect.vue";
+import ApModal from "./ApModal.vue";
 
 const projectsStore = useProjectsStore();
 const { filterProjectId } = storeToRefs(projectsStore);
@@ -22,16 +24,17 @@ const {
   appBuildsVersion,
   appBuildUploadName,
   appBuildUploadFile,
+  uploadingAppBuild,
   appBuildMsg,
   appBuildMsgOk,
+  form,
 } = storeToRefs(exec);
 const caps = useCapabilities();
 const canUpload = computed(() => Boolean(caps.canEditProject));
 const search = ref("");
 const platformFilter = ref("");
-const fileInput = ref<HTMLInputElement | null>(null);
-const uploadHighlight = ref(false);
-let highlightTimer: ReturnType<typeof setTimeout> | null = null;
+const uploadOpen = ref(false);
+const platformLabels: Record<string, string> = { android: "Android", ios: "iOS" };
 
 const list = usePagedList<AppBuild>({
   immediate: false,
@@ -43,12 +46,12 @@ const list = usePagedList<AppBuild>({
       projectId: filterProjectId.value.trim() || undefined,
       platform: platformFilter.value.trim() || undefined,
     }),
-  resetSources: [() => filterProjectId.value],
+  resetSources: [workspaceScopeVersion],
   filterSources: [platformFilter],
   isUnfiltered: () => !platformFilter.value.trim(),
 });
 
-const { items: pagedItems, total, page, pageSize, loading, hasLoaded, reload, setPage, setPageSize } = list;
+const { items: pagedItems, total, page, pageSize, loading, hasLoaded, error, reload, setPage, setPageSize } = list;
 
 watch(appBuildsVersion, () => void reload(false));
 void reload(true);
@@ -74,215 +77,149 @@ const filteredBuilds = computed(() => {
   });
 });
 
-const selectedFileName = computed(() => appBuildUploadFile.value?.name || "");
-
-function pulseUploadCard() {
-  uploadHighlight.value = true;
-  if (highlightTimer) clearTimeout(highlightTimer);
-  highlightTimer = setTimeout(() => {
-    uploadHighlight.value = false;
-    highlightTimer = null;
-  }, 1600);
+function clearBuildFilter() {
+  search.value = "";
+  platformFilter.value = "";
 }
 
-async function startUpload() {
-  pulseUploadCard();
-  document.getElementById("app-build-upload")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  await nextTick();
-  fileInput.value?.click();
+function openUpload() {
+  if (uploadingAppBuild.value || !canUpload.value) return;
+  appBuildMsg.value = "";
+  uploadOpen.value = true;
 }
 
-function onFilePicked(ev: Event) {
-  exec.onAppBuildFileChange(ev);
+function resetUpload() {
+  uploadOpen.value = false;
+  appBuildUploadFile.value = null;
+}
+
+function closeUpload() {
+  if (!uploadingAppBuild.value) resetUpload();
 }
 
 async function submitUpload(ev: Event) {
-  await exec.onUploadAppBuild(ev);
-  if (appBuildMsgOk.value && fileInput.value) {
-    fileInput.value.value = "";
-  }
+  if (await exec.onUploadAppBuild(ev)) closeUpload();
 }
+
+onDeactivated(resetUpload);
+watch(workspaceScopeVersion, resetUpload);
 </script>
 
 <template>
-  <section class="panel page-stack">
+  <section class="panel page-stack data-page">
     <header class="page-hero">
       <div class="page-hero-copy">
         <h2>应用资源</h2>
-        <p class="lede">管理安装包（apk / xapk / ipa）。</p>
       </div>
       <div class="page-hero-actions">
-        <label class="toolbar-search">
-          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input v-model="search" type="search" placeholder="搜索名称 / 文件 / 版本…" />
-        </label>
-        <ApSelect
-          class="toolbar-select"
-          size="toolbar"
-          v-model="platformFilter"
-          aria-label="平台筛选"
-          :options="[
-            { value: '', label: '平台：全部' },
-            { value: 'android', label: 'android' },
-            { value: 'ios', label: 'ios' },
-          ]"
-        />
         <button
           v-if="canUpload"
           type="button"
           class="primary small"
-          title="选择 apk / ipa 并上传"
-          @click="startUpload"
-        >
-          上传安装包
-        </button>
-        <button
-          v-if="caps.canOps"
-          type="button"
-          class="danger small"
-          title="按保留天数清理过期安装包"
-          @click="exec.onPurgeAppBuilds"
-        >
-          清理超期
-        </button>
+          :disabled="uploadingAppBuild"
+          @click="openUpload"
+        >上传安装包</button>
+        <details v-if="caps.canOps" class="action-menu">
+          <summary class="small">更多</summary>
+          <div class="action-menu-panel">
+            <button type="button" class="danger-item" @click="exec.onPurgeAppBuilds">
+              清理过期安装包
+            </button>
+          </div>
+        </details>
       </div>
     </header>
 
     <ExecProjectGateBanner action-hint="上传安装包" />
-
-    <div
-      v-if="canUpload"
-      id="app-build-upload"
-      class="upload-section-card"
-      :class="{ highlight: uploadHighlight }"
-    >
-      <h3 class="upload-title">
-        <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" class="title-svg">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-          <polyline points="17 8 12 3 7 8" />
-          <line x1="12" y1="3" x2="12" y2="15" />
-        </svg>
-        上传 apk / ipa / xapk（与工程制品分离，按版本管理）
-      </h3>
-      <form class="upload-form" @submit.prevent="submitUpload">
-        <div class="upload-grid">
-          <div class="input-field">
-            <label>显示名称</label>
-            <input v-model="appBuildUploadName" placeholder="例如: Demo_1.2.0" />
-          </div>
-          <div class="input-field flex-two">
-            <label>安装包 *</label>
-            <div class="file-picker-wrapper">
-              <input
-                ref="fileInput"
-                type="file"
-                accept=".apk,.apex,.xapk,.ipa,application/vnd.android.package-archive"
-                required
-                class="real-file-input"
-                @change="onFilePicked"
-              />
-              <span v-if="selectedFileName" class="file-picked-name" :title="selectedFileName">
-                已选：{{ selectedFileName }}
-              </span>
-            </div>
-          </div>
-          <button type="submit" class="primary upload-btn" :disabled="!appBuildUploadFile">
-            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2" fill="none">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="17 8 12 3 7 8" />
-              <line x1="12" y1="3" x2="12" y2="15" />
-            </svg>
-            开始上传
-          </button>
-        </div>
-      </form>
-      <p v-if="appBuildMsg" class="msg" :class="appBuildMsgOk ? 'ok' : 'bad'">
-        {{ appBuildMsg }}
-      </p>
+    <div class="list-toolbar" aria-label="应用资源筛选">
+      <input
+        v-model="search"
+        type="search"
+        aria-label="搜索本页应用资源"
+        placeholder="搜索本页应用资源"
+      />
+      <ApSelect
+        class="toolbar-select"
+        size="toolbar"
+        v-model="platformFilter"
+        aria-label="平台筛选"
+        :options="[
+          { value: '', label: '全部平台' },
+          { value: 'android', label: 'Android' },
+          { value: 'ios', label: 'iOS' },
+        ]"
+      />
+      <button
+        v-if="search.trim() || platformFilter"
+        type="button"
+        class="linkish"
+        @click="clearBuildFilter"
+      >清除筛选</button>
     </div>
+    <p v-if="appBuildMsg && appBuildMsgOk && !uploadOpen" class="msg ok" role="status">
+      {{ appBuildMsg }}
+    </p>
 
-    <h3 class="list-title">列表</h3>
     <div class="table-wrap">
-      <table>
+      <table aria-label="应用资源" :aria-busy="loading">
         <thead>
           <tr>
-            <th>资源 ID</th>
-            <th>名称</th>
-            <th>平台</th>
-            <th>包名</th>
-            <th>文件</th>
-            <th>版本</th>
-            <th>大小</th>
-            <th>上传者</th>
-            <th>操作</th>
+            <th scope="col">应用包</th>
+            <th scope="col">平台</th>
+            <th scope="col">版本</th>
+            <th scope="col">大小</th>
+            <th scope="col">上传者</th>
+            <th scope="col">操作</th>
           </tr>
         </thead>
         <tbody>
+          <tr v-if="!filteredBuilds.length && !hasLoaded">
+            <td class="empty" colspan="6">正在加载应用资源…</td>
+          </tr>
           <tr v-if="!filteredBuilds.length && hasLoaded">
-            <td class="empty" colspan="9">
-              {{
-                total
-                  ? "无匹配应用资源，请调整搜索或平台筛选"
-                  : "还没有安装包"
-              }}
+            <td class="empty" colspan="6">
+              <div v-if="error" class="empty-stack">
+                <span role="alert">{{ error }}</span>
+                <button type="button" class="linkish" @click="reload()">重试</button>
+              </div>
+              <span v-else-if="search.trim() || platformFilter">当前筛选无匹配的应用资源</span>
+              <span v-else>暂无安装包</span>
             </td>
           </tr>
-          <tr v-for="b in filteredBuilds" :key="b.id">
-            <td class="mono">
-              <button
-                type="button"
-                class="small art-id-btn"
-                title="选中后，创建任务时可直接用这个安装包"
-                @click="exec.selectAppBuild(b.id)"
-              >
-                {{ b.id.slice(0, 8) }}…
-              </button>
-            </td>
-            <td class="art-name-cell">{{ b.name || "-" }}</td>
-            <td>{{ b.platform || "-" }}</td>
-            <td class="mono" :title="b.package_id || ''">{{ b.package_id || "-" }}</td>
-            <td class="mono font-semibold">{{ b.filename }}</td>
-            <td class="mono">
-              {{ b.version_name || "-" }}
-              <span v-if="b.version_code" class="ver-code">({{ b.version_code }})</span>
-            </td>
-            <td>{{ formatBytes(b.size_bytes) }}</td>
-            <td><span class="user-pill">{{ b.uploaded_by || "-" }}</span></td>
+          <tr v-for="build in filteredBuilds" :key="build.id">
             <td>
-              <div class="action-btn-group">
+              <span class="entry-name">{{ build.name || build.filename }}</span>
+              <span v-if="build.name && build.name !== build.filename" class="entry-meta mono">{{ build.filename }}</span>
+              <span class="entry-meta mono" :title="build.id">
+                <template v-if="build.package_id">{{ build.package_id }} · </template>{{ build.id.slice(0, 8) }}…
+              </span>
+            </td>
+            <td>{{ platformLabels[build.platform] || build.platform || "—" }}</td>
+            <td class="mono nowrap">
+              {{ build.version_name || "—" }}
+              <span v-if="build.version_code" class="version-code">({{ build.version_code }})</span>
+            </td>
+            <td class="mono nowrap">{{ formatBytes(build.size_bytes) }}</td>
+            <td>{{ build.uploaded_by || "—" }}</td>
+            <td>
+              <div class="row-actions">
                 <button
                   type="button"
-                  class="small"
-                  title="重命名显示名称"
-                  @click="exec.onRenameAppBuild(b.id, b.name)"
-                >
-                  重命名
-                </button>
-                <button
-                  type="button"
-                  class="small"
-                  title="分享这个安装包"
-                  @click="ops.selectAppBuildForShare(b.id)"
-                >
-                  分享
-                </button>
-                <button
-                  type="button"
-                  class="small danger"
-                  title="删除此应用资源"
-                  @click="exec.onDeleteAppBuild(b.id)"
-                >
-                  删除
-                </button>
+                  class="linkish small"
+                  :title="build.id"
+                  :aria-pressed="form.app_build_id === build.id"
+                  @click="exec.selectAppBuild(build.id)"
+                >{{ form.app_build_id === build.id ? "已选用" : "选用" }}</button>
+                <button type="button" class="linkish small" @click="exec.onRenameAppBuild(build.id, build.name)">重命名</button>
+                <button type="button" class="linkish small" @click="ops.selectAppBuildForShare(build.id)">分享</button>
+                <button type="button" class="linkish small danger-item" @click="exec.onDeleteAppBuild(build.id)">删除</button>
               </div>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
+    <p v-if="filteredBuilds.length && error" class="msg bad" role="alert">{{ error }}</p>
     <DataPager
       v-if="total > 0"
       :total="total"
@@ -292,141 +229,97 @@ async function submitUpload(ev: Event) {
       @update:page="setPage"
       @update:page-size="setPageSize"
     />
+
+    <ApModal
+      v-if="uploadOpen"
+      title="上传安装包"
+      wide
+      :close-on-backdrop="!uploadingAppBuild"
+      :close-on-esc="!uploadingAppBuild"
+      @close="closeUpload"
+    >
+      <form class="upload-form" :aria-busy="uploadingAppBuild" @submit.prevent="submitUpload">
+        <label class="field-label">
+          显示名称
+          <input
+            v-model="appBuildUploadName"
+            :disabled="uploadingAppBuild"
+            autocomplete="off"
+            placeholder="默认使用文件名"
+          />
+        </label>
+        <label class="field-label">
+          安装包文件
+          <input
+            type="file"
+            accept=".apk,.apex,.xapk,.ipa,application/vnd.android.package-archive"
+            required
+            :disabled="uploadingAppBuild"
+            @change="exec.onAppBuildFileChange"
+          />
+        </label>
+        <p v-if="appBuildMsg && !appBuildMsgOk" class="msg bad" role="alert">{{ appBuildMsg }}</p>
+        <footer class="ap-modal-actions">
+          <button type="button" class="ghost" :disabled="uploadingAppBuild" @click="closeUpload">取消</button>
+          <button type="submit" class="primary" :disabled="uploadingAppBuild || !appBuildUploadFile">
+            {{ uploadingAppBuild ? "正在上传…" : "开始上传" }}
+          </button>
+        </footer>
+      </form>
+    </ApModal>
   </section>
 </template>
 
 <style scoped>
-.upload-section-card {
-  background-color: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  padding: 1.25rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.upload-section-card.highlight {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--brand-soft, rgba(21, 101, 192, 0.18));
-}
-
-.upload-title {
-  margin: 0 0 1rem !important;
-  font-size: 0.95rem !important;
-  font-weight: 700;
+.list-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 0.45rem;
-  color: var(--text);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0.5rem;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
 }
 
-.title-svg {
-  color: var(--accent-text);
+.list-toolbar input {
+  flex: 0 1 16rem;
+  min-width: 0;
 }
 
-.upload-grid {
-  display: flex;
-  gap: 1rem;
-  align-items: flex-end;
-  width: 100%;
-}
-
-.input-field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  flex: 1;
-}
-
-.input-field label {
-  font-size: 0.78rem;
+.entry-name {
   font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.entry-meta {
+  display: block;
+  margin-top: var(--space-1);
   color: var(--muted);
+  font-size: var(--font-size-caption, 0.75rem);
+  overflow-wrap: anywhere;
 }
 
-.file-picker-wrapper {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.35rem;
-}
-
-.real-file-input {
-  cursor: pointer;
-  padding: 0.4rem;
-  width: 100%;
-}
-
-.file-picked-name {
-  font-size: 0.75rem;
-  color: var(--muted);
-  max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.nowrap {
   white-space: nowrap;
 }
 
-.upload-btn {
-  height: 38px;
-  padding: 0 1.25rem;
-}
-
-.list-title {
-  margin-top: 1.5rem;
-}
-
-.art-id-btn {
-  background-color: var(--indigo-soft-bg);
-  border-color: var(--indigo-soft-border);
-  color: var(--indigo-soft-fg);
-  font-weight: 700;
-}
-
-.art-id-btn:hover {
-  background-color: var(--indigo-soft-fg);
-  border-color: transparent;
-  color: var(--on-accent);
-}
-
-.art-name-cell {
-  font-weight: 600;
-  color: var(--text);
-}
-
-.user-pill {
-  font-size: 0.75rem;
-  background-color: var(--control-bg);
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  border: 1px solid var(--line);
+.version-code {
   color: var(--muted);
 }
 
-.action-btn-group {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+.danger-item {
+  color: var(--danger-soft-fg);
 }
 
-.flex-two {
-  flex: 2;
+.upload-form,
+.field-label {
+  display: grid;
+  gap: var(--space-2);
 }
 
-.ver-code {
-  color: var(--muted);
-  font-size: 0.85em;
+.upload-form {
+  gap: var(--space-4);
 }
 
-.font-semibold {
-  font-weight: 600;
-}
-
-@media (max-width: 768px) {
-  .upload-grid {
-    flex-direction: column;
-    align-items: stretch;
-  }
+.field-label {
+  font-size: 0.85rem;
 }
 </style>

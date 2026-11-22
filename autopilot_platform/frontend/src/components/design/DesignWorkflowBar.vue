@@ -33,7 +33,6 @@ const exec = useExecStore();
 const { artifacts } = storeToRefs(exec);
 
 const stats = ref<DesignDomainStats | null>(null);
-const loading = ref(false);
 
 const nextAction = computed(() =>
   deriveDesignNextAction(stats.value, {
@@ -41,14 +40,11 @@ const nextAction = computed(() =>
     projectId: filterProjectId.value || "",
   }),
 );
-const focusHint = computed(() => nextAction.value.hint);
-
 async function loadStats() {
   if (!loggedIn.value) {
     stats.value = null;
     return;
   }
-  loading.value = true;
   try {
     const ready = await ensureFreshSession();
     if (!ready || !loggedIn.value) {
@@ -59,8 +55,6 @@ async function loadStats() {
     await shell.refreshScopes(["artifacts"]);
   } catch {
     stats.value = null;
-  } finally {
-    loading.value = false;
   }
 }
 
@@ -94,7 +88,7 @@ watch(
           <button
             type="button"
             class="step-btn"
-            title="粘贴需求或勾选文档 → 生成草稿 → 审核通过"
+            title="生成与审核"
             :aria-current="nextAction.focus === 'cases' ? 'step' : undefined"
             @click="go('design-cases')"
           >
@@ -113,7 +107,7 @@ watch(
           <button
             type="button"
             class="step-btn"
-            title="在 IDE 上传工程 → 选设备 → 加入批跑"
+            title="选择设备后入队"
             :aria-current="nextAction.focus === 'run' ? 'step' : undefined"
             @click="go('design-cases')"
           >
@@ -127,34 +121,22 @@ watch(
           type="button"
           class="side-link"
           :class="{ here: props.page === 'docs', ready: nextAction.hasDocs }"
-          title="有 Word/PDF/PRD 等材料时批量导入分析"
+          title="导入需求文档"
           @click="go('design-docs')"
         >
-          有材料：需求文档
+          需求文档
         </button>
         <button
           type="button"
           class="side-link"
           :class="{ here: props.page === 'knowledge', ready: nextAction.hasKnowledge }"
-          title="记下常用规则，生成用例时可以用"
+          title="知识库"
           @click="go('design-knowledge')"
         >
-          可选：知识库
+          知识库
         </button>
       </div>
     </div>
-    <p v-if="!props.compact" class="hint">
-      <span v-if="loading && !stats">正在读取进度…</span>
-      <template v-else>{{ focusHint }}</template>
-      <button
-        v-if="props.page !== 'dashboard'"
-        type="button"
-        class="linkish"
-        @click="go('design-dashboard')"
-      >
-        设计总览
-      </button>
-    </p>
   </nav>
 </template>
 
@@ -165,7 +147,7 @@ watch(
   gap: 0.35rem;
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--panel);
 }
 .design-workflow.compact {
@@ -204,7 +186,7 @@ watch(
   margin: 0;
   padding: 0.3rem 0.55rem;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -243,7 +225,7 @@ watch(
   justify-content: center;
   width: 1.25rem;
   height: 1.25rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--line);
   font-size: 0.72rem;
   font-weight: 600;
@@ -257,7 +239,7 @@ watch(
   margin: 0;
   padding: 0.25rem 0.45rem;
   border: 1px dashed var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--muted);
   font: inherit;
@@ -274,35 +256,6 @@ watch(
 }
 .side-link.ready {
   border-color: var(--ok-soft-border, var(--line));
-}
-.hint {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  line-height: 1.45;
-  white-space: normal;
-  overflow-wrap: break-word;
-}
-.here-note {
-  opacity: 0.85;
-}
-.linkish {
-  margin-left: 0.5rem;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.compact .hint {
-  display: none;
 }
 .compact .label {
   font-size: 0.78rem;

@@ -82,10 +82,12 @@ def normalize_verbosity(raw: str | None, *, default: str = "none") -> Verbosity:
 
 def detect_provider(provider: str | None, model: str | None = None, base_url: str | None = None) -> str:
     pid = (provider or "").strip().lower()
-    if pid in ("openai", "deepseek", "qwen", "gemini", "ollama"):
+    if pid in ("openai", "anthropic", "deepseek", "qwen", "gemini", "ollama"):
         return pid
     mid = (model or "").strip().lower()
     url = (base_url or "").strip().lower()
+    if "anthropic" in url or mid.startswith("claude-"):
+        return "anthropic"
     if "deepseek" in url or mid.startswith("deepseek"):
         return "deepseek"
     if "dashscope" in url or mid.startswith("qwen"):
@@ -103,6 +105,8 @@ def model_accepts_images(provider: str, model: str, *, base_url: str = "") -> bo
     """当前模型/厂商是否应传 image_url（官方托管能力）。"""
     p = detect_provider(provider, model, base_url)
     m = (model or "").strip().lower()
+    if p == "anthropic" or m.startswith("claude-"):
+        return True
     if p == "deepseek" or m.startswith("deepseek"):
         return bool(m) and "vision" in m
     if p == "ollama":
@@ -271,6 +275,9 @@ def should_omit_temperature(
         return True
     if "gpt-5" in m:
         return True
+    if p == "anthropic" or m.startswith("claude-"):
+        # Opus 5.5 / Sonnet 5.5 / Haiku 5.5 / Fable 5.1 拒绝 temperature 等采样参数
+        return m.startswith(("claude-opus-5", "claude-sonnet-5", "claude-haiku-5", "claude-fable-5"))
     if p == "gemini" and ("gemini-3" in m or "gemini-2.5" in m):
         return True
     return False

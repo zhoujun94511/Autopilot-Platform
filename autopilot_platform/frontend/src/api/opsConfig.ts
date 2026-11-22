@@ -415,8 +415,28 @@ export const FALLBACK_AI_PROVIDERS: AiProviderInfo[] = [
     id: "openai",
     label: "OpenAI",
     default_base_url: "https://api.openai.com/v1",
-    default_model: "gpt-4o-mini",
-    models: ["gpt-4o-mini", "gpt-4o", "gpt-4.1-mini", "gpt-4.1"],
+    default_model: "gpt-5.4-mini",
+    models: [
+      "gpt-5.4-mini",
+      "gpt-5.4",
+      "gpt-5.6-terra",
+      "gpt-5-mini",
+      "gpt-5",
+      "gpt-4.1-mini",
+      "gpt-4o",
+    ],
+  },
+  {
+    id: "anthropic",
+    label: "Anthropic (Claude)",
+    default_base_url: "https://api.anthropic.com",
+    default_model: "claude-sonnet-5-5",
+    models: [
+      "claude-sonnet-5-5",
+      "claude-opus-5-5",
+      "claude-haiku-5-5",
+      "claude-fable-5-1",
+    ],
   },
   {
     id: "deepseek",
@@ -425,10 +445,9 @@ export const FALLBACK_AI_PROVIDERS: AiProviderInfo[] = [
     default_model: "deepseek-v4-flash",
     models: [
       "deepseek-v4-flash",
+      "deepseek-flash",
       "deepseek-v4-pro",
       "deepseek-v4-flash-vision-exp",
-      "deepseek-chat",
-      "deepseek-reasoner",
     ],
   },
   {
@@ -436,19 +455,18 @@ export const FALLBACK_AI_PROVIDERS: AiProviderInfo[] = [
     label: "通义千问 (Qwen)",
     default_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     default_model: "qwen-plus",
-    models: ["qwen-flash", "qwen-plus", "qwen-max"],
+    models: ["qwen-plus", "qwen-flash", "qwen-max", "qwen3.7-plus"],
   },
   {
     id: "gemini",
     label: "Gemini",
     default_base_url: "https://generativelanguage.googleapis.com/v1beta/openai",
-    default_model: "gemini-3.1-flash-lite",
+    default_model: "gemini-3.8-flash",
     models: [
+      "gemini-3.8-flash",
+      "gemini-3.5-flash",
       "gemini-3.1-flash-lite",
-      "gemini-2.0-flash",
       "gemini-2.5-flash",
-      "gemini-1.5-pro",
-      "gemini-1.5-flash",
     ],
   },
   {
@@ -456,7 +474,7 @@ export const FALLBACK_AI_PROVIDERS: AiProviderInfo[] = [
     label: "Ollama（本地）",
     default_base_url: "http://127.0.0.1:11434/v1",
     default_model: "llama3.2",
-    models: ["llama3.2", "phi:2.7b", "gemma:2b"],
+    models: ["llama3.2", "phi:2.7b", "gemma:2b", "llava"],
   },
 ];
 

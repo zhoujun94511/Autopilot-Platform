@@ -1,7 +1,7 @@
 /**
  * 设备面板筛选 / 分页 / 分组（AUD-2026-12 Wave 4）。
  */
-import { computed, ref, watch, type Ref } from "vue";
+import { computed, onScopeDispose, ref, watch, type Ref } from "vue";
 import type { Device } from "../api";
 import { DEVICE_LIST_PAGE_SIZE, listDevicesPage } from "../api/devices";
 import { usePagedList } from "./usePagedList";
@@ -14,6 +14,16 @@ import {
 export type DeviceBusyFilter = "" | "free" | "busy";
 export type DevicePlatformFilter = "all" | PlatformBucket;
 
+const DEVICE_VIEW_KEY = "ap-mc-device-view";
+
+function preferredView(): "cards" | "list" {
+  try {
+    return localStorage.getItem(DEVICE_VIEW_KEY) === "cards" ? "cards" : "list";
+  } catch {
+    return "list";
+  }
+}
+
 export function useDeviceBoardFilters(opts: {
   deviceBoard: Ref<{ summary?: { online?: number; by_platform?: Record<string, unknown> } } | null | undefined>;
   devicesVersion: Ref<unknown>;
@@ -23,8 +33,16 @@ export function useDeviceBoardFilters(opts: {
   const search = ref("");
   const busyFilter = ref<DeviceBusyFilter>("");
   const platformFilter = ref<DevicePlatformFilter>("all");
-  const viewMode = ref<"cards" | "list">("cards");
+  const viewMode = ref(preferredView());
   const expandedMeta = ref<Record<string, boolean>>({});
+
+  watch(viewMode, (mode) => {
+    try {
+      localStorage.setItem(DEVICE_VIEW_KEY, mode);
+    } catch {
+      // The switch remains usable when browser storage is disabled.
+    }
+  });
 
   const list = usePagedList<Device>({
     immediate: false,
@@ -49,6 +67,8 @@ export function useDeviceBoardFilters(opts: {
     pageSize,
     loading,
     hasLoaded,
+    error,
+    refreshing,
     universeEmpty,
     reload,
     setPage,
@@ -62,7 +82,7 @@ export function useDeviceBoardFilters(opts: {
     return (
       hasLoaded.value &&
       items.value.length === 0 &&
-      (universeEmpty.value || onlineTotal.value === 0)
+      universeEmpty.value
     );
   }
 
@@ -96,10 +116,6 @@ export function useDeviceBoardFilters(opts: {
     expandedMeta.value = { ...expandedMeta.value, [key]: !expandedMeta.value[key] };
   }
 
-  function applyPlatformFromSummary(plat: string) {
-    platformFilter.value = normalizePlatform(plat);
-  }
-
   let searchTimer: ReturnType<typeof setTimeout> | undefined;
   watch(search, () => {
     if (searchTimer) clearTimeout(searchTimer);
@@ -108,6 +124,7 @@ export function useDeviceBoardFilters(opts: {
       void reloadBoard(true);
     }, 280);
   });
+  onScopeDispose(() => clearTimeout(searchTimer));
 
   watch(devicesVersion, () => void reloadBoard(false));
 
@@ -125,6 +142,8 @@ export function useDeviceBoardFilters(opts: {
     pageSize,
     loading,
     hasLoaded,
+    error,
+    refreshing,
     reload: reloadBoard,
     setPage,
     setPageSize,
@@ -133,6 +152,5 @@ export function useDeviceBoardFilters(opts: {
     groupedDevices,
     showPlatformSections,
     toggleMeta,
-    applyPlatformFromSummary,
   };
 }

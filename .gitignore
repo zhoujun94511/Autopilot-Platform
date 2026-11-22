@@ -53,6 +53,7 @@ vector_store/
 sessions/
 screenshots/
 reports/
+!/autopilot_platform/platform/services/reports/
 
 # Local identity / pairing / TLS material
 selfIdentity.plist
@@ -70,6 +71,7 @@ autopilot_platform/frontend/dist/
 
 # Local platform runtime dirs
 artifacts/
+!/autopilot_platform/platform/artifacts/
 app_builds/
 job_logs/
 mc_runtime_config.json

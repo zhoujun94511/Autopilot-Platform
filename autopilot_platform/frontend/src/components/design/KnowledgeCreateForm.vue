@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import ApSelect from "../common/ApSelect.vue";
 
-const props = defineProps<{ busy?: boolean }>();
+const props = defineProps<{ busy?: boolean; bare?: boolean }>();
 const emit = defineEmits<{
   create: [payload: { title: string; content: string; category: string; confirmed: boolean }];
 }>();
@@ -38,8 +38,8 @@ defineExpose({ clear });
 </script>
 
 <template>
-  <section class="surface-card">
-    <h3>新增知识</h3>
+  <section :class="{ 'surface-card': !bare }">
+    <h3 v-if="!bare">新增知识</h3>
     <div class="field-stack">
       <label class="field-label">
         标题

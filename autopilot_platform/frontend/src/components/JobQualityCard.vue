@@ -4,6 +4,7 @@ import { ensureFreshSession } from "../api";
 import { fetchJobQuality, type JobQualitySnapshot } from "../api/jobQuality";
 import { storeToRefs } from "pinia";
 import { useAuthStore } from "../stores/auth";
+import { useProjectsStore } from "../stores/projectsStore";
 
 const props = defineProps<{
   projectId?: string;
@@ -15,33 +16,37 @@ const emit = defineEmits<{
 
 const auth = useAuthStore();
 const { loggedIn } = storeToRefs(auth);
+const { filterOrgId } = storeToRefs(useProjectsStore());
 const loading = ref(false);
 const error = ref("");
 const snap = ref<JobQualitySnapshot | null>(null);
+let loadGeneration = 0;
 
 async function load() {
+  const generation = ++loadGeneration;
   if (!loggedIn.value) {
-    snap.value = null;
+    loading.value = false;
     return;
   }
+  const projectId = props.projectId || undefined;
   loading.value = true;
   error.value = "";
   try {
     const ready = await ensureFreshSession();
-    if (!ready || !loggedIn.value) {
-      snap.value = null;
-      return;
-    }
-    snap.value = await fetchJobQuality(props.projectId || undefined);
+    if (!ready || !loggedIn.value || generation !== loadGeneration) return;
+    const result = await fetchJobQuality(projectId);
+    if (generation === loadGeneration) snap.value = result;
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e);
-    snap.value = null;
+    if (generation === loadGeneration) error.value = e instanceof Error ? e.message : String(e);
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
 const pct = (r: number) => `${Math.round(Number(r || 0) * 100)}%`;
+const failRateLabel = computed(() =>
+  snap.value && snap.value.terminal_jobs > 0 ? pct(snap.value.fail_rate) : "无样本",
+);
 
 const CLASS_LABEL: Record<string, string> = {
   assertion: "断言",
@@ -89,30 +94,22 @@ const topErrors = computed(() => {
     .slice(0, 5);
 });
 
-/** 近 7 天迷你条：失败占比高度 */
 const spark = computed(() => {
   const days = (snap.value?.trend || []).slice(-7);
+  if (!days.some((day) => day.total > 0)) return [];
   return days.map((d) => ({
     day: d.day.slice(5),
-    h: d.total ? Math.max(8, Math.round(d.fail_rate * 100)) : 4,
-    failed: d.failed,
-    total: d.total,
+    height: Math.round(d.fail_rate * 100),
     title: `${d.day}: ${d.failed}/${d.total} 失败`,
   }));
 });
 
 onMounted(load);
-watch(() => props.projectId, load);
-watch(
-  () => loggedIn.value,
-  (ok) => {
-    if (ok) void load();
-    else {
-      snap.value = null;
-      error.value = "";
-    }
-  },
-);
+watch([filterOrgId, () => props.projectId, loggedIn], () => {
+  snap.value = null;
+  error.value = "";
+  void load();
+});
 
 defineExpose({ reload: load });
 </script>
@@ -127,16 +124,17 @@ defineExpose({ reload: load });
       </div>
     </div>
 
-    <div v-if="error" class="err">{{ error }}</div>
-    <div v-else-if="loading && !snap" class="empty-state compact"><span>加载中…</span></div>
+    <p v-if="error" class="err" role="alert">{{ error }}</p>
+    <p v-else-if="loading && !snap" class="empty-hint" role="status">正在读取批跑统计…</p>
+    <p v-else-if="snap && !snap.jobs_scanned" class="empty-hint">近 {{ snap.days }} 天暂无批跑记录</p>
     <template v-else-if="snap">
       <div class="stat-grid">
         <div class="stat-cell">
           <span class="stat-n">{{ snap.jobs_scanned }}</span>
-          <span class="stat-l">{{ snap.days }} 日 Job</span>
+          <span class="stat-l">近 {{ snap.days }} 天批跑</span>
         </div>
         <div class="stat-cell">
-          <span class="stat-n">{{ pct(snap.fail_rate) }}</span>
+          <span class="stat-n" :title="failRateLabel === '无样本' ? '范围内没有终态批跑，不能当成 0% 失败' : ''">{{ failRateLabel }}</span>
           <span class="stat-l">终态失败率</span>
         </div>
         <div class="stat-cell">
@@ -145,19 +143,23 @@ defineExpose({ reload: load });
         </div>
         <div class="stat-cell">
           <span class="stat-n">{{ snap.failed_steps }}</span>
-          <span class="stat-l">失败步（扫报告）</span>
+          <span class="stat-l">失败步骤</span>
         </div>
       </div>
 
-      <div v-if="spark.length" class="spark" aria-label="近 7 日失败占比">
+      <div v-if="spark.length" class="spark" role="list" aria-label="近 7 日失败占比">
         <div
           v-for="b in spark"
           :key="b.day"
-          class="spark-bar"
-          :style="{ height: b.h + '%' }"
+          class="spark-day"
+          role="listitem"
+          :aria-label="b.title"
           :title="b.title"
         >
-          <span class="spark-d">{{ b.day }}</span>
+          <span class="spark-track" aria-hidden="true">
+            <span class="spark-bar" :style="{ height: b.height + '%' }"></span>
+          </span>
+          <span class="spark-date" aria-hidden="true">{{ b.day }}</span>
         </div>
       </div>
 
@@ -172,7 +174,7 @@ defineExpose({ reload: load });
       </div>
 
       <div v-if="topAttributions.length" class="status-block">
-        <div class="status-title">失败归因（谁背锅）</div>
+        <div class="status-title">失败归因</div>
         <ul class="status-chips">
           <li v-for="([k, n]) in topAttributions" :key="k">
             <span class="chip-k">{{ k }}</span>
@@ -182,7 +184,7 @@ defineExpose({ reload: load });
       </div>
 
       <div v-if="topFails.length" class="status-block">
-        <div class="status-title">fail_reason Top（全步）</div>
+        <div class="status-title">常见失败原因</div>
         <ul class="status-chips">
           <li v-for="([k, n]) in topFails" :key="k">
             <span class="chip-k">{{ k }}</span>
@@ -192,7 +194,7 @@ defineExpose({ reload: load });
       </div>
 
       <div v-if="topErrors.length" class="status-block">
-        <div class="status-title">Job.error 前缀 Top</div>
+        <div class="status-title">常见任务错误</div>
         <ul class="status-chips">
           <li v-for="([k, n]) in topErrors" :key="k">
             <span class="chip-k">{{ k }}</span>
@@ -201,10 +203,11 @@ defineExpose({ reload: load });
         </ul>
       </div>
 
-      <p v-if="!snap.jobs_scanned" class="empty-hint">所选范围内暂无批跑记录</p>
-      <p v-else class="meta-line">
-        扫 {{ snap.reports_scanned }} 份 result · {{ snap.note }}
-      </p>
+      <p class="meta-line">扫描 {{ snap.reports_scanned }} 份报告</p>
+      <details v-if="snap.note" class="meta-line">
+        <summary>统计口径</summary>
+        {{ snap.note }}
+      </details>
     </template>
   </div>
 </template>
@@ -217,6 +220,7 @@ defineExpose({ reload: load });
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.75rem;
   margin-bottom: 0.75rem;
 }
@@ -226,55 +230,64 @@ defineExpose({ reload: load });
 }
 .head-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
 }
 .stat-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.5rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
   margin-bottom: 0.75rem;
+  background: var(--line-soft);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
 .stat-cell {
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  padding: 0.55rem 0.65rem;
-  border-radius: 8px;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
+  gap: 0.1rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 0;
+  background: var(--panel);
 }
 .stat-n {
-  font-size: 1.15rem;
+  font-size: 1.125rem;
   font-weight: 650;
+  line-height: 1.15;
   font-variant-numeric: tabular-nums;
 }
 .stat-l {
-  font-size: 0.72rem;
-  opacity: 0.72;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
 }
 .spark {
-  display: flex;
-  align-items: flex-end;
-  gap: 0.35rem;
-  height: 56px;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
   margin: 0 0 0.85rem;
-  padding: 0 0.15rem;
+}
+.spark-day {
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  min-width: 0;
+}
+.spark-track {
+  display: flex;
+  align-items: end;
+  width: 100%;
+  height: 42px;
+  border-bottom: 1px solid var(--line);
 }
 .spark-bar {
-  flex: 1;
-  min-width: 0;
-  background: var(--danger-soft-bg, #fde8e8);
-  border: 1px solid var(--danger-soft-border, #f5c2c2);
-  border-radius: 4px 4px 0 0;
-  position: relative;
+  width: 100%;
+  background: var(--danger-soft-border);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
-.spark-d {
-  position: absolute;
-  left: 50%;
-  bottom: -1.1rem;
-  transform: translateX(-50%);
-  font-size: 0.62rem;
-  opacity: 0.65;
+.spark-date {
+  color: var(--muted);
+  font-size: 0.625rem;
   white-space: nowrap;
 }
 .status-block {
@@ -299,7 +312,7 @@ defineExpose({ reload: load });
   gap: 0.35rem;
   align-items: baseline;
   padding: 0.2rem 0.45rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
   border: 1px solid var(--line-soft);
   font-size: 0.75rem;
@@ -320,16 +333,10 @@ defineExpose({ reload: load });
 .empty-hint,
 .err {
   margin: 0.35rem 0 0;
-  font-size: 0.78rem;
-  opacity: 0.75;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
 }
 .err {
-  color: var(--danger-soft-fg, #b42318);
-  opacity: 1;
-}
-@media (max-width: 720px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+  color: var(--danger-soft-fg);
 }
 </style>

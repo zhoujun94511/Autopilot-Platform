@@ -7,6 +7,7 @@ import {
   beginAuthSession,
   bindSessionChange,
   ensureFreshSession,
+  getAuthSessionVersion,
   hasRefreshSession,
   loadRefresh,
   noteRefreshCookieActive,
@@ -28,16 +29,22 @@ import {
   dispatchDevices,
   deviceBoard,
   jobs,
+  jobsListTotal,
   artifacts,
   appBuilds,
 } from "./mcExecState";
 import { closeJobLog, closeJobReport } from "./mcExecActions";
 import { resolvePersonaLandingTab } from "./personaLanding";
 import { filterProjectId, orgs } from "./mcProjectsState";
-import type { RefreshScope } from "./mcRefreshScopes";
+import { scopesForTab } from "./mcRefreshScopes";
+import { closeRemoteDialog } from "./useRemoteSession";
+import { reserveDialogState } from "./useReserveDialog";
+import { clearTransientNotifications } from "./useNotify";
 
 export type SessionDeps = {
   activeTab: Ref<string>;
+  waitForInitialRoute: () => Promise<void>;
+  enforceRouteAccess: () => Promise<void>;
   refreshOrgs: () => Promise<void>;
   refreshProjects: () => Promise<void>;
   refreshForTab: (tab?: string) => Promise<void>;
@@ -51,21 +58,6 @@ let d: SessionDeps;
 let sessionChangeBound = false;
 let lastPlatformBootId = "";
 
-export async function ensurePlatformBootFresh(
-  refreshScopes: (scopes: RefreshScope[]) => Promise<void>,
-) {
-  try {
-    const h = (await fetch("/health").then((r) => r.json())) as Record<string, unknown>;
-    const bootId = String(h.platform_boot_id || "");
-    if (bootId && lastPlatformBootId && bootId !== lastPlatformBootId) {
-      await refreshScopes(["runners", "devices", "managed-runner"]);
-    }
-    if (bootId) lastPlatformBootId = bootId;
-  } catch {
-    /* Platform 不可达时保留现有 UI，待恢复后由下次 poll 纠正 */
-  }
-}
-
 export function bindSessionDeps(deps: SessionDeps): void {
   d = deps;
   if (!sessionChangeBound) {
@@ -74,7 +66,7 @@ export function bindSessionDeps(deps: SessionDeps): void {
       if (!session) {
         S.jwt.value = "";
         S.user.value = null;
-        d?.onAuthCleared?.();
+        clearAuthenticatedUi();
         return;
       }
       S.jwt.value = session.access_token;
@@ -87,6 +79,30 @@ export function bindSessionDeps(deps: SessionDeps): void {
 function requireDeps(): SessionDeps {
   if (!d) throw new Error("bindSessionDeps() must be called before session actions");
   return d;
+}
+
+function closeSessionOverlays() {
+  closeRemoteDialog();
+  reserveDialogState.value?.resolve(null);
+  closeJobLog();
+  closeJobReport();
+  clearTransientNotifications();
+}
+
+function clearAuthenticatedUi() {
+  closeSessionOverlays();
+  d.stopPolling();
+  lastPlatformBootId = "";
+  runners.value = [];
+  managedRunner.value = null;
+  devices.value = [];
+  dispatchDevices.value = [];
+  deviceBoard.value = null;
+  jobs.value = [];
+  jobsListTotal.value = 0;
+  artifacts.value = [];
+  appBuilds.value = [];
+  d.onAuthCleared?.();
 }
 
 export async function refreshSsoStatus() {
@@ -181,6 +197,7 @@ export async function consumeSsoCallbackFromUrl(): Promise<boolean> {
     hashParams.get("role") || searchParams.get("role") || "operator";
   if (!token || !username) return false;
   const role = roleFromJwt(token, roleHint);
+  if (S.loggedIn.value) clearAuthenticatedUi();
   beginAuthSession();
   S.jwt.value = token;
   S.user.value = { id: user_id, username, role };
@@ -193,13 +210,18 @@ export async function consumeSsoCallbackFromUrl(): Promise<boolean> {
 }
 
 export async function refreshHealth() {
+  const authVersion = getAuthSessionVersion();
   try {
     const h = (await fetch("/health").then((r) => r.json())) as Record<string, unknown>;
+    if (authVersion !== getAuthSessionVersion()) return false;
     S.healthOk.value = h.status === "ok";
     const bootId = String(h.platform_boot_id || "");
+    const restarted = Boolean(bootId && lastPlatformBootId && bootId !== lastPlatformBootId);
     if (bootId) lastPlatformBootId = bootId;
+    return restarted;
   } catch {
-    S.healthOk.value = false;
+    if (authVersion === getAuthSessionVersion()) S.healthOk.value = false;
+    return false;
   }
 }
 
@@ -219,7 +241,10 @@ export async function applyAuthSession(
   u?: AuthUser,
 ) {
   const deps = requireDeps();
+  if (S.loggedIn.value) clearAuthenticatedUi();
   beginAuthSession();
+  const authVersion = getAuthSessionVersion();
+  const current = () => authVersion === getAuthSessionVersion() && S.loggedIn.value;
   if (typeof accessOrPair === "string") {
     S.jwt.value = accessOrPair;
     if (u) S.user.value = u;
@@ -240,9 +265,14 @@ export async function applyAuthSession(
       }
     }
   }
+  if (!current()) return;
   deps.onAuthChanged?.();
   await deps.refreshOrgs();
+  if (!current()) return;
   await deps.refreshProjects();
+  if (!current()) return;
+  await deps.enforceRouteAccess();
+  if (!current()) return;
   // B2：仅当仍停在默认 dashboard 时按人设纠偏，不覆盖深链
   const cur = (deps.activeTab.value || "dashboard").trim() || "dashboard";
   if (cur === "dashboard") {
@@ -261,42 +291,35 @@ export async function applyAuthSession(
     if (next !== cur) deps.activeTab.value = next;
   }
   await deps.refreshForTab(deps.activeTab.value || "dashboard");
-  deps.startPolling();
+  if (current()) deps.startPolling();
 }
 
 export async function onLogout() {
   const deps = requireDeps();
+  closeSessionOverlays();
   deps.stopPolling();
-  closeJobLog();
-  closeJobReport();
-  lastPlatformBootId = "";
   await postLogout();
-  S.jwt.value = "";
-  S.user.value = null;
-  runners.value = [];
-  managedRunner.value = null;
-  devices.value = [];
-  dispatchDevices.value = [];
-  deviceBoard.value = null;
-  jobs.value = [];
-  artifacts.value = [];
-  appBuilds.value = [];
-  deps.onAuthCleared?.();
 }
 
 export async function bootstrap() {
   const deps = requireDeps();
-  await refreshSsoStatus();
-  const fromSso = await consumeSsoCallbackFromUrl();
-  void refreshHealth();
-  if (!(fromSso || S.loggedIn.value || hasRefreshSession())) {
-    S.sessionHydrating.value = false;
-    return;
-  }
   S.sessionHydrating.value = true;
+  void refreshSsoStatus();
   try {
-    const ready = await ensureFreshSession();
-    if (!ready) return;
+    await deps.waitForInitialRoute();
+    const fromSso = await consumeSsoCallbackFromUrl();
+    if (!(fromSso || S.loggedIn.value || hasRefreshSession()) || !(await ensureFreshSession())) {
+      void refreshHealth();
+      return;
+    }
+    if (!scopesForTab(deps.activeTab.value).includes("projects")) {
+      await deps.refreshOrgs();
+      await deps.refreshProjects();
+    }
+    await deps.enforceRouteAccess();
+    // The overview can show its loading state while the first scoped requests run.
+    if (deps.activeTab.value === "dashboard") S.sessionHydrating.value = false;
+    if (!scopesForTab(deps.activeTab.value).length) void refreshHealth();
     await deps.refreshForTab(deps.activeTab.value);
     deps.startPolling();
   } finally {

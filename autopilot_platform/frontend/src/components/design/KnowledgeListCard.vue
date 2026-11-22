@@ -34,6 +34,13 @@ const emit = defineEmits<{
 }>();
 
 const selected = ref<Record<string, boolean>>({});
+const hasListFilter = computed(() => Boolean(props.q.trim() || props.category || props.confirmed));
+
+function clearFilters() {
+  emit("update:q", "");
+  emit("update:category", "");
+  emit("update:confirmed", "");
+}
 
 watch(
   () => props.items,
@@ -106,11 +113,7 @@ const confirmedOptions = [
 </script>
 
 <template>
-  <section class="surface-card">
-    <div class="card-title-row">
-      <h3>知识条目</h3>
-    </div>
-
+  <section aria-label="知识条目">
     <div class="list-toolbar">
       <label class="toolbar-search">
         <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
@@ -120,6 +123,7 @@ const confirmedOptions = [
         <input
           :value="q"
           type="search"
+          aria-label="搜索知识条目"
           placeholder="搜索标题 / 内容…"
           @input="emit('update:q', ($event.target as HTMLInputElement).value)"
         />
@@ -156,20 +160,15 @@ const confirmedOptions = [
         aria-label="排序方向"
         @update:model-value="emit('update:order', $event as 'asc' | 'desc')"
       />
+      <slot name="bulk-actions" />
     </div>
 
-    <div v-if="hasLoaded === false || (hasLoaded !== true && loading && !items.length)" class="empty-state">
+    <div v-if="hasLoaded === false || (hasLoaded !== true && loading && !items.length)" class="empty-state" role="status">
       <p class="empty-desc">加载中…</p>
     </div>
     <div v-else-if="!items.length" class="empty-state">
-      <p class="empty-title">{{ total ? "无匹配知识" : "知识库是空的（可选）" }}</p>
-      <p class="empty-desc">
-        {{
-          total
-            ? "请调整搜索或筛选条件。"
-            : "把稳定规则、弹框处理、业务约束写进来，生成用例时可检索引用。也可先跳过，从需求文档开始。"
-        }}
-      </p>
+      <p class="empty-title">{{ hasListFilter ? "无匹配条目" : "暂无知识条目" }}</p>
+      <button v-if="hasListFilter" type="button" class="ghost small" @click="clearFilters">清除筛选</button>
     </div>
 
     <div v-else class="table-wrap knowledge-table">
@@ -185,7 +184,7 @@ const confirmedOptions = [
         <thead>
           <tr>
             <th v-if="!readonly">
-              <input type="checkbox" :checked="allChecked" :disabled="busy" @change="toggleAll" />
+              <input type="checkbox" aria-label="选择本页所有知识条目" :checked="allChecked" :disabled="busy" @change="toggleAll" />
             </th>
             <th>标题</th>
             <th>分类</th>
@@ -197,7 +196,7 @@ const confirmedOptions = [
         <tbody>
           <tr v-for="it in items" :key="it.id">
             <td v-if="!readonly">
-              <input v-model="selected[it.id]" type="checkbox" :disabled="busy" />
+              <input v-model="selected[it.id]" type="checkbox" :aria-label="`选择 ${it.title}`" :disabled="busy" />
             </td>
             <td class="cell-title">
               <div class="title" :title="it.title">{{ it.title }}</div>

@@ -54,19 +54,21 @@ const emit = defineEmits<{
       <p class="empty-desc">暂无对话，点击「新建」开始。</p>
     </div>
     <ul v-else-if="sessions.length" class="session-items">
-      <li
-        v-for="s in sessions"
-        :key="s.id"
-        class="session-item"
-        :class="{ active: s.id === activeSessionId }"
-        @click="activeSessionId = s.id"
-      >
-        <div class="session-title">{{ s.title || "未命名对话" }}</div>
-        <div class="session-preview">{{ s.preview || "暂无消息" }}</div>
-        <div class="meta-line">
-          <span>{{ formatChatTime(s.updated_at) }}</span>
-          <span class="msg-count">{{ s.message_count ?? 0 }} 条</span>
-        </div>
+      <li v-for="s in sessions" :key="s.id">
+        <button
+          type="button"
+          class="session-item"
+          :class="{ active: s.id === activeSessionId }"
+          :aria-current="s.id === activeSessionId ? 'true' : undefined"
+          @click="activeSessionId = s.id"
+        >
+          <span class="session-title">{{ s.title || "未命名对话" }}</span>
+          <span class="session-preview">{{ s.preview || "暂无消息" }}</span>
+          <span class="meta-line">
+            <span>{{ formatChatTime(s.updated_at) }}</span>
+            <span class="msg-count">{{ s.message_count ?? 0 }} 条</span>
+          </span>
+        </button>
       </li>
     </ul>
     <DataPager
@@ -100,13 +102,20 @@ const emit = defineEmits<{
   gap: 0.35rem;
 }
 .session-item {
-  padding: 0.5rem 0.6rem;
-  border-radius: 8px;
+  display: grid;
+  justify-content: stretch;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
   cursor: pointer;
   transition: background 0.15s ease;
 }
-.session-item:hover {
+.session-item:hover:not(:disabled) {
   background: var(--chip-bg);
 }
 .session-item.active {
@@ -114,14 +123,14 @@ const emit = defineEmits<{
   border-color: var(--accent);
 }
 .session-title {
-  font-size: 0.82rem;
+  font-size: var(--font-size-body);
   font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .session-preview {
-  font-size: 0.72rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -132,7 +141,7 @@ const emit = defineEmits<{
   display: flex;
   justify-content: space-between;
   gap: 0.35rem;
-  font-size: 0.68rem;
+  font-size: var(--font-size-meta);
   color: var(--muted);
   margin-top: 0.2rem;
 }

@@ -95,5 +95,6 @@ def job_to_out(row: JobRow) -> JobOut:
         depends_on=list(getattr(row, "depends_on", None) or []),
         created_by=row.created_by or "",
         created_at=row.created_at,
+        claimed_at=row.claimed_at,
         updated_at=row.updated_at,
     )

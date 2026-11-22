@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { apiErrorMessage } from "../api";
 import {
   createResourcePool,
@@ -17,6 +17,7 @@ import { useProjectsStore } from "../stores/projectsStore";
 import { useCapabilities } from "../composables/useCapabilities";
 import { usePagedList } from "../composables/usePagedList";
 import { confirmDialog, notify } from "../composables/useNotify";
+import ApModal from "./ApModal.vue";
 import DataPager from "./common/DataPager.vue";
 
 const POOL_PAGE_SIZE = 50;
@@ -34,11 +35,17 @@ const createMode = ref(false);
 const selected = ref<ResourcePool | null>(null);
 const form = ref({ name: "", description: "", is_default: false, enabled: true });
 const formError = ref("");
+const actionError = ref("");
+const candidateError = ref("");
+const saving = ref(false);
+const candidatesLoading = ref(false);
+const poolName = ref<HTMLInputElement | null>(null);
+let editorVersion = 0;
+
 
 const orgId = computed(() => (filterOrgId.value || "").trim());
 
 const list = usePagedList<ResourcePool>({
-  immediate: false,
   pageSize: POOL_PAGE_SIZE,
   fetchPage: ({ page, pageSize }) => {
     if (!orgId.value) {
@@ -49,7 +56,7 @@ const list = usePagedList<ResourcePool>({
   resetSources: [orgId],
 });
 
-const { items: pools, total, page, pageSize, loading, hasLoaded, reload, setPage, setPageSize } = list;
+const { items: pools, total, page, pageSize, loading, hasLoaded, error, reload, setPage, setPageSize } = list;
 const currentOrg = computed(() => orgs.value.find((item) => item.id === orgId.value));
 const canManage = computed(() => {
   if (caps.canOps) return true;
@@ -57,25 +64,50 @@ const canManage = computed(() => {
   return role === "owner" || role === "admin";
 });
 
+const canEditPool = computed(() => canManage.value && (createMode.value || Boolean(selected.value?.can_manage)));
+
+function resetEditorFeedback() {
+  formError.value = "";
+  actionError.value = "";
+  candidateError.value = "";
+  candidates.value = null;
+  candidatesLoading.value = false;
+}
+
+function closeEditor() {
+  editorVersion += 1;
+  modalOpen.value = false;
+  saving.value = false;
+  resetEditorFeedback();
+}
+
 async function loadCandidates() {
-  if (!canManage.value || !orgId.value) return;
+  if (!canEditPool.value || !orgId.value) return;
+  const version = editorVersion;
+  const organization = orgId.value;
+  candidatesLoading.value = true;
+  candidateError.value = "";
   try {
-    candidates.value = await listResourcePoolCandidates(orgId.value);
+    const nextCandidates = await listResourcePoolCandidates(organization);
+    if (version === editorVersion) candidates.value = nextCandidates;
   } catch (error) {
-    candidates.value = null;
-    notify(apiErrorMessage(error), "error");
+    if (version === editorVersion) candidateError.value = apiErrorMessage(error);
+  } finally {
+    if (version === editorVersion) candidatesLoading.value = false;
   }
 }
 
 function openCreate() {
+  if (!canManage.value || !orgId.value) return;
   createMode.value = true;
   selected.value = null;
   form.value = { name: "", description: "", is_default: false, enabled: true };
-  formError.value = "";
+  resetEditorFeedback();
   modalOpen.value = true;
 }
 
-async function openPool(pool: ResourcePool) {
+function openPool(pool: ResourcePool) {
+  if (pool.org_id !== orgId.value) return;
   createMode.value = false;
   selected.value = pool;
   form.value = {
@@ -84,383 +116,314 @@ async function openPool(pool: ResourcePool) {
     is_default: pool.is_default,
     enabled: pool.enabled,
   };
-  formError.value = "";
+  resetEditorFeedback();
   modalOpen.value = true;
-  await loadCandidates();
+  void loadCandidates();
+}
+
+async function applyPoolChange(change: () => Promise<void>) {
+  if (!canEditPool.value || saving.value) return;
+  const version = editorVersion;
+  saving.value = true;
+  actionError.value = "";
+  try {
+    await change();
+  } catch (error) {
+    if (version === editorVersion) actionError.value = apiErrorMessage(error);
+  } finally {
+    if (version === editorVersion) saving.value = false;
+  }
 }
 
 async function savePool() {
   formError.value = "";
   if (!orgId.value || !form.value.name.trim()) {
     formError.value = "请填写设备池名称";
+    await nextTick();
+    poolName.value?.focus();
     return;
   }
-  try {
+  await applyPoolChange(async () => {
+    const version = editorVersion;
     const body = { ...form.value, name: form.value.name.trim() };
     const out = createMode.value
       ? await createResourcePool(orgId.value, body)
       : await updateResourcePool(selected.value!.id, body);
+    if (version !== editorVersion) return;
     selected.value = out;
     createMode.value = false;
     notify("设备池已保存", "success");
     await reload(false);
-    await loadCandidates();
-  } catch (error) {
-    notify(apiErrorMessage(error), "error");
-  }
+    if (version === editorVersion) await loadCandidates();
+  });
 }
 
 async function removePool(pool: ResourcePool) {
+  const version = editorVersion;
   if (
     !(await confirmDialog(`删除设备池「${pool.name}」？其中的设备和项目授权会一并解除。`, {
       title: "删除设备池",
       okText: "删除",
       danger: true,
     }))
-  ) {
-    return;
-  }
-  try {
+  ) return;
+  if (version !== editorVersion) return;
+  await applyPoolChange(async () => {
     await deleteResourcePool(pool.id);
-    modalOpen.value = false;
+    if (version !== editorVersion) return;
+    closeEditor();
     notify("设备池已删除", "success");
     await reload();
-  } catch (error) {
-    notify(apiErrorMessage(error), "error");
-  }
+  });
 }
 
-function replacePool(out: ResourcePool) {
-  selected.value = out;
-  void reload(false);
+async function toggleAssignment(event: Event, retained: boolean, change: (next: boolean) => Promise<ResourcePool>) {
+  const input = event.currentTarget as HTMLInputElement;
+  const next = input.checked;
+  input.checked = retained;
+  await applyPoolChange(async () => {
+    const version = editorVersion;
+    const pool = await change(next);
+    if (version !== editorVersion) return;
+    selected.value = pool;
+    void reload(false);
+  });
 }
 
-async function toggleMember(
-  kind: "runners" | "devices",
-  resourceId: string,
-  next: boolean,
-) {
-  if (!selected.value) return;
-  try {
-    replacePool(await setResourcePoolMember(selected.value.id, kind, resourceId, next));
-  } catch (error) {
-    notify(apiErrorMessage(error), "error");
-  }
-}
-
-async function toggleProject(project: string, next: boolean) {
-  if (!selected.value) return;
-  try {
-    replacePool(await setResourcePoolProject(selected.value.id, project, next));
-  } catch (error) {
-    notify(apiErrorMessage(error), "error");
-  }
-}
-
-watch(orgId, () => void reload(true));
-onMounted(() => void reload(true));
+watch(orgId, closeEditor);
 </script>
 
 <template>
-  <section class="panel pool-panel" :class="{ embedded: props.embedded }">
-    <div class="panel-toolbar">
-      <div class="panel-toolbar-left">
-        <template v-if="!props.embedded">
-          <h3 class="compact-title">设备池管理</h3>
-          <p class="panel-toolbar-desc">按组织划定设备范围，再授权给项目使用；设备本身不绑某个项目</p>
-        </template>
+  <section class="page-stack pool-panel" aria-label="设备池">
+    <header class="page-hero">
+      <div>
+        <h2 v-if="!props.embedded">设备池</h2>
+        <p class="pool-scope">
+          <strong v-if="currentOrg">{{ currentOrg.name }} · </strong>
+          按组织管理设备范围并授权给项目。设备本身不绑某个项目。
+        </p>
       </div>
-      <button v-if="canManage && orgId" type="button" class="primary" @click="openCreate">
-        新建设备池
-      </button>
-    </div>
+      <div v-if="canManage && orgId" class="page-hero-actions">
+        <button type="button" class="primary" @click="openCreate">新建设备池</button>
+      </div>
+    </header>
+    <p class="pool-scope-note" aria-hidden="true">不是「在线设备」列表</p>
 
     <div v-if="!orgId" class="empty-state">
-      <template v-if="caps.canOps">
-        <p class="empty-title">资源池按组织管理</p>
+      <p class="empty-title">请选择组织</p>
+      <p class="empty-desc">在顶栏选择组织后，即可查看设备池和项目授权。</p>
+    </div>
+    <template v-else>
+      <div v-if="error" class="pool-list-error" role="alert">
+        <span>无法加载设备池。{{ error }}</span>
+        <button type="button" class="small" @click="reload(false)">重试</button>
+      </div>
+      <div v-if="!hasLoaded" class="empty-state" role="status">正在加载设备池…</div>
+      <div v-else-if="!pools.length && !error" class="empty-state">
+        <p class="empty-title">暂无可见设备池</p>
         <p class="empty-desc">
-          此页用于把设备<strong>授权给项目</strong>，不是「在线设备」列表。
-          查看全部已注册设备请切换到「在线设备」；管理资源池请在顶栏选择一个组织。
+          {{ canManage ? "创建后把设备加入池，再按需授权给项目使用。" : "当前组织下还没有对你可见的设备池。" }}
         </p>
-      </template>
-      <template v-else>
-        <p class="empty-title">请先选择组织</p>
-        <p class="empty-desc">请先在顶栏选择组织。设备池按组织划分，授权后项目才能使用。</p>
-      </template>
-    </div>
-    <div v-else-if="!hasLoaded" class="empty-state">正在加载设备池…</div>
-    <div v-else-if="!pools.length" class="empty-state">
-      <p class="empty-title">暂无可见设备池</p>
-      <p class="empty-desc">
-        {{ canManage ? "创建后把设备加入池，再按需授权给项目使用。" : "当前组织下还没有对你可见的设备池。" }}
-      </p>
-    </div>
-    <div v-else class="pool-grid">
-      <article v-for="pool in pools" :key="pool.id" class="pool-card">
-        <div class="pool-card-head">
-          <div>
-            <h4>{{ pool.name }}</h4>
-            <p>{{ pool.description || "无描述" }}</p>
-          </div>
-          <span class="pill" :class="pool.enabled ? 'ok' : ''">
-            {{ pool.enabled ? "启用" : "停用" }}
-          </span>
-        </div>
-        <div class="pool-stats">
-          <span>Runner {{ pool.runner_ids.length }}</span>
-          <span>设备 {{ pool.device_ids.length }}</span>
-          <span>项目 {{ pool.project_ids.length }}</span>
-          <span v-if="pool.is_default">默认标记</span>
-        </div>
-        <button type="button" class="small" @click="openPool(pool)">
-          {{ pool.can_manage ? "管理成员与授权" : "查看详情" }}
-        </button>
-      </article>
-    </div>
-
-    <DataPager
-      v-if="total > 0"
-      :total="total"
-      :page="page"
-      :page-size="pageSize"
-      :loading="loading"
-      @update:page="setPage"
-      @update:page-size="setPageSize"
-    />
-
+      </div>
+      <div v-else-if="pools.length" class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">设备池</th>
+              <th scope="col">调度</th>
+              <th scope="col">执行节点</th>
+              <th scope="col">设备</th>
+              <th scope="col">授权项目</th>
+              <th scope="col">操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="pool in pools" :key="pool.id">
+              <td class="pool-name">
+                <strong>{{ pool.name }}</strong>
+                <span v-if="pool.is_default" class="pool-default">默认</span>
+                <small v-if="pool.description">{{ pool.description }}</small>
+              </td>
+              <td><span class="pill" :class="pool.enabled ? 'ok' : ''">{{ pool.enabled ? "启用" : "停用" }}</span></td>
+              <td class="pool-count">{{ pool.runner_ids.length }}</td>
+              <td class="pool-count">{{ pool.device_ids.length }}</td>
+              <td class="pool-count">{{ pool.project_ids.length }}</td>
+              <td><button type="button" class="small" @click="openPool(pool)">{{ pool.can_manage ? "管理" : "查看" }}</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <DataPager
+        v-if="total > 0"
+        :total="total"
+        :page="page"
+        :page-size="pageSize"
+        :loading="loading"
+        @update:page="setPage"
+        @update:page-size="setPageSize"
+      />
+    </template>
   </section>
 
-  <div v-if="modalOpen" class="modal-backdrop" @click.self="modalOpen = false">
-    <section class="pool-dialog" role="dialog" aria-modal="true" aria-label="设备池管理">
-      <header class="dialog-head">
-        <div>
-          <h3>{{ createMode ? "新建设备池" : selected?.name }}</h3>
-          <p>默认池仅作标记；Runner、设备和项目都需手动加入。</p>
-        </div>
-        <button type="button" class="ghost" aria-label="关闭" @click="modalOpen = false">×</button>
-      </header>
-
-      <div v-if="canManage" class="dialog-section form-grid">
-        <label>
-          名称
-          <input v-model="form.name" maxlength="128" />
-          <span v-if="formError" class="ap-field-error" role="alert">{{ formError }}</span>
-        </label>
-        <label>
-          描述
-          <input v-model="form.description" maxlength="2000" />
-        </label>
-        <label class="check-row"><input v-model="form.enabled" type="checkbox" /> 启用调度</label>
-        <label class="check-row"><input v-model="form.is_default" type="checkbox" /> 默认标记</label>
-        <button type="button" class="primary" :disabled="loading" @click="savePool">保存</button>
+  <ApModal
+    v-if="modalOpen"
+    :title="createMode ? '新建设备池' : selected?.name || '设备池'"
+    :description="createMode ? undefined : '默认池仅作标记。执行节点、设备及项目授权分别维护。'"
+    :wide="createMode"
+    :xwide="!createMode"
+    :close-on-backdrop="!saving"
+    :close-on-esc="!saving"
+    @close="closeEditor"
+  >
+    <form v-if="canEditPool" id="pool-edit-form" class="pool-form" novalidate @submit.prevent="savePool">
+      <label>
+        <span>名称（必填）</span>
+        <input ref="poolName" v-model="form.name" name="name" maxlength="128" required data-autofocus
+          :disabled="saving" :aria-invalid="Boolean(formError)"
+          :aria-describedby="formError ? 'pool-name-error' : undefined" @input="formError = ''" />
+        <span v-if="formError" id="pool-name-error" class="ap-field-error" role="alert">{{ formError }}</span>
+      </label>
+      <label>
+        <span>描述</span>
+        <input v-model="form.description" name="description" maxlength="2000" :disabled="saving" />
+      </label>
+      <label class="pool-check"><input v-model="form.enabled" type="checkbox" :disabled="saving" /> 启用调度</label>
+      <label class="pool-check"><input v-model="form.is_default" type="checkbox" :disabled="saving" /> 默认标记</label>
+    </form>
+    <div v-if="selected && !canEditPool" class="pool-description">
+      <p>{{ selected.description || "暂无描述" }}</p>
+      <p>调度{{ selected.enabled ? "已启用" : "已停用" }}{{ selected.is_default ? " · 默认池" : "" }}</p>
+    </div>
+    <p v-if="actionError" class="ap-field-error" role="alert">{{ actionError }}</p>
+    <template v-if="!createMode && selected">
+      <p v-if="candidatesLoading" role="status">正在加载可关联资源…</p>
+      <div v-if="candidateError" class="pool-list-error" role="alert">
+        <span>无法加载可关联资源。{{ candidateError }}</span>
+        <button type="button" class="small" :disabled="saving" @click="loadCandidates">重试</button>
       </div>
-
-      <template v-if="!createMode && selected">
-        <div class="dialog-section">
-          <h4>已授权项目</h4>
-          <div v-if="canManage && candidates" class="choice-grid">
-            <label v-for="project in candidates.projects" :key="project.id" class="choice">
-              <input
-                type="checkbox"
-                :checked="selected.project_ids.includes(project.id)"
-                @change="toggleProject(project.id, !selected!.project_ids.includes(project.id))"
-              />
-              <span>{{ project.name }} <small>{{ project.id }}</small></span>
-            </label>
-          </div>
-          <div v-else class="tag-row">
-            <span v-for="id in selected.project_ids" :key="id" class="pill">{{ id }}</span>
-            <span v-if="!selected.project_ids.length" class="muted">尚未授权项目</span>
-          </div>
+      <section class="pool-group">
+        <h4>已授权项目</h4>
+        <div v-if="canEditPool && candidates?.projects.length" class="pool-choices">
+          <label v-for="project in candidates.projects" :key="project.id" class="pool-check">
+            <input type="checkbox" :disabled="saving" :checked="selected.project_ids.includes(project.id)"
+              @change="toggleAssignment($event, selected!.project_ids.includes(project.id), (next) => setResourcePoolProject(selected!.id, project.id, next))" />
+            <span>{{ project.name }}<small>{{ project.id }}</small></span>
+          </label>
         </div>
-
-        <div class="dialog-section">
-          <h4>Runner 成员</h4>
-          <div v-if="canManage && candidates" class="choice-grid">
-            <label v-for="runner in candidates.runners" :key="runner.runner_id" class="choice">
-              <input
-                type="checkbox"
-                :checked="selected.runner_ids.includes(runner.runner_id)"
-                @change="
-                  toggleMember(
-                    'runners',
-                    runner.runner_id,
-                    !selected!.runner_ids.includes(runner.runner_id),
-                  )
-                "
-              />
-              <span>
-                {{ runner.runner_id }}
-                <small>{{ runner.online ? "在线" : "未心跳" }} · {{ runner.hostname }}</small>
-              </span>
-            </label>
-          </div>
-          <div v-else class="tag-row">
-            <span v-for="id in selected.runner_ids" :key="id" class="pill">{{ id }}</span>
-          </div>
+        <p v-else>{{ selected.project_ids.join("、") || "尚未授权项目" }}</p>
+      </section>
+      <section class="pool-group">
+        <h4>执行节点</h4>
+        <div v-if="canEditPool && candidates?.runners.length" class="pool-choices">
+          <label v-for="runner in candidates.runners" :key="runner.runner_id" class="pool-check">
+            <input type="checkbox" :disabled="saving" :checked="selected.runner_ids.includes(runner.runner_id)"
+              @change="toggleAssignment($event, selected!.runner_ids.includes(runner.runner_id), (next) => setResourcePoolMember(selected!.id, 'runners', runner.runner_id, next))" />
+            <span>{{ runner.runner_id }}<small>{{ runner.online ? "在线" : "未心跳" }} · {{ runner.hostname }}</small></span>
+          </label>
         </div>
-
-        <div class="dialog-section">
-          <h4>单设备成员</h4>
-          <div v-if="canManage && candidates" class="choice-grid">
-            <label v-for="device in candidates.devices" :key="device.id" class="choice">
-              <input
-                type="checkbox"
-                :checked="selected.device_ids.includes(device.id)"
-                @change="
-                  toggleMember('devices', device.id, !selected!.device_ids.includes(device.id))
-                "
-              />
-              <span>
-                {{ device.name || device.udid }}
-                <small>{{ device.platform }} · {{ device.runner_id }} · {{ device.udid }}</small>
-              </span>
-            </label>
-          </div>
-          <p v-else class="muted">已绑定 {{ selected.device_ids.length }} 台设备</p>
+        <p v-else>{{ selected.runner_ids.join("、") || "尚未绑定执行节点" }}</p>
+      </section>
+      <section class="pool-group">
+        <h4>单设备成员</h4>
+        <div v-if="canEditPool && candidates?.devices.length" class="pool-choices">
+          <label v-for="device in candidates.devices" :key="device.id" class="pool-check">
+            <input type="checkbox" :disabled="saving" :checked="selected.device_ids.includes(device.id)"
+              @change="toggleAssignment($event, selected!.device_ids.includes(device.id), (next) => setResourcePoolMember(selected!.id, 'devices', device.id, next))" />
+            <span>{{ device.name || device.udid }}<small>{{ device.platform }} · {{ device.runner_id }} · {{ device.udid }}</small></span>
+          </label>
         </div>
-
-        <footer v-if="canManage" class="dialog-actions">
-          <button type="button" class="danger" @click="removePool(selected)">删除设备池</button>
-          <button type="button" @click="modalOpen = false">完成</button>
-        </footer>
-      </template>
-    </section>
-  </div>
+        <p v-else>已绑定 {{ selected.device_ids.length }} 台设备</p>
+      </section>
+    </template>
+    <template #actions>
+      <button v-if="canEditPool && selected" type="button" class="danger pool-delete" :disabled="saving"
+        @click="removePool(selected)">删除设备池</button>
+      <button type="button" :disabled="saving" @click="closeEditor">关闭</button>
+      <button v-if="canEditPool" type="submit" form="pool-edit-form" class="primary" :disabled="saving">
+        {{ saving ? "处理中…" : "保存" }}
+      </button>
+    </template>
+  </ApModal>
 </template>
 
 <style scoped>
-.pool-panel {
-  border: none;
-  box-shadow: none;
-  background: transparent;
-  padding: 0;
+.pool-panel, .pool-form, .pool-group, .pool-check span {
+  min-width: 0;
 }
-.compact-title {
+
+.pool-scope, .pool-group p, .pool-description {
   margin: 0;
-  font-size: 0.95rem;
-}
-.pool-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  gap: 0.85rem;
-}
-.pool-card {
-  padding: 1rem;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface-primary);
-  box-shadow: var(--panel-shadow);
-}
-.pool-card-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-.pool-card h4,
-.dialog-head h3,
-.dialog-section h4 {
-  margin: 0;
-}
-.pool-card p,
-.dialog-head p {
-  margin: 0.25rem 0 0;
   color: var(--muted);
-  font-size: 0.78rem;
+  font-size: var(--font-size-meta);
+  overflow-wrap: anywhere;
 }
-.pool-stats,
-.tag-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.85rem 0;
+
+.pool-name {
+  min-width: 170px;
+  max-width: 420px;
+  overflow-wrap: anywhere;
 }
-.pool-stats span {
-  padding: 0.2rem 0.45rem;
-  border-radius: 999px;
-  background: var(--chip-bg);
+
+.pool-name small, .pool-check small {
+  display: block;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--font-size-meta);
 }
-.modal-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 1100;
-  display: grid;
-  place-items: center;
-  padding: 1rem;
-  background: rgb(0 0 0 / 52%);
+
+.pool-default {
+  color: var(--muted);
+  margin-inline-start: var(--space-2);
+  font-size: var(--font-size-meta);
 }
-.pool-dialog {
-  width: min(900px, 96vw);
-  max-height: 90vh;
-  overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--surface-primary);
-  box-shadow: var(--panel-shadow);
+
+.pool-count {
+  font-variant-numeric: tabular-nums;
 }
-.dialog-head,
-.dialog-actions {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.15rem;
-}
-.dialog-section {
-  padding: 1rem 1.15rem;
-  border-top: 1px solid var(--line-soft);
-}
-.form-grid {
+
+.pool-form, .pool-choices {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  gap: var(--space-2) var(--space-4);
 }
-.form-grid label:not(.check-row) {
-  display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
-  color: var(--muted);
-  font-size: 0.75rem;
-}
-.check-row {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-}
-.choice-grid {
+
+.pool-form > label:not(.pool-check) {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 0.5rem;
-  margin-top: 0.65rem;
+  gap: var(--space-1);
 }
-.choice {
+
+.pool-group {
+  padding-block: var(--space-3);
+  border-top: 1px solid var(--line);
+}
+
+.pool-group h4 {
+  margin: 0 0 var(--space-2);
+}
+
+.pool-check, .pool-list-error {
   display: flex;
   align-items: flex-start;
-  gap: 0.5rem;
-  padding: 0.55rem;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
-  font-size: 0.8rem;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
 }
-.choice span,
-.choice small {
-  display: block;
-  min-width: 0;
-  word-break: break-all;
+
+.pool-check input {
+  flex-shrink: 0;
 }
-.choice small,
-.muted {
-  color: var(--muted);
+
+.pool-list-error {
+  flex-wrap: wrap;
+  align-items: center;
+  color: var(--danger-soft-fg);
 }
-.dialog-actions {
-  border-top: 1px solid var(--line-soft);
+
+.pool-delete {
+  margin-inline-end: auto;
 }
+
 @media (max-width: 640px) {
-  .form-grid {
-    grid-template-columns: 1fr;
+  .pool-form, .pool-choices {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

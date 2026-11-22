@@ -42,7 +42,7 @@ function shortId(id: string): string {
   width: 100%;
   height: min(72vh, 800px);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface, #fff);
 }
 </style>

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
-import { ensureFreshSession } from "../../api";
+import { apiErrorMessage, ensureFreshSession } from "../../api";
 import { fetchDesignStats, type DesignDomainStats } from "../../api/designStats";
 import { formatAutomationStatusKey, formatReviewStatusKey } from "../../utils/designStatusLabels";
 import { storeToRefs } from "pinia";
 import { useAuthStore } from "../../stores/auth";
+import { useProjectsStore } from "../../stores/projectsStore";
 
 const props = defineProps<{
   projectId?: string;
@@ -16,247 +17,237 @@ const emit = defineEmits<{
 
 const auth = useAuthStore();
 const { loggedIn } = storeToRefs(auth);
+const { filterOrgId } = storeToRefs(useProjectsStore());
 const loading = ref(false);
 const error = ref("");
 const stats = ref<DesignDomainStats | null>(null);
+let loadGeneration = 0;
+
+const resources = [
+  { key: "documents", label: "需求文档", tab: "design-docs" },
+  { key: "requirements", label: "需求条目", tab: "design-docs" },
+  { key: "logical_cases", label: "意图用例", tab: "design-cases" },
+  { key: "knowledge", label: "知识条目", tab: "design-knowledge" },
+] as const;
 
 async function load() {
+  const generation = ++loadGeneration;
   if (!loggedIn.value) {
-    stats.value = null;
+    loading.value = false;
     return;
   }
+  const projectId = props.projectId || undefined;
   loading.value = true;
   error.value = "";
   try {
     const ready = await ensureFreshSession();
-    if (!ready || !loggedIn.value) {
-      stats.value = null;
-      return;
-    }
-    stats.value = await fetchDesignStats(props.projectId || undefined);
+    if (!ready || !loggedIn.value || generation !== loadGeneration) return;
+    const result = await fetchDesignStats(projectId);
+    if (generation === loadGeneration) stats.value = result;
   } catch (e: unknown) {
-    error.value = e instanceof Error ? e.message : String(e);
-    stats.value = null;
+    if (generation === loadGeneration) error.value = apiErrorMessage(e);
   } finally {
-    loading.value = false;
+    if (generation === loadGeneration) loading.value = false;
   }
 }
 
 onMounted(load);
-watch(() => props.projectId, load);
-watch(
-  () => loggedIn.value,
-  (ok) => {
-    if (ok) void load();
-    else {
-      stats.value = null;
-      error.value = "";
-    }
-  },
-);
+watch([filterOrgId, () => props.projectId, loggedIn], () => {
+  stats.value = null;
+  error.value = "";
+  void load();
+});
 
 defineExpose({ reload: load });
 </script>
 
 <template>
-  <div class="design-stats panel">
-    <div class="panel-head-row">
-      <h3>设计域</h3>
+  <section class="design-stats" aria-labelledby="design-stats-title" :aria-busy="loading">
+    <header class="design-stats-head">
+      <h3 id="design-stats-title">设计资源</h3>
       <div class="head-actions">
-        <button type="button" class="small" :disabled="loading" @click="load">刷新</button>
-        <button type="button" class="small primary" @click="emit('goto-tab', 'design-dashboard')">打开</button>
-      </div>
-    </div>
-
-    <div v-if="error" class="err">{{ error }}</div>
-    <div v-else-if="loading && !stats" class="empty-state compact"><span>加载中…</span></div>
-    <template v-else-if="stats">
-      <div class="stat-grid">
-        <button type="button" class="stat-cell clickable" @click="emit('goto-tab', 'design-docs')">
-          <span class="stat-n">{{ stats.requirements }}</span>
-          <span class="stat-l">需求</span>
-        </button>
-        <button type="button" class="stat-cell clickable" @click="emit('goto-tab', 'design-cases')">
-          <span class="stat-n">{{ stats.logical_cases }}</span>
-          <span class="stat-l">意图用例</span>
-        </button>
-        <button type="button" class="stat-cell clickable" @click="emit('goto-tab', 'design-knowledge')">
-          <span class="stat-n">{{ stats.knowledge }}</span>
-          <span class="stat-l">知识条目</span>
-        </button>
-        <button type="button" class="stat-cell clickable" @click="emit('goto-tab', 'design-docs')">
-          <span class="stat-n">{{ stats.documents }}</span>
-          <span class="stat-l">文档</span>
+        <button type="button" class="small ghost" :disabled="loading" @click="load">刷新</button>
+        <button type="button" class="small ghost" @click="emit('goto-tab', 'design-dashboard')">
+          设计总览
         </button>
       </div>
+    </header>
 
-      <div v-if="Object.keys(stats.by_automation_status).length" class="status-block">
-        <div class="status-title">自动化状态</div>
-        <ul class="status-chips">
-          <li v-for="(n, k) in stats.by_automation_status" :key="k">
-            <span class="chip-k">{{ formatAutomationStatusKey(String(k)) }}</span>
-            <span class="chip-n">{{ n }}</span>
-          </li>
-        </ul>
-      </div>
+    <p v-if="error" class="msg bad" role="alert">{{ error }}</p>
+    <p v-else-if="loading && !stats" class="stats-empty" role="status">加载中…</p>
 
-      <div v-if="Object.keys(stats.by_review_status).length" class="status-block">
-        <div class="status-title">评审状态</div>
-        <ul class="status-chips">
-          <li v-for="(n, k) in stats.by_review_status" :key="k">
-            <span class="chip-k">{{ formatReviewStatusKey(String(k)) }}</span>
-            <span class="chip-n">{{ n }}</span>
-          </li>
-        </ul>
-      </div>
+    <template v-if="stats">
+      <ul class="resource-list">
+        <li v-for="resource in resources" :key="resource.key">
+          <button type="button" class="resource-link" @click="emit('goto-tab', resource.tab)">
+            <span>{{ resource.label }}</span>
+            <span class="resource-count">{{ stats[resource.key] }}</span>
+          </button>
+        </li>
+      </ul>
 
-      <div
-        v-if="stats.ai_degraded && (stats.ai_degraded.degraded_cases || 0) > 0"
-        class="status-block warn"
+      <details
+        v-if="Object.keys(stats.by_automation_status).length || Object.keys(stats.by_review_status).length"
+        class="status-summary"
       >
-        <div class="status-title">AI 降级用例</div>
-        <p class="degraded-line">
-          {{ stats.ai_degraded.degraded_cases }} / {{ stats.ai_degraded.logical_cases || stats.logical_cases }}
-          （{{ Math.round(Number(stats.ai_degraded.ratio || 0) * 100) }}%）需人工重点审阅
-        </p>
-      </div>
+        <summary>用例状态</summary>
+        <div class="status-groups">
+          <div v-if="Object.keys(stats.by_review_status).length">
+            <h4>评审</h4>
+            <dl>
+              <div v-for="(count, state) in stats.by_review_status" :key="state">
+                <dt>{{ formatReviewStatusKey(String(state)) }}</dt>
+                <dd>{{ count }}</dd>
+              </div>
+            </dl>
+          </div>
+          <div v-if="Object.keys(stats.by_automation_status).length">
+            <h4>自动化</h4>
+            <dl>
+              <div v-for="(count, state) in stats.by_automation_status" :key="state">
+                <dt>{{ formatAutomationStatusKey(String(state)) }}</dt>
+                <dd>{{ count }}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </details>
+
+      <p v-if="(stats.ai_degraded?.degraded_cases ?? 0) > 0" class="degraded-line">
+        {{ stats.ai_degraded?.degraded_cases }} 条用例使用了降级生成，请人工复核。
+      </p>
     </template>
-    <div v-else class="empty-state compact"><span>暂无设计域数据</span></div>
-  </div>
+    <p v-else-if="!loading && !error" class="stats-empty">暂无数据</p>
+  </section>
 </template>
 
 <style scoped>
 .design-stats {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  min-width: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
 }
 
-.panel-head-row {
+.design-stats-head {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
 }
 
-.panel-head-row h3 {
+.design-stats-head h3 {
   margin: 0;
-  font-size: 1.05rem;
+  font-size: var(--font-size-body);
   font-weight: 600;
 }
 
 .head-actions {
   display: flex;
-  gap: 0.4rem;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.stat-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 0.55rem;
-}
-
-.stat-cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  padding: 0.75rem 0.4rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  color: inherit;
-  font: inherit;
-}
-.stat-cell.clickable {
-  cursor: pointer;
-}
-.stat-cell.clickable:hover {
-  border-color: var(--accent);
-}
-
-.stat-n {
-  font-size: 1.35rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.stat-l {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.status-block {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-.status-block.warn .status-title {
-  color: var(--bad, #b45309);
-}
-
-.degraded-line {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--bad, #b45309);
-}
-
-.status-title {
-  font-size: 0.75rem;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.status-chips {
+.resource-list {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+.resource-list li + li {
+  border-top: 1px solid var(--line-soft);
+}
+
+.resource-link {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.status-chips li {
-  display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.25rem 0.55rem;
-  border-radius: 6px;
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  font-size: 0.78rem;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  min-height: 40px;
+  padding: 8px 16px;
+  text-align: start;
+  background: transparent;
+  box-shadow: none;
+  color: var(--accent-text);
 }
 
-.chip-k {
+.resource-link:hover {
+  background: var(--action-hover);
+  box-shadow: none;
+}
+
+.resource-link:focus-visible,
+.status-summary > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.resource-count {
+  margin-left: auto;
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-summary {
+  border-top: 1px solid var(--line);
+  padding: 0 16px;
+}
+
+.status-summary > summary {
+  width: fit-content;
+  min-height: 40px;
+  align-content: center;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.status-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 136px), 1fr));
+  gap: 12px 16px;
+  padding-bottom: 12px;
+}
+
+.status-groups h4 {
+  margin: 0 0 4px;
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.status-groups dl {
+  margin: 0;
+}
+
+.status-groups dl > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  padding-block: 4px;
+}
+
+.status-groups dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.degraded-line,
+.stats-empty {
+  margin: 0;
+  padding: 12px 16px;
   color: var(--muted);
 }
 
-.chip-n {
-  font-weight: 700;
-}
-
-.err {
-  color: var(--bad);
-  font-size: 0.85rem;
-}
-
-.empty-state.compact {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 72px;
-  padding: 1rem;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 0.85rem;
-}
-
-@media (max-width: 720px) {
-  .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+.degraded-line {
+  border-top: 1px solid var(--line-soft);
+  color: var(--warning-soft-fg);
 }
 </style>

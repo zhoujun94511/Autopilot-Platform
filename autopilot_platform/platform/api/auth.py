@@ -342,7 +342,7 @@ def api_update_user(
     user_id: str,
     body: UserUpdate,
     db: Session = Depends(get_session),
-    auth: AuthContext = Depends(require_user_manager),
+    auth: AuthContext = Depends(require_admin),
 ) -> UserOut:
     try:
         out = ua.update_user(db, user_id, body, auth)

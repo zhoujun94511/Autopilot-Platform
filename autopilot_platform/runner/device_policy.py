@@ -64,22 +64,32 @@ def load_device_policy(runner_id: str) -> DevicePolicy:
 
 
 def save_device_policy(runner_id: str, policy: DevicePolicy) -> None:
+    import tempfile
+
     path = _path(runner_id)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    tmp.write_text(
-        json.dumps(
-            {
-                "mode": policy.mode,
-                "selected_udids": sorted(policy.selected_udids),
-                "revision": policy.revision,
-                "exclude_udids": sorted(policy.exclude_udids),
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
+    payload = json.dumps(
+        {
+            "mode": policy.mode,
+            "selected_udids": sorted(policy.selected_udids),
+            "revision": policy.revision,
+            "exclude_udids": sorted(policy.exclude_udids),
+        },
+        ensure_ascii=False,
     )
-    os.replace(tmp, path)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+        os.replace(tmp_name, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def sync_exclude_udids(runner_id: str, current: DevicePolicy) -> DevicePolicy:

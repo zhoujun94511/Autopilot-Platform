@@ -56,11 +56,24 @@ def _ah(client: TestClient) -> dict:
 
 
 def _seed_web_runner(client: TestClient, runner_id: str = "runner-deps") -> None:
-    client.post(
+    registered = client.post(
+        "/api/v1/runners/register",
+        headers=TOKEN,
+        json={"runner_id": runner_id, "hostname": runner_id, "capabilities": ["web"]},
+    )
+    assert registered.status_code == 200, registered.text
+    heartbeat = client.post(
         "/api/v1/runners/heartbeat",
         headers=TOKEN,
         json={"runner_id": runner_id, "inventory": [], "devices": [], "capabilities": ["web"]},
     )
+    assert heartbeat.status_code == 200, heartbeat.text
+
+
+def _claim(client: TestClient) -> dict | None:
+    response = client.post("/api/v1/jobs/claim", headers=TOKEN, params={"runner_id": "runner-deps"})
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def _create_job(client: TestClient, ah: dict, **extra) -> dict:
@@ -85,27 +98,22 @@ def test_depends_on_blocks_claim_until_succeeded(client: TestClient):
     assert b["depends_on"] == [a["id"]]
 
     # B 依赖未完成：只能 claim 到 A
-    claimed = client.post(
-        "/api/v1/jobs/claim?runner_id=runner-deps", headers=TOKEN
-    ).json()
+    claimed = _claim(client)
     assert claimed is not None
     assert claimed["id"] == a["id"]
 
     # A 仍 claimed 时再次 claim 不应拿到 B
-    again = client.post(
-        "/api/v1/jobs/claim?runner_id=runner-deps", headers=TOKEN
-    ).json()
+    again = _claim(client)
     assert again is None
     assert client.get(f"/api/v1/jobs/{b['id']}", headers=ah).json()["status"] == "pending"
 
-    client.post(
+    completed = client.post(
         f"/api/v1/jobs/{a['id']}/complete?runner_id=runner-deps",
         headers=TOKEN,
         json={"status": "succeeded"},
     )
-    claimed_b = client.post(
-        "/api/v1/jobs/claim?runner_id=runner-deps", headers=TOKEN
-    ).json()
+    assert completed.status_code == 200, completed.text
+    claimed_b = _claim(client)
     assert claimed_b is not None
     assert claimed_b["id"] == b["id"]
 
@@ -116,24 +124,21 @@ def test_depends_on_fails_when_parent_failed(client: TestClient):
     a = _create_job(client, ah, name="A-fail")
     b = _create_job(client, ah, name="B-child", depends_on=[a["id"]])
 
-    claimed = client.post(
-        "/api/v1/jobs/claim?runner_id=runner-deps", headers=TOKEN
-    ).json()
+    claimed = _claim(client)
+    assert claimed is not None
     assert claimed["id"] == a["id"]
-    client.post(
+    completed = client.post(
         f"/api/v1/jobs/{a['id']}/complete?runner_id=runner-deps",
         headers=TOKEN,
         json={"status": "failed", "error": "boom"},
     )
+    assert completed.status_code == 200, completed.text
     st_b = client.get(f"/api/v1/jobs/{b['id']}", headers=ah).json()
     assert st_b["status"] == "failed"
     assert "前置任务" in (st_b.get("error") or "")
 
     # 不应再被 claim
-    assert (
-        client.post("/api/v1/jobs/claim?runner_id=runner-deps", headers=TOKEN).json()
-        is None
-    )
+    assert _claim(client) is None
 
 
 def test_depends_on_missing_dep_rejected(client: TestClient):
@@ -149,3 +154,45 @@ def test_depends_on_missing_dep_rejected(client: TestClient):
         },
     )
     assert r.status_code == 404
+
+
+def test_dependency_must_share_project():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from autopilot_platform.core.schemas import JobCreate
+    from autopilot_platform.platform.core import api_messages as msg
+    from autopilot_platform.platform.core.models import JobRow
+    from autopilot_platform.platform.services.execution.jobs import create_job
+    from autopilot_platform.platform.services.execution.jobs.lifecycle import (
+        _deps_claim_gate,
+        _fail_pending_dependents,
+    )
+
+    engine = create_engine("sqlite://")
+    try:
+        JobRow.__table__.create(engine)
+        with Session(engine) as db:
+            db.add(JobRow(id="predecessor", status="failed", project_id="other-project"))
+            db.commit()
+            desired_job = JobCreate(
+                project_id="current-project",
+                project_dir="/tmp/deps",
+                platform="web",
+                depends_on=["predecessor"],
+            )
+            with pytest.raises(LookupError, match=msg.JOB_DEPENDENCY_NOT_FOUND.format(job_id="predecessor")):
+                create_job(db, desired_job)
+
+            existing_job = JobRow(id="existing-job", status="pending", project_id="current-project")
+            existing_job.depends_on = ["predecessor"]
+            db.add(existing_job)
+            db.flush()
+            _fail_pending_dependents(db, "predecessor")
+            assert existing_job.status == "pending"
+            assert _deps_claim_gate(db, existing_job.depends_on, existing_job.project_id) == (
+                "blocked",
+                msg.JOB_DEPENDENCY_NOT_FOUND.format(job_id="predecessor"),
+            )
+    finally:
+        engine.dispose()

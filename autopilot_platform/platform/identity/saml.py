@@ -122,8 +122,8 @@ def _load_idp_cert():
     return x509.load_pem_x509_certificate(pem.encode("utf-8"))
 
 
-def _verify_xml_signature(root: Any) -> None:
-    """用 IdP 证书校验 XML-DSig；失败抛 ValueError。
+def _verify_xml_signature(root: Any) -> Any:
+    """用 IdP 证书校验 XML-DSig；失败抛 ValueError，返回已验签子树。
 
     ``root`` 为 ``lxml.etree.fromstring`` 返回的元素（内部类型 ``_Element``，无公开别名）。
     """
@@ -141,9 +141,13 @@ def _verify_xml_signature(root: Any) -> None:
     except ImportError as exc:
         raise ValueError("signxml required for SAML signature verify") from exc
     try:
-        XMLVerifier().verify(root, x509_cert=cert)
+        result = XMLVerifier().verify(root, x509_cert=cert)
     except Exception as exc:  # noqa: BLE001 — 统一为业务错误
         raise ValueError(f"SAML signature verify failed: {exc}") from exc
+    signed_xml = getattr(result, "signed_xml", None)
+    if signed_xml is None:
+        raise ValueError("SAML signature verify returned empty signed_xml")
+    return signed_xml
 
 
 def _parse_xs_datetime(raw: str) -> datetime | None:
@@ -198,18 +202,19 @@ def parse_saml_response(saml_response_b64: str) -> dict[str, str]:
     except etree.XMLSyntaxError as exc:
         raise ValueError("invalid SAMLResponse XML") from exc
 
+    verified_root = root
     if saml_allow_unsigned():
         has_sig = root.find(".//{http://www.w3.org/2000/09/xmldsig#}Signature") is not None
         # 联调：无签名放行；若已签名且配了证书则仍校验（防误配）
         if has_sig and saml_idp_cert_pem():
-            _verify_xml_signature(root)
+            verified_root = _verify_xml_signature(root)
     else:
-        _verify_xml_signature(root)
+        verified_root = _verify_xml_signature(root)
 
-    # Issuer 校验（可选配置）
+    # Issuer 校验（可选配置），仅从已验签子树读取（防 XSW 签名包装攻击）
     expected_idp = saml_idp_entity_id()
     if expected_idp:
-        issuers = root.xpath(
+        issuers = verified_root.xpath(
             "//saml2:Issuer/text() | //saml:Issuer/text()",
             namespaces={
                 "saml2": _NS["saml2"],
@@ -219,16 +224,16 @@ def parse_saml_response(saml_response_b64: str) -> dict[str, str]:
         if not issuers:
             issuers = [
                 (el.text or "").strip()
-                for el in root.iter()
+                for el in verified_root.iter()
                 if _local(el.tag) == "Issuer" and (el.text or "").strip()
             ]
         if issuers and expected_idp not in issuers:
             raise ValueError(f"unexpected Issuer: {issuers[0]!r}")
 
-    _validate_conditions(root)
+    _validate_conditions(verified_root)
 
     nameid = ""
-    for el in root.iter():
+    for el in verified_root.iter():
         if _local(el.tag) == "NameID" and (el.text or "").strip():
             nameid = el.text.strip()
             break
@@ -236,7 +241,7 @@ def parse_saml_response(saml_response_b64: str) -> dict[str, str]:
         raise ValueError("NameID missing in SAMLResponse")
 
     attrs: dict[str, str] = {}
-    for el in root.iter():
+    for el in verified_root.iter():
         if _local(el.tag) == "Attribute":
             name = el.get("Name") or el.get("FriendlyName") or ""
             vals = [
@@ -271,13 +276,8 @@ def resolve_or_create_saml_user(db: Session, *, nameid: str, username: str) -> U
 
     existing = db.scalars(select(UserRow).where(UserRow.username == username)).first()
     if existing is not None:
-        if existing.saml_nameid and existing.saml_nameid != nameid:
-            username = f"{username}_{secrets.token_hex(2)}"
-        else:
-            existing.saml_nameid = nameid
-            db.commit()
-            db.refresh(existing)
-            return existing
+        # 禁止仅凭同名/邮箱前缀自动绑定已有本地账号（防账号接管）
+        username = f"{username}_{secrets.token_hex(2)}"
 
     if not saml_auto_provision():
         raise PermissionError(msg.AUTH_SAML_USER_NOT_PROVISIONED)

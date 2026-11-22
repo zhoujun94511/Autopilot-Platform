@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { storeToRefs } from "pinia";
 import { computed } from "vue";
+import { Building2 } from "lucide-vue-next";
 import { useProjectsStore } from "../../stores/projectsStore";
 import ApSelect from "../common/ApSelect.vue";
 
@@ -17,18 +18,7 @@ const options = computed(() => [
 
 <template>
   <div class="org-select" title="切换当前组织" role="search">
-    <svg
-      viewBox="0 0 24 24"
-      width="14"
-      height="14"
-      stroke="currentColor"
-      stroke-width="2.5"
-      fill="none"
-      class="icon"
-      aria-hidden="true"
-    >
-      <path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6" />
-    </svg>
+    <Building2 :size="14" class="icon" aria-hidden="true" />
     <ApSelect
       size="compact"
       aria-label="当前组织"
@@ -41,19 +31,23 @@ const options = computed(() => [
 
 <style scoped>
 .org-select {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.25rem 0.55rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--surface-soft);
-  min-width: 160px;
-  max-width: 240px;
+  gap: 6px;
+  padding: 0 8px;
+  height: 30px;
+  border-radius: 6px;
+  background: transparent;
+  min-width: 124px;
+  max-width: 210px;
+  transition: background-color 0.15s ease;
+}
+.org-select:hover {
+  background: var(--vben-bg-hover);
 }
 .org-select .icon {
   flex-shrink: 0;
-  color: var(--muted);
+  color: var(--vben-fg-muted);
 }
 .org-select :deep(.ap-select) {
   flex: 1;
@@ -63,8 +57,10 @@ const options = computed(() => [
   border: none;
   background: transparent;
   min-height: 0;
-  padding: 0.1rem 0;
-  font-size: 0.82rem;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--vben-fg);
   box-shadow: none;
 }
 .org-select :deep(.ap-select-trigger:hover:not(:disabled)),

@@ -13,6 +13,7 @@ import { PLATFORM_OPTIONS, isDevicelessPlatform } from "../composables/runTarget
 import DataPager from "./common/DataPager.vue";
 import ExecProjectGateBanner from "./ExecProjectGateBanner.vue";
 import ApSelect from "./common/ApSelect.vue";
+import ApModal from "./ApModal.vue";
 import RunTargetFields from "./common/RunTargetFields.vue";
 
 const projectsStore = useProjectsStore();
@@ -28,12 +29,15 @@ const {
   scheduleArtifactEntries,
   scheduleArtifactEntriesLoading,
   scheduleArtifactEntriesError,
+  artifacts,
   appBuilds,
   dispatchDevices,
 } = storeToRefs(exec);
 const caps = useCapabilities();
 const canCreateSchedule = computed(() => Boolean(caps.canEditProject));
 const formOpen = ref(false);
+const formPending = ref(false);
+const artifactNames = computed(() => new Map(artifacts.value.map((a) => [a.id, a.name || a.filename])));
 
 const list = usePagedList<Schedule>({
   immediate: false,
@@ -47,7 +51,7 @@ const list = usePagedList<Schedule>({
   resetSources: [() => filterProjectId.value],
 });
 
-const { items, total, page, pageSize, loading, hasLoaded, reload, setPage, setPageSize } = list;
+const { items, total, page, pageSize, loading, hasLoaded, error, reload, setPage, setPageSize } = list;
 
 watch(schedulesListVersion, () => void reload(false));
 void reload(true);
@@ -93,12 +97,41 @@ function openCreate() {
 
 function openEdit(s: Schedule) {
   exec.beginEditSchedule(s);
+  scheduleMsg.value = "";
   formOpen.value = true;
 }
 
 function closeForm() {
+  if (formPending.value) return;
   formOpen.value = false;
   exec.cancelEditSchedule();
+}
+
+async function submitSchedule(event: Event) {
+  if (formPending.value) return;
+  formPending.value = true;
+  try {
+    await exec.onCreateSchedule(event);
+  } finally {
+    formPending.value = false;
+  }
+}
+
+function executionSource(schedule: Schedule) {
+  const artifactId = schedule.artifact_id;
+  return artifactId ? (artifactNames.value.get(artifactId) || `制品 ${artifactId.slice(0, 8)}…`) : (schedule.project_dir || "—");
+}
+
+function closeRowActions(event: Event) {
+  const actions = (event.target as HTMLElement | null)?.closest<HTMLDetailsElement>(".schedule-row-menu");
+  if (!actions?.open) return;
+  actions.open = false;
+  actions.querySelector("summary")?.focus();
+}
+
+function runRowAction(event: MouseEvent, action: () => unknown) {
+  closeRowActions(event);
+  void action();
 }
 
 watch(scheduleMsg, (m) => {
@@ -111,11 +144,10 @@ watch(scheduleMsg, (m) => {
 </script>
 
 <template>
-  <section class="panel page-stack schedules-panel">
+  <section class="panel page-stack data-page schedules-panel" aria-labelledby="schedules-title">
     <header class="page-hero">
       <div class="page-hero-copy">
-        <h2>计划</h2>
-        <p class="lede">按时间自动跑任务。点「新建」在弹窗里设置。</p>
+        <h2 id="schedules-title">定时计划</h2>
       </div>
       <div class="page-hero-actions">
         <button
@@ -131,32 +163,28 @@ watch(scheduleMsg, (m) => {
 
     <ExecProjectGateBanner action-hint="新建或编辑计划" />
 
-    <div class="table-wrap">
-      <table>
+    <div v-if="error" class="list-error" role="alert">
+      <span>{{ error }}</span>
+      <button type="button" class="linkish" :disabled="loading" @click="reload(false)">重试</button>
+    </div>
+
+    <div class="table-wrap" tabindex="0" role="region" aria-label="定时计划列表" :aria-busy="loading">
+      <table :class="{ 'has-schedules': items.length }">
         <thead>
           <tr>
-            <th>名称</th>
-            <th>状态</th>
-            <th>次数</th>
-            <th>下次执行</th>
-            <th>执行源</th>
-            <th>操作</th>
+            <th scope="col">名称</th>
+            <th scope="col">状态</th>
+            <th scope="col">次数</th>
+            <th scope="col">下次执行</th>
+            <th scope="col">执行源</th>
+            <th scope="col">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!items.length && hasLoaded">
+          <tr v-if="!items.length && !error">
             <td class="empty" colspan="6">
-              <div class="empty-stack">
-                <span>暂无定时计划</span>
-                <button
-                  v-if="canCreateSchedule"
-                  type="button"
-                  class="linkish-cta"
-                  @click="openCreate"
-                >
-                  去新建计划
-                </button>
-              </div>
+              <span v-if="hasLoaded">暂无定时计划</span>
+              <span v-else role="status">正在加载定时计划…</span>
             </td>
           </tr>
           <tr v-for="s in items" :key="s.id">
@@ -174,50 +202,48 @@ watch(scheduleMsg, (m) => {
               class="mono artifact-info-cell"
               :title="[s.artifact_id, s.app_build_id, s.project_dir].filter(Boolean).join(' | ')"
             >
-              <template v-if="s.artifact_id || s.project_dir || s.app_build_id">
-                <span v-if="s.artifact_id">制品 {{ s.artifact_id.slice(0, 8) }}…</span>
-                <span v-else-if="s.project_dir">{{ s.project_dir }}</span>
-                <span v-else>-</span>
-                <span
-                  v-if="s.app_build_id"
-                  class="app-tag"
-                  :title="s.app_package_id || s.app_build_id"
-                >
-                  +{{
-                    s.app_build_name
-                      ? `${s.app_build_name}${s.app_version_name ? " v" + s.app_version_name : ""}`
-                      : `app ${s.app_build_id.slice(0, 8)}…`
-                  }}
-                </span>
-              </template>
-              <template v-else>-</template>
+              <span>{{ executionSource(s) }}</span>
+              <span
+                v-if="s.app_build_id"
+                class="source-meta"
+                :title="s.app_package_id || s.app_build_id"
+              >
+                {{
+                  s.app_build_name
+                    ? `${s.app_build_name}${s.app_version_name ? " v" + s.app_version_name : ""}`
+                    : `应用 ${s.app_build_id.slice(0, 8)}…`
+                }}
+              </span>
             </td>
             <td>
               <div class="schedule-action-btn-group">
-                <button type="button" class="small" @click="openEdit(s)">编辑</button>
-                <button type="button" class="small primary" @click="exec.onRunScheduleNow(s.id)">
+                <button type="button" class="linkish" @click="openEdit(s)">编辑</button>
+                <button type="button" class="linkish" @click="exec.onRunScheduleNow(s.id)">
                   立即执行
                 </button>
-                <button
-                  type="button"
-                  class="small"
-                  :class="s.enabled ? 'danger' : ''"
-                  @click="exec.onToggleSchedule(s.id, s.enabled)"
+                <details
+                  class="schedule-row-menu"
+                  name="schedule-row-actions"
+                  @keydown.esc.stop="closeRowActions"
                 >
-                  {{ s.enabled ? "停用" : "启用" }}
-                </button>
-                <button
-                  v-if="caps.canShareWrite"
-                  type="button"
-                  class="small"
-                  title="去共享页，把这个计划分享给别人"
-                  @click="ops.selectScheduleForShare(s.id)"
-                >
-                  分享
-                </button>
-                <button type="button" class="small danger" @click="exec.onDeleteSchedule(s.id)">
-                  删除
-                </button>
+                  <summary :aria-label="`${s.name} 的更多操作`">更多</summary>
+                  <div class="schedule-row-menu-actions">
+                    <button type="button" class="linkish" @click="runRowAction($event, () => exec.onToggleSchedule(s.id, s.enabled))">
+                      {{ s.enabled ? "停用" : "启用" }}
+                    </button>
+                    <button
+                      v-if="caps.canShareWrite"
+                      type="button"
+                      class="linkish"
+                      @click="runRowAction($event, () => ops.selectScheduleForShare(s.id))"
+                    >
+                      分享
+                    </button>
+                    <button type="button" class="linkish delete-schedule" @click="runRowAction($event, () => exec.onDeleteSchedule(s.id))">
+                      删除
+                    </button>
+                  </div>
+                </details>
               </div>
             </td>
           </tr>
@@ -235,169 +261,167 @@ watch(scheduleMsg, (m) => {
       @update:page-size="setPageSize"
     />
 
-    <Teleport to="body">
-      <div v-if="formOpen" class="modal-mask" @click.self="closeForm">
-        <section
-          class="modal-card"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="schedule-form-title"
-        >
-          <header class="modal-head">
-            <div>
-              <h3 id="schedule-form-title">
-                {{ scheduleEditId ? "编辑计划" : "新建定时计划" }}
-              </h3>
-              <p class="modal-sub">
-                配置调度、执行源与目标设备（与批跑同一套选择器；可不指定，到点自动领取）。
-              </p>
-            </div>
-            <button type="button" class="icon-btn" aria-label="关闭" @click="closeForm">✕</button>
-          </header>
+    <ApModal
+      v-if="formOpen"
+      :title="scheduleEditId ? '编辑计划' : '新建定时计划'"
+      variant="drawer"
+      :close-on-backdrop="false"
+      :close-on-esc="!formPending"
+      @close="closeForm"
+    >
+      <form class="schedule-form-body" :aria-busy="formPending" @submit.prevent="submitSchedule">
+        <div class="schedule-form-grid">
+          <div class="s-field">
+            <label for="schedule-name">计划名称 <span class="req" aria-hidden="true">*</span></label>
+            <input id="schedule-name" v-model="scheduleForm.name" required data-autofocus />
+          </div>
+          <div class="s-field">
+            <label for="schedule-project">项目 <span class="req" aria-hidden="true">*</span></label>
+            <ApSelect
+              id="schedule-project"
+              v-model="scheduleForm.project_id"
+              required
+              aria-label="项目"
+              :options="scheduleProjectOptions"
+            />
+          </div>
+          <div class="s-field">
+            <label for="schedule-platform">平台</label>
+            <ApSelect
+              id="schedule-platform"
+              v-model="scheduleForm.platform"
+              aria-label="平台"
+              :options="schedulePlatformOptions"
+            />
+          </div>
+        </div>
 
-          <form class="modal-body" @submit.prevent="exec.onCreateSchedule">
-            <div class="schedule-form-grid">
-              <div class="s-field">
-                <label>计划名称 *</label>
-                <input v-model="scheduleForm.name" required placeholder="Smoke_Nightly" />
-              </div>
-              <div class="s-field">
-                <label>工程制品 ID</label>
-                <input
-                  v-model="scheduleForm.artifact_id"
-                  placeholder="上传后点选或粘贴"
-                />
-              </div>
-              <div class="s-field" v-if="!isDeviceless">
-                <label>应用资源（可选）</label>
-                <ApSelect
-                  v-model="scheduleForm.app_build_id"
-                  aria-label="应用资源"
-                  :options="scheduleAppOptions"
-                />
-              </div>
-              <div class="s-field">
-                <label>Runner 本地工程路径</label>
-                <input
-                  v-model="scheduleForm.project_dir"
-                  placeholder="/opt/workspace/suite"
-                />
-              </div>
-              <div class="s-field">
-                <label>项目空间 <span class="req">*</span></label>
-                <ApSelect
-                  v-model="scheduleForm.project_id"
-                  required
-                  aria-label="项目空间"
-                  :options="scheduleProjectOptions"
-                />
-              </div>
-              <div class="s-field">
-                <label>平台</label>
-                <ApSelect
-                  v-model="scheduleForm.platform"
-                  aria-label="平台"
-                  :options="schedulePlatformOptions"
-                />
-              </div>
-              <div class="s-field flex-wide device-picker-field">
-                <RunTargetFields
-                  :model="scheduleForm"
-                  :devices="dispatchDevices"
-                  compact
-                  id-prefix="schedule"
-                />
-              </div>
-              <div class="s-field">
-                <label>完成后通知地址</label>
-                <input v-model="scheduleForm.webhook_url" placeholder="可选" />
-              </div>
-              <div class="s-field">
-                <label>初始延迟（秒）</label>
-                <input v-model.number="scheduleForm.delay_sec" type="number" min="0" />
-              </div>
-              <div class="s-field">
-                <label>循环间隔（秒）</label>
-                <input v-model.number="scheduleForm.interval_sec" type="number" min="0" />
-              </div>
-              <div class="s-field">
-                <label>最大次数（0=无限）</label>
-                <input v-model.number="scheduleForm.repeat" type="number" min="0" />
-              </div>
-              <div class="s-field checkbox-field">
-                <label class="checkbox-label">
-                  <input v-model="scheduleForm.stop_on_fail" type="checkbox" />
-                  <span>失败即停</span>
-                </label>
-              </div>
+        <section class="schedule-form-section" aria-labelledby="schedule-timing-title">
+          <h4 id="schedule-timing-title">调度</h4>
+          <div class="schedule-form-grid">
+            <div class="s-field">
+              <label for="schedule-delay">初始延迟（秒）</label>
+              <input id="schedule-delay" v-model.number="scheduleForm.delay_sec" type="number" min="0" />
             </div>
-
-            <div
-              v-if="scheduleForm.artifact_id.trim()"
-              class="entry-pick"
-              style="margin-top: 0.75rem"
-            >
-              <div class="entry-pick-head">
-                <span class="entry-pick-title">勾选要执行的用例</span>
-                <span class="form-field-hint" style="margin: 0">
-                  {{ scheduleForm.entry_paths.length }}/{{ scheduleArtifactEntries.length }}
-                </span>
-                <button type="button" class="linkish" @click="exec.selectAllScheduleEntryPaths">
-                  全选
-                </button>
-                <button type="button" class="linkish" @click="exec.clearScheduleEntryPaths">
-                  清空
-                </button>
-              </div>
-              <p v-if="scheduleArtifactEntriesLoading" class="form-field-hint">
-                正在加载用例清单…
-              </p>
-              <p
-                v-else-if="scheduleArtifactEntriesError"
-                class="form-field-hint"
-                style="color: var(--bad)"
-              >
-                {{ scheduleArtifactEntriesError }}
-              </p>
-              <p v-else-if="!scheduleArtifactEntries.length" class="form-field-hint">
-                该制品未发现 .tc / .ts / .tp 入口；留空则执行全部发现用例。
-              </p>
-              <div v-else class="entry-pick-list">
-                <label
-                  v-for="e in scheduleArtifactEntries"
-                  :key="e.path"
-                  class="entry-pick-row"
-                  :class="{ checked: scheduleForm.entry_paths.includes(e.path) }"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="scheduleForm.entry_paths.includes(e.path)"
-                    @change="exec.toggleScheduleEntryPath(e.path)"
-                  />
-                  <span class="kind-mini-badge" :class="e.kind">{{ e.kind }}</span>
-                  <span class="entry-name">{{ e.name || e.path }}</span>
-                  <span class="mono entry-path">{{ e.path }}</span>
-                </label>
-              </div>
+            <div class="s-field">
+              <label for="schedule-interval">循环间隔（秒）</label>
+              <input id="schedule-interval" v-model.number="scheduleForm.interval_sec" type="number" min="0" />
             </div>
-
-            <p
-              v-if="scheduleMsg"
-              class="msg"
-              :class="scheduleMsgOk ? 'ok' : 'bad'"
-            >
-              {{ scheduleMsg }}
-            </p>
-            <footer class="modal-actions">
-              <button type="button" class="ghost" @click="closeForm">取消</button>
-              <button type="submit" class="primary">
-                {{ scheduleEditId ? "保存修改" : "创建计划" }}
-              </button>
-            </footer>
-          </form>
+            <div class="s-field">
+              <label for="schedule-repeat">最大次数（0 为无限）</label>
+              <input id="schedule-repeat" v-model.number="scheduleForm.repeat" type="number" min="0" />
+            </div>
+          </div>
+          <label class="checkbox-label">
+            <input v-model="scheduleForm.stop_on_fail" type="checkbox" />
+            <span>失败即停</span>
+          </label>
         </section>
-      </div>
-    </Teleport>
+
+        <section class="schedule-form-section" aria-labelledby="schedule-source-title">
+          <h4 id="schedule-source-title">工程来源</h4>
+          <div class="schedule-form-grid source-fields">
+            <div class="s-field">
+              <label for="schedule-artifact">工程制品 ID</label>
+              <input id="schedule-artifact" v-model="scheduleForm.artifact_id" />
+            </div>
+            <div class="s-field">
+              <label for="schedule-dir">执行节点上的工程路径</label>
+              <input id="schedule-dir" v-model="scheduleForm.project_dir" placeholder="/opt/workspace/suite" />
+            </div>
+          </div>
+          <p class="form-field-hint">填写制品 ID 或执行节点可访问的路径，至少填一项。</p>
+          <div
+            v-if="scheduleForm.artifact_id.trim()"
+            class="entry-pick"
+          >
+            <div class="entry-pick-head">
+              <span class="entry-pick-title">勾选要执行的用例</span>
+              <span class="form-field-hint">
+                {{ scheduleForm.entry_paths.length }}/{{ scheduleArtifactEntries.length }}
+              </span>
+              <button type="button" class="linkish" @click="exec.selectAllScheduleEntryPaths">
+                全选
+              </button>
+              <button type="button" class="linkish" @click="exec.clearScheduleEntryPaths">
+                清空
+              </button>
+            </div>
+            <p v-if="scheduleArtifactEntriesLoading" class="form-field-hint">
+              正在加载用例清单…
+            </p>
+            <p
+              v-else-if="scheduleArtifactEntriesError"
+              class="form-field-hint field-error"
+            >
+              {{ scheduleArtifactEntriesError }}
+            </p>
+            <p v-else-if="!scheduleArtifactEntries.length" class="form-field-hint">
+              该制品未发现 .tc / .ts / .tp 入口；留空则执行全部发现用例。
+            </p>
+            <div v-else class="entry-pick-list">
+              <label
+                v-for="e in scheduleArtifactEntries"
+                :key="e.path"
+                class="entry-pick-row"
+                :class="{ checked: scheduleForm.entry_paths.includes(e.path) }"
+              >
+                <input
+                  type="checkbox"
+                  :checked="scheduleForm.entry_paths.includes(e.path)"
+                  @change="exec.toggleScheduleEntryPath(e.path)"
+                />
+                <span class="kind-mini-badge" :class="e.kind">{{ e.kind }}</span>
+                <span class="entry-name">{{ e.name || e.path }}</span>
+                <span class="mono entry-path">{{ e.path }}</span>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <section class="schedule-form-section" aria-labelledby="schedule-execution-title">
+          <h4 id="schedule-execution-title">执行设置</h4>
+          <div v-if="!isDeviceless" class="s-field">
+            <label for="schedule-app">应用资源（可选）</label>
+            <ApSelect
+              id="schedule-app"
+              v-model="scheduleForm.app_build_id"
+              aria-label="应用资源"
+              :options="scheduleAppOptions"
+            />
+          </div>
+          <RunTargetFields
+            :model="scheduleForm"
+            :devices="dispatchDevices"
+            compact
+            id-prefix="schedule"
+          />
+        </section>
+
+        <details class="schedule-notification">
+          <summary>完成通知</summary>
+          <div class="s-field">
+            <label for="schedule-webhook">完成后通知地址（可选）</label>
+            <input id="schedule-webhook" v-model="scheduleForm.webhook_url" />
+          </div>
+        </details>
+
+        <p
+          v-if="scheduleMsg"
+          class="msg"
+          :class="scheduleMsgOk ? 'ok' : 'bad'"
+          :role="scheduleMsgOk ? 'status' : 'alert'"
+        >
+          {{ scheduleMsg }}
+        </p>
+        <footer class="modal-actions">
+          <button type="button" class="ghost" :disabled="formPending" @click="closeForm">取消</button>
+          <button type="submit" class="primary" :disabled="formPending">
+            {{ formPending ? "保存中…" : scheduleEditId ? "保存修改" : "创建计划" }}
+          </button>
+        </footer>
+      </form>
+    </ApModal>
   </section>
 </template>
 
@@ -407,142 +431,129 @@ watch(scheduleMsg, (m) => {
   max-width: none;
 }
 
+.schedules-panel .table-wrap:focus-visible {
+  outline-offset: -2px;
+}
+
+.schedules-panel .has-schedules {
+  min-width: 690px;
+}
+
+.list-error {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--bad);
+}
+
 .schedule-name-cell {
   font-weight: 600;
 }
 
 .next-run-cell {
-  color: var(--warning-soft-fg);
+  color: var(--muted);
 }
 
 .artifact-info-cell {
   max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--muted);
 }
 
-.app-tag {
-  margin-left: 0.35rem;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--accent-text);
+.artifact-info-cell > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-meta {
+  margin-block-start: 0.25rem;
+  font-size: var(--font-size-meta);
 }
 
 .schedule-action-btn-group {
   display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem;
+  white-space: nowrap;
 }
 
-.linkish-cta {
-  background: none;
-  border: none;
-  color: var(--accent-text, #1565c0);
+.schedule-row-menu > summary {
   cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 0;
-  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+
+.schedule-row-menu-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.schedule-row-menu-actions .delete-schedule {
+  color: var(--bad);
 }
 
 td.empty {
   text-align: center;
+  height: 112px;
 }
 
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 1.5rem;
-  overflow-y: auto;
-  background: var(--overlay);
-}
-
-.modal-card {
-  width: min(820px, 100%);
-  margin: auto 0;
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elevated-shadow);
-  max-height: calc(100vh - 3rem);
+.schedule-form-body {
   display: flex;
   flex-direction: column;
-}
-
-.device-picker-field {
-  flex: 1 1 100%;
-  min-width: 100%;
-}
-
-.modal-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1.1rem 1.2rem 0.85rem;
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
-}
-
-.modal-head h3 {
-  margin: 0 0 0.3rem;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text);
-}
-
-.modal-sub {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.icon-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.2rem 0.4rem;
-  border-radius: var(--radius-sm);
-}
-
-.icon-btn:hover {
-  color: var(--text);
-  background: var(--action-hover);
-}
-
-.modal-body {
-  padding: 1.1rem 1.2rem 1.2rem;
-  overflow-y: auto;
+  gap: 1rem;
 }
 
 .schedule-form-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
+  gap: var(--space-3);
   align-items: flex-end;
+}
+
+.schedule-form-grid.source-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+.schedule-form-section,
+.schedule-notification,
+.modal-actions {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 0.85rem;
+}
+
+.schedule-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.schedule-form-section h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-body);
+  font-weight: 650;
+}
+
+.schedule-notification summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.schedule-notification .s-field {
+  margin-block-start: var(--space-2);
 }
 
 .s-field {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  flex: 1;
-  min-width: 140px;
-}
-
-.s-field.flex-wide {
-  flex: 2;
-  min-width: 220px;
+  min-width: 0;
 }
 
 .s-field label {
@@ -551,18 +562,12 @@ td.empty {
   color: var(--muted);
 }
 
-.checkbox-field {
-  padding-bottom: 0.55rem;
-  min-width: 140px;
-}
-
 .checkbox-label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
-  font-weight: 700 !important;
-  color: var(--text) !important;
+  width: fit-content;
 }
 
 .checkbox-label input[type="checkbox"] {
@@ -573,17 +578,26 @@ td.empty {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
-  margin-top: 1rem;
 }
 
 .msg {
-  margin: 0.75rem 0 0;
+  margin: 0;
   font-size: 0.82rem;
 }
 .msg.ok {
   color: var(--ok);
 }
 .msg.bad {
+  color: var(--bad);
+}
+
+.form-field-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+
+.field-error {
   color: var(--bad);
 }
 
@@ -608,14 +622,14 @@ td.empty {
   max-height: 180px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.35rem;
   background: var(--control-bg, var(--surface));
 }
 
 .entry-pick-row {
   display: grid;
-  grid-template-columns: auto auto 1fr auto;
+  grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 9rem);
   gap: 0.5rem;
   align-items: center;
   padding: 0.35rem 0.55rem;
@@ -634,8 +648,8 @@ td.empty {
 
 .kind-mini-badge {
   font-size: 0.68rem;
-  text-transform: uppercase;
-  opacity: 0.8;
+  text-transform: none;
+  color: var(--muted);
 }
 
 .entry-name {
@@ -647,14 +661,27 @@ td.empty {
 .entry-path {
   font-size: 0.72rem;
   color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .linkish {
   background: none;
   border: none;
-  color: var(--accent, #3b6);
+  color: var(--accent-text);
   cursor: pointer;
   font-size: 0.78rem;
   padding: 0;
+}
+
+@media (max-width: 560px) {
+  .entry-pick-row {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .entry-path {
+    grid-column: 3;
+  }
 }
 </style>

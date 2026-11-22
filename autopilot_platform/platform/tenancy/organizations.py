@@ -359,6 +359,15 @@ def remove_org_member(db: Session, org_id: str, user_id: str, auth: AuthContext)
     if member is None:
         raise LookupError(msg.ORG_MEMBER_NOT_FOUND)
     if member.role == "owner":
+        if (getattr(auth, "role", "") or "") != "admin":
+            caller = db.scalars(
+                select(OrganizationMemberRow).where(
+                    OrganizationMemberRow.org_id == oid,
+                    OrganizationMemberRow.user_id == auth.user_id,
+                )
+            ).first()
+            if caller is None or caller.role != "owner":
+                raise PermissionError(msg.ORG_OWNER_ADMIN_REQUIRED)
         owners = len(
             db.scalars(
                 select(OrganizationMemberRow).where(

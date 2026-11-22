@@ -1,4 +1,5 @@
-import { ref, watch, type Ref, type WatchSource } from "vue";
+import { computed, onScopeDispose, ref, watch, type Ref, type WatchSource } from "vue";
+import { apiErrorMessage } from "../api";
 import {
   DEFAULT_PAGE_SIZE,
   type PagedResult,
@@ -35,6 +36,9 @@ export function usePagedList<T>(options: UsePagedListOptions<T>) {
   const loading = ref(false);
   const hasLoaded = ref(false);
   const universeEmpty = ref(false);
+  const error = ref("");
+  const refreshing = computed(() => loading.value && hasLoaded.value);
+  let requestId = 0;
 
   function rememberUniverse(nextTotal: number) {
     if (!options.isUnfiltered) return;
@@ -44,24 +48,28 @@ export function usePagedList<T>(options: UsePagedListOptions<T>) {
 
   async function reload(resetPage = false) {
     if (resetPage) page.value = 1;
+    const currentRequest = ++requestId;
     loading.value = true;
+    error.value = "";
     try {
       const res = await options.fetchPage({
         page: page.value,
         pageSize: pageSize.value,
       });
+      if (currentRequest !== requestId) return;
       items.value = res.items;
       total.value = res.total;
       page.value = res.page;
       pageSize.value = res.page_size;
       rememberUniverse(res.total);
-    } catch {
-      items.value = [];
-      total.value = 0;
-      rememberUniverse(0);
+    } catch (cause) {
+      if (currentRequest !== requestId) return;
+      error.value = apiErrorMessage(cause) || "无法加载列表，请重试。";
     } finally {
-      loading.value = false;
-      hasLoaded.value = true;
+      if (currentRequest === requestId) {
+        loading.value = false;
+        hasLoaded.value = true;
+      }
     }
   }
 
@@ -93,10 +101,15 @@ export function usePagedList<T>(options: UsePagedListOptions<T>) {
 
   if (options.resetSources?.length) {
     watch(options.resetSources, () => {
+      items.value = [];
+      total.value = 0;
+      hasLoaded.value = false;
       universeEmpty.value = false;
       void reload(true);
     });
   }
+
+  onScopeDispose(() => { requestId += 1; });
 
   if (options.filterSources?.length) {
     watch(options.filterSources, () => {
@@ -112,6 +125,8 @@ export function usePagedList<T>(options: UsePagedListOptions<T>) {
     pageSize,
     loading,
     hasLoaded,
+    error,
+    refreshing,
     universeEmpty,
     reload,
     setPage,

@@ -3,6 +3,7 @@
  * 设备展台卡片网格（AUD-2026-12 Wave 5 + UX 对齐）。
  */
 import type { Device } from "../api";
+import { Copy } from "lucide-vue-next";
 import { useAdminStore } from "../stores/adminStore";
 import { useExecStore } from "../stores/execution";
 import {
@@ -12,7 +13,6 @@ import {
   deviceKey,
   deviceNickname,
   displayName,
-  normalizePlatform,
   occupyLabel,
   platformBadgeLabel,
   remainingLabel,
@@ -57,6 +57,7 @@ function hasPrimaryActions(d: Device): boolean {
     d.can_reserve ||
       d.can_release_reservation ||
       d.can_manage ||
+      canOpenRemote(d, actor) ||
       canObserveRemote(d, actor),
   );
 }
@@ -81,20 +82,18 @@ function hasPrimaryActions(d: Device): boolean {
         v-for="d in group.items"
         :key="deviceKey(d)"
         class="device-card"
-        :class="[
-          normalizePlatform(d.platform),
-          { busy: !!d.busy, maint: !!d.admin_disabled },
-        ]"
       >
         <div class="device-card-top">
-          <span
-            v-if="!showPlatformSections"
-            class="platform-badge"
-            :class="normalizePlatform(d.platform)"
-          >
-            <span class="platform-dot" aria-hidden="true"></span>
-            {{ platformBadgeLabel(d.platform) }}
-          </span>
+          <h4 class="device-card-title">
+            {{ displayName(d) }}
+            <span
+              v-if="d.health_note"
+              class="health-note"
+              role="img"
+              :aria-label="`健康提示：${d.health_note}`"
+              :title="d.health_note"
+            >!</span>
+          </h4>
           <div class="device-card-status">
             <template v-if="deviceAvailability(d).kind === 'maint'">
               <span class="maint-badge">{{ deviceAvailability(d).label }}</span>
@@ -107,34 +106,24 @@ function hasPrimaryActions(d: Device): boolean {
           </div>
         </div>
 
-        <h4 class="device-card-title">
-          {{ displayName(d) }}
-          <span
-            v-if="d.health_note"
-            class="health-note"
-            role="img"
-            :aria-label="`健康提示：${d.health_note}`"
-            :title="d.health_note"
-          >!</span>
-        </h4>
-
         <p class="device-card-summary">
+          <span v-if="!showPlatformSections">{{ platformBadgeLabel(d.platform) }} ·</span>
           <span>{{ deviceCardSummary(d) }}</span>
           <span v-if="deviceNickname(d)" class="owner-tag">{{ deviceNickname(d) }}</span>
           <span v-if="d.owner_username" class="owner-tag">{{ d.owner_username }}</span>
         </p>
 
-        <div class="device-card-id-row" :title="d.udid">
+        <div v-if="!expandedMeta[deviceKey(d)]" class="device-card-id-row" :title="d.udid">
           <span class="meta-label">UDID</span>
           <span class="mono runner-id">{{ udidSummary(d.udid) }}</span>
           <button
             type="button"
-            class="icon-copy"
+            class="icon-copy-btn"
             title="复制 UDID"
             aria-label="复制 UDID"
             @click.stop="admin.copyText(d.udid, '已复制 UDID')"
           >
-            复制
+            <Copy :size="13" aria-hidden="true" />
           </button>
         </div>
 
@@ -197,25 +186,25 @@ function hasPrimaryActions(d: Device): boolean {
             <span class="mono break" :title="d.udid">{{ d.udid }}</span>
             <button
               type="button"
-              class="icon-copy"
+              class="icon-copy-btn"
               title="复制 UDID"
               aria-label="复制完整 UDID"
               @click.stop="admin.copyText(d.udid, '已复制 UDID')"
             >
-              复制
+              <Copy :size="13" aria-hidden="true" />
             </button>
           </div>
           <div class="meta-row">
-            <span class="meta-label">Runner</span>
+              <span class="meta-label">执行节点</span>
             <span class="mono break" :title="d.runner_id">{{ runnerSummary(d.runner_id) }}</span>
             <button
               type="button"
-              class="icon-copy"
-              title="复制 Runner ID"
-              aria-label="复制 Runner ID"
-              @click.stop="admin.copyText(d.runner_id, '已复制 Runner ID')"
+              class="icon-copy-btn"
+              title="复制执行节点编号"
+              aria-label="复制执行节点编号"
+              @click.stop="admin.copyText(d.runner_id, '已复制执行节点编号')"
             >
-              复制
+              <Copy :size="13" aria-hidden="true" />
             </button>
           </div>
           <div class="meta-row">
@@ -313,8 +302,8 @@ function hasPrimaryActions(d: Device): boolean {
 
 .device-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 0.85rem;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 14px;
 }
 
 @media (max-width: 640px) {
@@ -337,47 +326,18 @@ function hasPrimaryActions(d: Device): boolean {
   background: var(--surface-primary);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--panel-shadow);
-  border-top: 3px solid var(--border-medium);
-  transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
   min-width: 0;
-}
-
-.device-card:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-secondary);
-}
-
-.device-card.android {
-  border-top-color: var(--ok);
-}
-.device-card.ios {
-  /* 平台色用紫，勿与占用 claimed 青混淆 */
-  border-top-color: var(--purple-soft-fg);
-}
-.device-card.web {
-  border-top-color: var(--accent);
-}
-.device-card.busy {
-  background: linear-gradient(
-    180deg,
-    var(--claimed-soft-bg) 0%,
-    var(--surface-primary) 42%
-  );
-}
-.device-card.maint {
-  opacity: 0.88;
 }
 
 .device-card-top {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.5rem;
 }
 
 .device-card-status {
-  margin-left: auto;
+  flex: 0 0 auto;
 }
 
 .device-card-title {
@@ -448,13 +408,12 @@ function hasPrimaryActions(d: Device): boolean {
 }
 
 .owner-tag {
-  display: inline-flex;
-  padding: 0.05rem 0.35rem;
-  border-radius: 999px;
-  background: var(--chip-bg);
-  border: 1px solid var(--line);
   color: var(--muted);
-  font-size: 0.68rem;
+}
+
+.owner-tag::before {
+  content: "·";
+  margin-inline-end: 0.35rem;
 }
 
 .device-card-occupy {
@@ -485,10 +444,7 @@ function hasPrimaryActions(d: Device): boolean {
   flex-wrap: wrap;
   gap: 0.35rem;
   margin-top: 0.2rem;
-  padding: 0.4rem 0.5rem;
-  border-radius: var(--radius-sm);
-  background: var(--chip-bg);
-  border: 1px solid var(--line-soft);
+  padding-block: 0.2rem;
 }
 
 .device-card-job .linkish {
@@ -513,10 +469,6 @@ function hasPrimaryActions(d: Device): boolean {
 
 .job-id-tag {
   font-size: 0.68rem;
-  background-color: var(--btn-bg);
-  border: 1px solid var(--line);
-  padding: 0.05rem 0.25rem;
-  border-radius: 3px;
   color: var(--muted);
   font-family: ui-monospace, monospace;
 }
@@ -648,7 +600,7 @@ function hasPrimaryActions(d: Device): boolean {
   font-size: 0.72rem;
   font-weight: 700;
   padding: 0.15rem 0.5rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--warning-soft-fg);
   background: var(--warning-soft-bg);
   border: 1px solid var(--warning-soft-border);

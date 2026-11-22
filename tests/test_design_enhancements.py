@@ -494,14 +494,14 @@ def test_chat_build_messages_language_and_pairing():
 
 
 def test_batch_generate_parallel_note(client: TestClient, monkeypatch):
-    """process_mode=parallel 且开启并行开关时真正并行，summary 标明 executed_mode。"""
+    """开启并行开关后，SQLite 仍顺序执行并说明原因。"""
     h = _login(client)
     monkeypatch.setattr(
-        "autopilot_platform.platform.ops.runtime_config.parallel_processing_enabled",
+        "autopilot_platform.platform.services.design.cases.generation.parallel_processing_enabled",
         lambda: True,
     )
     monkeypatch.setattr(
-        "autopilot_platform.platform.ops.runtime_config.design_max_workers",
+        "autopilot_platform.platform.services.design.cases.generation.design_max_workers",
         lambda: 2,
     )
 
@@ -545,13 +545,14 @@ def test_batch_generate_parallel_note(client: TestClient, monkeypatch):
     payload = r.json()
     assert payload["summary"]["process_mode"] == "parallel"
     assert payload["summary"]["executed_mode"] == "sequential"
+    assert payload["summary"]["parallel_enabled"] is True
     assert "SQLite" in (payload["summary"].get("note") or "")
 
 
 def test_batch_generate_parallel_disabled_falls_back(client: TestClient, monkeypatch):
     h = _login(client)
     monkeypatch.setattr(
-        "autopilot_platform.platform.ops.runtime_config.parallel_processing_enabled",
+        "autopilot_platform.platform.services.design.cases.generation.parallel_processing_enabled",
         lambda: False,
     )
 
@@ -594,6 +595,7 @@ def test_batch_generate_parallel_disabled_falls_back(client: TestClient, monkeyp
     assert r.status_code == 200, r.text
     payload = r.json()
     assert payload["summary"]["executed_mode"] == "sequential"
+    assert payload["summary"]["parallel_enabled"] is False
     assert "AP_ENABLE_PARALLEL_PROCESSING=0" in (payload["summary"].get("note") or "")
 
 

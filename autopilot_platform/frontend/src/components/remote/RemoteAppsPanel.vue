@@ -302,7 +302,7 @@ async function installSelected(event: Event) {
   flex-shrink: 0;
   width: 2rem;
   height: 2rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   display: grid;
   place-items: center;
   font-size: 0.82rem;
@@ -338,7 +338,7 @@ async function installSelected(event: Event) {
   font-size: 0.62rem;
   line-height: 1.2;
   padding: 0.08rem 0.38rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   font-weight: 600;
 }
 

@@ -167,7 +167,7 @@ def test_org_member_without_project_cannot_see_content(client: TestClient):
     assert all(x.get("project_id") != "p-iso" for x in page_items(r.json()))
 
     # 制品 / Job：直链 403；列表不含
-    assert client.get(f"/api/v1/artifacts?project_id=p-iso", headers=oo).status_code == 403
+    assert client.get("/api/v1/artifacts?project_id=p-iso", headers=oo).status_code == 403
     assert client.get("/api/v1/jobs?project_id=p-iso", headers=oo).status_code == 403
     arts = page_items(client.get("/api/v1/artifacts", headers=oo).json())
     assert all(a.get("id") != aid for a in arts)

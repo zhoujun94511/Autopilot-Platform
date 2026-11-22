@@ -159,18 +159,19 @@ async def device_remote_websocket(
                 connection_id=connection_id,
             )
         else:
-            # 先 accept，再首帧鉴权，避免把 JWT 放进 URL query。
+            # 先 accept，完成首帧鉴权与会话校验后再加入广播 Hub，避免未鉴权连接收到画面帧。
+            await websocket.accept()
+            auth, auth_via = await _browser_authenticate(websocket, session_id)
+            session_info = remote_svc.get_remote_session(db, session_id, auth)
+            participant_id = session_info.participant_id or ""
             socket = await hub.connect(
                 session_id,
                 websocket,
                 role=role,
-                participant_id="",
+                participant_id=participant_id,
                 connection_id=connection_id,
+                accept=False,
             )
-            auth, auth_via = await _browser_authenticate(websocket, session_id)
-            session_info = remote_svc.get_remote_session(db, session_id, auth)
-            participant_id = session_info.participant_id or ""
-            socket.participant_id = participant_id
     except HTTPException as exc:
         if socket is not None:
             hub.disconnect(session_id, socket)

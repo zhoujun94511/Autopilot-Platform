@@ -17,7 +17,7 @@
 
 </div>
 
-AutoPilot Platform 是 AutoPilot 自动化体系的服务端与 Web 工作台，面向组织提供测试设计评审、工程制品与应用版本管理、远程批跑调度、报告归档及实验室设备统一治理等能力。与 [AutoPilot IDE](https://github.com/zhoujun94511/AutoPilot) 配套使用。该仓库是桌面 IDE：负责用例编排、本机验证，并把工程制品提交到本平台做评审、调度与归档，支撑测试团队从设计到执行、从本机到实验室的标准化交付。
+AutoPilot Platform 是 AutoPilot 自动化体系的服务端与 Web 工作台，面向组织提供测试设计评审、工程制品与应用版本管理、远程批跑调度、报告归档及实验室设备统一治理等能力。与 [AutoPilot IDE](https://github.com/zhoujun94511/AutoPilot) 配套使用。Platform 负责评审、调度、归档和设备治理，IDE 负责用例编排与本机验证，支撑测试团队从设计到执行、从本机到实验室的标准化交付。
 
 ![Web 工作台概览](docs/pic/platorm-interface.png)
 

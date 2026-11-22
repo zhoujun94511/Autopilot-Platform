@@ -16,6 +16,8 @@ export type ProjectsDeps = {
 };
 
 let d: ProjectsDeps;
+let orgRequestId = 0;
+let projectRequestId = 0;
 
 export function bindProjectsDeps(deps: ProjectsDeps): void {
   d = deps;
@@ -27,72 +29,92 @@ function requireDeps(): ProjectsDeps {
 }
 
 export async function refreshOrgs() {
+  const deps = requireDeps();
+  const userId = deps.user.value?.id;
+  const requestId = ++orgRequestId;
   try {
-    P.orgs.value = await fetchAllOrgs();
+    const orgs = await fetchAllOrgs();
+    if (requestId !== orgRequestId || userId !== deps.user.value?.id) return;
+    P.orgs.value = orgs;
   } catch {
-    P.orgs.value = [];
+    return;
   }
   const oid = P.filterOrgId.value.trim();
   if (!oid) return;
   if (requireDeps().user.value?.role === "admin") return;
   if (!P.orgs.value.some((o) => o.id === oid)) {
+    clearProjectSelection();
+    P.projects.value = [];
     P.filterOrgId.value = "";
     saveOrgId("");
+    void refreshProjects();
   }
 }
 
 export async function refreshProjects(): Promise<{ clearedProject: boolean }> {
+  const deps = requireDeps();
   const oid = P.filterOrgId.value.trim();
+  const userId = deps.user.value?.id;
+  const requestId = ++projectRequestId;
   try {
-    P.projects.value = await fetchAllProjects(oid || undefined);
+    const projects = await fetchAllProjects(oid || undefined);
+    if (requestId !== projectRequestId || oid !== P.filterOrgId.value.trim() ||
+        userId !== deps.user.value?.id) return { clearedProject: false };
+    P.projects.value = projects;
   } catch {
-    P.projects.value = [];
+    return { clearedProject: false };
   }
   const pid = P.filterProjectId.value.trim();
   if (!pid) return { clearedProject: false };
   const hit = P.projects.value.find((p) => p.id === pid);
-  const poid = String((hit as { org_id?: string } | undefined)?.org_id || "").trim();
+  const poid = hit?.org_id?.trim();
   // 不在可见列表，或与当前组织不一致 → 清空（防串租户）
   const invalid =
     !hit || (Boolean(oid) && Boolean(poid) && poid !== oid);
   if (!invalid) return { clearedProject: false };
+  clearProjectSelection();
+  return { clearedProject: true };
+}
+
+function clearProjectSelection() {
+  const pid = P.filterProjectId.value.trim();
   P.filterProjectId.value = "";
   P.persistProjectId("");
   if (P.memberForm.project_id === pid) P.memberForm.project_id = "";
   if (jobForm.project_id === pid) jobForm.project_id = "";
   if (scheduleForm.project_id === pid) scheduleForm.project_id = "";
-  return { clearedProject: true };
 }
 
 export function selectOrg(id: string) {
   const deps = requireDeps();
   const oid = (id || "").trim();
   const prev = P.filterOrgId.value.trim();
-  const prevPid = P.filterProjectId.value.trim();
-  P.filterOrgId.value = oid;
-  saveOrgId(oid);
-  if (oid !== prev) {
-    void refreshProjects().then(({ clearedProject }) => {
-      if (clearedProject || (prevPid && !P.filterProjectId.value.trim())) {
-        notify("已切换组织：原项目不在本组织可见范围内，已清空项目选择。", "warn");
-      }
-      void deps.refreshForTab(deps.activeTab.value);
-    });
+  if (oid === prev) {
+    void refreshProjects();
+    void deps.refreshForTab(deps.activeTab.value);
     return;
   }
+  if (oid) {
+    const pid = P.filterProjectId.value.trim();
+    const project = P.projects.value.find((row) => row.id === pid);
+    if (pid && project?.org_id?.trim() !== oid) {
+      clearProjectSelection();
+      notify("已切换组织，已清空原项目选择。", "warn");
+    }
+    P.projects.value = P.projects.value.filter((row) => row.org_id?.trim() === oid);
+  }
+  P.filterOrgId.value = oid;
+  saveOrgId(oid);
   void refreshProjects();
-  void deps.refreshForTab(deps.activeTab.value);
 }
 
 export function selectProject(id: string) {
-  const deps = requireDeps();
   const pid = (id || "").trim();
   P.filterProjectId.value = pid;
   P.persistProjectId(pid);
   jobForm.project_id = pid;
   P.memberForm.project_id = pid;
   scheduleForm.project_id = pid;
-  void deps.refreshForTab(deps.activeTab.value);
 }
 
 export async function onCreateProject(ev: Event) {
@@ -102,19 +124,20 @@ export async function onCreateProject(ev: Event) {
     P.projectMsg.value = "请先在顶栏选择组织 / 事业部，再创建项目";
     return;
   }
+  const id = P.projectForm.id.trim();
+  const name = P.projectForm.name.trim() || id;
   try {
     await api("/api/v1/projects", {
       method: "POST",
       body: JSON.stringify({
-        id: P.projectForm.id.trim(),
-        name: P.projectForm.name.trim() || P.projectForm.id.trim(),
+        id,
+        name,
         org_id: oid,
       }),
     });
-    P.projectMsg.value = "已创建项目空间";
-    jobForm.project_id = P.projectForm.id.trim();
-    P.filterProjectId.value = P.projectForm.id.trim();
-    P.memberForm.project_id = P.projectForm.id.trim();
+    if (oid !== P.filterOrgId.value.trim()) return;
+    P.projectMsg.value = "已创建项目";
+    selectProject(id);
     await refreshProjects();
   } catch (e) {
     P.projectMsg.value = apiErrorMessage(e);
@@ -125,7 +148,7 @@ export async function onAddMember(ev: Event) {
   ev.preventDefault();
   const pid = P.memberForm.project_id.trim();
   if (!pid) {
-    P.memberMsg.value = "请先填写或选用项目空间";
+    P.memberMsg.value = "请先填写或选用项目";
     return;
   }
   try {
@@ -167,10 +190,10 @@ export function installProjectFilterWatcher(opts: {
   if (projectFilterWatchInstalled) return;
   projectFilterWatchInstalled = true;
   let filterDebounce: number | undefined;
-  watch(P.filterProjectId, (v) => {
-    P.persistProjectId(String(v || ""));
-    if (!opts.loggedIn.value) return;
+  watch([P.filterOrgId, P.filterProjectId, () => opts.loggedIn.value], ([, projectId, loggedIn], [, previousProjectId, wasLoggedIn]) => {
+    if (projectId !== previousProjectId) P.persistProjectId(projectId);
     if (filterDebounce) window.clearTimeout(filterDebounce);
+    if (!loggedIn || !wasLoggedIn) return;
     filterDebounce = window.setTimeout(() => {
       const deps = requireDeps();
       void deps.refreshForTab(deps.activeTab.value);

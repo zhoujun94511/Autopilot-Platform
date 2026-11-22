@@ -33,9 +33,6 @@ defineExpose({ projectId, missing });
 <template>
   <div v-if="missing" class="alert-banner warn" role="status">
     <strong>需要先选择项目</strong>
-    <span
-      >设计域写操作必须绑定项目（与只读成员不同：此处是还没选项目）。请在顶部切换，或打开项目页选用一个空间。</span
-    >
     <button type="button" class="small primary" @click="shell.activeTab = 'projects'">
       去选项目
     </button>
@@ -46,9 +43,8 @@ defineExpose({ projectId, missing });
     role="status"
   >
     <strong>未选项目</strong>
-    <span>也可以先问测试问题。选项目后，助手才能带上该项目的需求和知识库。</span>
     <button type="button" class="small" @click="shell.activeTab = 'projects'">
-      选项目（可选）
+      选项目
     </button>
   </div>
   <p v-else-if="showWhenReady && projectId" class="project-meta" role="status">

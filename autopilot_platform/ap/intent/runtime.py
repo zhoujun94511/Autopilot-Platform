@@ -85,12 +85,21 @@ class IntentRuntime:
         kwdef = REGISTRY.get(keyword_id)
         if kwdef is None:
             raise KeywordError(f"意图解析到未知关键字: {keyword_id}")
+        import inspect as _inspect
+
         resolved: dict[str, Any] = {}
         for k, v in (params or {}).items():
             if isinstance(v, str):
                 resolved[k] = self.ctx.resolve(v)
             else:
                 resolved[k] = v
+        sig = _inspect.signature(kwdef.func)
+        accepts_varkw = any(
+            p.kind == _inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+        )
+        if not accepts_varkw:
+            accepted = set(sig.parameters.keys()) - {"ctx"}
+            resolved = {k: v for k, v in resolved.items() if k in accepted}
         kwdef.func(self.ctx, **resolved)
 
     def _invoke_follow_ups(self, follow_ups: list[dict[str, Any]] | None) -> None:

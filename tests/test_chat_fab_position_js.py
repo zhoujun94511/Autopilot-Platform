@@ -60,6 +60,10 @@ def test_design_chat_panel_uses_composables_not_inline_fab_math():
     assert "DesignChatMessages" in src
     assert "DesignChatComposer" in src
     assert "DesignChatSessionList" in src
+    assert 'v-if="inline"' in src
+    assert 'class="chat-trigger ghost"' in src
+    assert 'class="chat-fab"' in src
+    assert 'ref="fabTrigger"' in src
     assert "from ../../utils/chatFabPosition" not in src  # 经 composable 间接用
     # 不再内联 clampFab / POS_KEY
     assert not re.search(r"\bfunction clampFab\b", src)
@@ -106,7 +110,8 @@ def test_design_chat_message_sfc_and_display_util():
     assert "renderChatBody" in util.read_text(encoding="utf-8")
     assert "defineExpose" in msg.read_text(encoding="utf-8")
     assert "CHAT_STARTER_QUESTIONS" in msg.read_text(encoding="utf-8")
-    assert "测试助手" in msg.read_text(encoding="utf-8")
+    assert "选择问题开始" in msg.read_text(encoding="utf-8")
+    assert "快捷提问" in msg.read_text(encoding="utf-8")
     assert "不落设计域" not in msg.read_text(encoding="utf-8")
     assert "DataPager" in sess.read_text(encoding="utf-8")
     assert "提问模板" in comp.read_text(encoding="utf-8")
@@ -135,5 +140,6 @@ def test_design_chat_message_sfc_and_display_util():
         / "design"
         / "ProjectContextBanner.vue"
     ).read_text(encoding="utf-8")
-    assert "也可以先问测试问题" in banner
+    assert "未选项目" in banner
+    assert "选项目" in banner
     assert "不注入知识库" not in banner

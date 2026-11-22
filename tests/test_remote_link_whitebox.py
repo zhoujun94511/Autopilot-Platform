@@ -690,6 +690,8 @@ def _inject_android_session_deps(
     client: MagicMock,
     peer_manager_factory,
 ) -> None:
+    from autopilot_platform.runner.remote import android
+
     fake_scrcpy = ModuleType("autopilot_platform.runner.remote.android.scrcpyclients")
     fake_scrcpy.get_client = lambda _udid: client
     fake_scrcpy.stop_client = lambda _udid: None
@@ -700,6 +702,8 @@ def _inject_android_session_deps(
         "autopilot_platform.runner.remote.android.scrcpyclients",
         fake_scrcpy,
     )
+    # Relative imports can resolve a cached package attribute before sys.modules.
+    monkeypatch.setattr(android, "scrcpyclients", fake_scrcpy, raising=False)
     monkeypatch.setitem(
         sys.modules,
         "autopilot_platform.runner.remote.android.adb_dispatch",
@@ -759,9 +763,10 @@ def test_whitebox_android_media_poll_clipboard_command(monkeypatch):
 
     replies: list[dict[str, Any]] = []
 
-    def _fake_adb_dispatch(adb_client, raw, reply, *, _device_id):
+    def _fake_adb_dispatch(adb_client, raw, reply, *, device_id):
         import json
 
+        assert device_id == "UDID-CLIP"
         evt = json.loads(raw)
         if evt.get("t") == "clipboard.get":
             payload = {
@@ -815,9 +820,10 @@ def test_whitebox_android_media_poll_clipboard_command(monkeypatch):
         if item.get("type") == "command_reply"
         and item.get("payload", {}).get("t") == "clipboard.value"
     ]
-    assert values
-    assert values[0]["text"] == "from-device"
-    assert values[0]["request_id"] == "req-media-1"
+    assert values == [
+        {"t": "clipboard.value", "text": "from-device", "request_id": "req-media-1"},
+        {"t": "clipboard.value", "text": "from-device", "request_id": "req-media-2"},
+    ]
 
 
 def test_whitebox_android_media_poll_device_info_ws_envelope(monkeypatch):
@@ -2195,8 +2201,9 @@ def test_whitebox_ios_session_prepares_wda_and_posts_frame(monkeypatch):
             captured["prep_stopped"] = True
 
     class _Wda:
-        def __init__(self, url: str) -> None:
+        def __init__(self, url: str, timeout: float = 60.0) -> None:
             captured["wda_url"] = url
+            captured["wda_timeout"] = timeout
             self._http = MagicMock()
 
         @staticmethod
@@ -2261,12 +2268,15 @@ def test_whitebox_ios_session_prepares_wda_and_posts_frame(monkeypatch):
         report_status=report,
     )
     session.start()
-    assert connected.wait(2)
-    session.stop()
-    if session._thread is not None:  # noqa: SLF001
-        session._thread.join(timeout=2)  # noqa: SLF001
+    try:
+        assert connected.wait(2)
+    finally:
+        session.stop()
+        if session._thread is not None:  # noqa: SLF001
+            session._thread.join(timeout=2)  # noqa: SLF001
 
     assert captured["wda_bundle"] == ""
+    assert captured["wda_timeout"] == 15.0
     assert captured["wda_session"] is True
     assert captured.get("wda_settings")
     assert captured["wda_settings"].get("mjpegScalingFactor") == 60
@@ -2943,19 +2953,17 @@ def test_whitebox_prewarm_webrtc_lightweight_no_handle_offer(monkeypatch):
     """注册后台 webrtc 预热仅 import/codec，不触发 PeerManager.handle_offer。"""
     import autopilot_platform.runner.remote.prewarm as prewarm_mod
 
-    prewarm_mod._webrtc_warmed = False
+    monkeypatch.setattr(prewarm_mod, "_webrtc_warmed", False)
     handle_calls: list[str] = []
+    warm_timeouts: list[float] = []
 
     class _FakeRunner:
         @staticmethod
-        def run_sync(coro, _timeout=10.0):
+        def run_sync(coro, timeout=10.0):
             import asyncio
 
-            loop = asyncio.new_event_loop()
-            try:
-                return loop.run_until_complete(coro)
-            finally:
-                loop.close()
+            warm_timeouts.append(timeout)
+            return asyncio.run(asyncio.wait_for(coro, timeout=timeout))
 
     fake_aiortc = MagicMock()
     fake_aiortc.RTCRtpSender.getCapabilities.return_value = {"codecs": []}
@@ -2980,8 +2988,8 @@ def test_whitebox_prewarm_webrtc_lightweight_no_handle_offer(monkeypatch):
 
     prewarm_mod.prewarm_webrtc_stack()
     assert handle_calls == []
+    assert warm_timeouts == [15.0]
     assert prewarm_mod.webrtc_stack_ready() is True
-    prewarm_mod._webrtc_warmed = False
 
 
 # ---------------------------------------------------------------------------

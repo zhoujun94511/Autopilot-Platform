@@ -157,8 +157,6 @@ function downloadShot() {
     <header>
       <h3>控制</h3>
     </header>
-    <p class="muted">对齐 WebAppFlaskauto-iOS：无障碍走 go-ios，弹窗/键入/截图走 WDA。</p>
-
     <label class="muted">无障碍</label>
     <div class="remote-tool-actions">
       <button

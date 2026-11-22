@@ -1084,7 +1084,7 @@ def test_schedule_create_tick_and_stop_on_fail(client: TestClient):
         json={"runner_id": rid, "inventory": [], "devices": []},
     )
     from autopilot_platform.platform.core.db import session_factory
-    from autopilot_platform.platform.core.models import JobRow
+    from autopilot_platform.platform.core.models import JobRow, utcnow
     from autopilot_platform.core.constants import JobStatus
 
     _factory = session_factory()
@@ -1095,6 +1095,7 @@ def test_schedule_create_tick_and_stop_on_fail(client: TestClient):
         assert job is not None
         job.status = JobStatus.CLAIMED.value
         job.runner_id = rid
+        job.claimed_at = utcnow()
         db.commit()
     finally:
         db.close()
@@ -1144,6 +1145,48 @@ def test_schedule_fire_lease_is_claimed_by_only_one_session():
         assert row_first is not None and row_second is not None
         assert _claim_schedule_fire(first, row_first, now) is True
         assert _claim_schedule_fire(second, row_second, now) is False
+
+
+def test_scheduled_job_and_plan_roll_back_together(client: TestClient, monkeypatch):
+    from sqlalchemy import select
+
+    from autopilot_platform.platform.core.db import session_factory
+    from autopilot_platform.platform.core.models import JobRow, ScheduleRow, utcnow
+    from autopilot_platform.platform.services.execution.schedules import crud
+
+    auth = client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"}).json()
+    headers = {"Authorization": f"Bearer {auth['access_token']}"}
+    response = client.post("/api/v1/schedules", headers=headers, json={
+        "name": "atomic-plan", "platform": "web", "project_id": "p-mc",
+        "project_dir": "/tmp/project", "delay_sec": 0,
+    })
+    assert response.status_code == 200, response.text
+    schedule_id = response.json()["id"]
+    create = crud.create_job
+
+    def create_then_fail(*args, **kwargs):
+        create(*args, **kwargs)
+        raise RuntimeError("interrupted before saving schedule")
+
+    monkeypatch.setattr(crud, "create_job", create_then_fail)
+    factory = session_factory()
+    assert factory is not None
+    with factory() as db:
+        assert not crud.tick_due_schedules(db, now=utcnow())
+    with factory() as db:
+        row = db.get(ScheduleRow, schedule_id)
+        assert row is not None
+        assert row.runs_done == 0 and row.last_job_id is None
+        assert db.scalars(select(JobRow).where(JobRow.name == "atomic-plan#1")).first() is None
+
+    monkeypatch.setattr(crud, "create_job", create)
+    response = client.post(f"/api/v1/schedules/{schedule_id}/run-now", headers=headers)
+    assert response.status_code == 200, response.text
+    assert response.json()["runs_done"] == 1
+    overlap = client.post(f"/api/v1/schedules/{schedule_id}/run-now", headers=headers)
+    assert overlap.status_code == 400, overlap.text
+    with factory() as db:
+        assert len(db.scalars(select(JobRow).where(JobRow.name.like("atomic-plan#%"))).all()) == 1
 
 
 def test_oidc_status_disabled_by_default(client: TestClient):
@@ -1706,6 +1749,7 @@ def test_ops_alert_test_requires_url(client: TestClient, monkeypatch):
 def test_ops_config_runtime_override(client: TestClient, monkeypatch):
     monkeypatch.delenv("MC_ALERT_WEBHOOK_URL", raising=False)
     monkeypatch.delenv("MC_JOB_STALE_SEC", raising=False)
+    monkeypatch.setenv("MC_WEBHOOK_ALLOW_LOOPBACK", "1")
     from autopilot_platform.platform.ops.runtime_config import reload_runtime_config
 
     reload_runtime_config()
@@ -1774,7 +1818,7 @@ def test_ops_config_runtime_override(client: TestClient, monkeypatch):
             }
         },
     )
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     assert r.json()["values"]["MC_ALERT_CHANNEL"] == "slack"
     assert r.json()["sources"]["MC_ALERT_WEBHOOK_URL"] == "runtime"
     assert r.json()["values"]["MC_JOB_STALE_SEC"] == "120"

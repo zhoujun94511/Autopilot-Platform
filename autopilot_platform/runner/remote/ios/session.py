@@ -292,6 +292,12 @@ class IosRemoteSession:
         except Exception:  # noqa: BLE001
             pass
         try:
+            from .file_ops import cleanup_uploads
+
+            cleanup_uploads()
+        except (ImportError, OSError, RuntimeError):
+            pass
+        try:
             from ..shared.device_log_pump import stop as stop_device_log
 
             stop_device_log(self.session_id)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   listProjectMembersPage,
   PROJECT_MEMBER_PAGE_SIZE,
@@ -14,12 +14,16 @@ import { PROJECT_ROLE_LABEL, projectRoleLabel } from "./roleLabels";
 import ProjectInviteCard from "./ProjectInviteCard.vue";
 import DataPager from "../common/DataPager.vue";
 import ApSelect from "../common/ApSelect.vue";
+import ApModal from "../ApModal.vue";
 
 const projectsStore = useProjectsStore();
 const admin = useAdminStore();
 const { filterProjectId, projects, memberForm, memberMsg } = storeToRefs(projectsStore);
 
 const caps = useCapabilities();
+const memberOpen = ref(false);
+const savingMember = ref(false);
+const invitesOpen = ref(false);
 
 const projectId = computed(() => (filterProjectId.value || memberForm.value.project_id || "").trim());
 
@@ -33,7 +37,6 @@ const currentProject = computed(() => {
 const canManage = computed(() => Boolean(caps.canManageProject));
 
 const memberList = usePagedList<ProjectMember>({
-  immediate: false,
   pageSize: PROJECT_MEMBER_PAGE_SIZE,
   fetchPage: ({ page, pageSize }) => {
     const pid = projectId.value;
@@ -52,6 +55,7 @@ const {
   pageSize: memberPageSize,
   loading: loadingMembers,
   hasLoaded: hasLoadedMembers,
+  error: memberError,
   reload: reloadMembers,
   setPage: setMemberPage,
   setPageSize: setMemberPageSize,
@@ -60,10 +64,12 @@ const {
 watch(
   projectId,
   (pid) => {
+    memberOpen.value = false;
+    invitesOpen.value = false;
+    memberMsg.value = "";
     if (pid && memberForm.value.project_id !== pid) {
       memberForm.value.project_id = pid;
     }
-    void reloadMembers(true);
   },
   { immediate: true },
 );
@@ -74,68 +80,86 @@ watch(
     if (msg.startsWith("已")) void reloadMembers(false);
   },
 );
+
+function openMemberForm() {
+  if (!canManage.value || !projectId.value) return;
+  memberMsg.value = "";
+  memberForm.value.username = "";
+  memberForm.value.role = "member";
+  memberOpen.value = true;
+}
+
+function closeMemberForm() {
+  if (!savingMember.value) {
+    memberOpen.value = false;
+    if (!memberMsg.value.startsWith("已")) memberMsg.value = "";
+  }
+}
+
+async function submitMember(event: Event) {
+  if (!canManage.value || !projectId.value || savingMember.value) return;
+  savingMember.value = true;
+  memberMsg.value = "";
+  try {
+    await projectsStore.onAddMember(event);
+    if (memberMsg.value.startsWith("已添加成员")) memberOpen.value = false;
+  } finally {
+    savingMember.value = false;
+  }
+}
 </script>
 
 <template>
-  <section class="surface-card workspace">
+  <section class="workspace" aria-label="项目工作区">
     <template v-if="!projectId">
       <div class="empty-state workspace-empty">
-        <p class="empty-title">先选用一个项目</p>
-        <p class="empty-desc">
-          请先在顶栏选好组织，再从左侧点一个项目，在这里管理成员和邀请。
-        </p>
+        <p class="empty-title">请选择项目</p>
+        <p class="empty-desc">从项目列表选择。</p>
       </div>
     </template>
 
     <template v-else>
       <header class="ws-head">
         <div class="ws-head-copy">
-          <p class="ws-kicker">项目工作台</p>
           <h3>{{ currentProject?.name || "未命名" }}</h3>
           <p class="meta-line">
-            空间 ID
+            项目 ID
             <button type="button" class="link-id mono" @click="admin.copyText(projectId)">
               {{ projectId }}
             </button>
           </p>
         </div>
-        <span class="pill ok">当前上下文</span>
       </header>
 
       <div class="ws-section">
-        <div class="card-title-row">
-          <h4>空间成员</h4>
-          <span class="count-chip">{{ memberTotal || (loadingMembers ? "…" : 0) }}</span>
+        <div class="member-heading">
+          <h4>项目成员</h4>
+          <span v-if="hasLoadedMembers" class="meta-line">{{ memberTotal }} 人</span>
+          <button
+            v-if="canManage"
+            type="button"
+            class="primary"
+            @click="openMemberForm"
+          >添加成员</button>
         </div>
 
-        <form v-if="canManage" class="add-member-bar" @submit.prevent="projectsStore.onAddMember">
-          <label>
-            用户名 *
-            <input v-model="memberForm.username" required placeholder="alice" />
-          </label>
-          <label>
-            角色 *
-            <ApSelect
-              v-model="memberForm.role"
-              aria-label="项目成员角色"
-              :options="[
-                { value: 'member', label: PROJECT_ROLE_LABEL.member },
-                { value: 'viewer', label: PROJECT_ROLE_LABEL.viewer },
-                { value: 'owner', label: PROJECT_ROLE_LABEL.owner },
-              ]"
-            />
-          </label>
-          <button type="submit" class="primary">添加成员</button>
-        </form>
-        <p v-else class="meta-line readonly-hint">
-          仅项目负责人可添加或移除成员。你当前角色：{{ projectRoleLabel(caps.currentProjectRole) }}。
+        <p v-if="!canManage" class="meta-line readonly-hint">
+          当前角色为{{ projectRoleLabel(caps.currentProjectRole) }}，管理成员请联系项目负责人。
         </p>
-        <p v-if="memberMsg" class="msg" :class="memberMsg.startsWith('已') ? 'ok' : 'bad'">
+        <p
+          v-if="memberMsg && !memberOpen"
+          class="msg"
+          :class="memberMsg.startsWith('已') ? 'ok' : 'bad'"
+          :role="memberMsg.startsWith('已') ? 'status' : 'alert'"
+        >
           {{ memberMsg }}
         </p>
-
-        <div class="table-wrap" style="margin-top: 0.75rem">
-          <table>
+        <p v-if="memberError" class="msg bad" role="alert">
+          {{ memberError }}
+          <button type="button" class="linkish" @click="reloadMembers()">重试</button>
+        </p>
+        <div class="table-wrap member-table">
+          <table aria-label="项目成员" :aria-busy="loadingMembers">
             <thead>
               <tr>
                 <th>用户名</th>
@@ -145,8 +169,10 @@ watch(
               </tr>
             </thead>
             <tbody>
-              <tr v-if="!members.length && hasLoadedMembers">
-                <td class="empty" :colspan="canManage ? 4 : 3">该空间暂无成员记录</td>
+              <tr v-if="!members.length">
+                <td class="empty" :colspan="canManage ? 4 : 3">
+                  {{ !hasLoadedMembers ? "加载中…" : memberError ? "未能加载成员" : "暂无项目成员" }}
+                </td>
               </tr>
               <tr v-for="m in members" :key="m.user_id">
                 <td>{{ m.username }}</td>
@@ -157,7 +183,7 @@ watch(
                 </td>
                 <td class="mono">
                   <button type="button" class="small" @click="admin.copyText(m.user_id)">
-                    {{ m.user_id.slice(0, 8) }}…
+                    {{ m.user_id.length > 8 ? m.user_id.slice(0, 8) + "…" : m.user_id }}
                   </button>
                 </td>
                 <td v-if="canManage">
@@ -180,21 +206,52 @@ watch(
         />
       </div>
 
-      <div class="ws-divider" />
-
-      <div class="ws-section">
-        <ProjectInviteCard v-if="canManage" :project-id="projectId" embedded />
-        <p v-else class="meta-line readonly-hint">邀请链接仅项目负责人可创建。</p>
-      </div>
+      <details v-if="canManage" class="invite-section" :open="invitesOpen" @toggle="invitesOpen = ($event.target as HTMLDetailsElement).open">
+        <summary>邀请管理</summary>
+        <ProjectInviteCard v-if="invitesOpen" :key="projectId" :project-id="projectId" embedded />
+      </details>
     </template>
   </section>
+
+  <ApModal
+    v-if="memberOpen && canManage && projectId"
+    title="添加项目成员"
+    :description="currentProject?.name"
+    :close-on-esc="!savingMember"
+    :close-on-backdrop="!savingMember"
+    @close="closeMemberForm"
+  >
+    <form class="member-form" :aria-busy="savingMember" @submit.prevent="submitMember">
+      <label>
+        用户名
+        <input v-model="memberForm.username" name="username" required :disabled="savingMember" data-autofocus />
+      </label>
+      <label>
+        角色
+        <ApSelect
+          v-model="memberForm.role"
+          aria-label="项目成员角色"
+          :disabled="savingMember"
+          :options="[
+            { value: 'member', label: PROJECT_ROLE_LABEL.member },
+            { value: 'viewer', label: PROJECT_ROLE_LABEL.viewer },
+            { value: 'owner', label: PROJECT_ROLE_LABEL.owner },
+          ]"
+        />
+      </label>
+      <p v-if="memberMsg" class="msg bad" role="alert">{{ memberMsg }}</p>
+      <footer class="ap-modal-actions">
+        <button type="button" class="ghost" :disabled="savingMember" @click="closeMemberForm">取消</button>
+        <button type="submit" class="primary" :disabled="savingMember">{{ savingMember ? "正在添加…" : "添加成员" }}</button>
+      </footer>
+    </form>
+  </ApModal>
 </template>
 
 <style scoped>
 .workspace {
   min-width: 0;
   min-height: 280px;
-  height: 100%;
   display: flex;
   flex-direction: column;
 }
@@ -202,7 +259,7 @@ watch(
 .workspace-empty {
   flex: 1;
   margin: 0;
-  min-height: 16rem;
+  min-height: 12rem;
 }
 
 .ws-head {
@@ -210,18 +267,9 @@ watch(
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  margin-bottom: 1.15rem;
-  padding-bottom: 0.95rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.75rem;
   border-bottom: 1px solid var(--line);
-}
-
-.ws-kicker {
-  margin: 0 0 0.2rem;
-  font-size: 0.72rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--accent-text);
 }
 
 .ws-head h3 {
@@ -250,19 +298,28 @@ watch(
   color: var(--text);
 }
 
-.add-member-bar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+.member-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.65rem;
-  align-items: end;
-  margin-top: 0.75rem;
-  padding: 0.75rem 0.85rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--border-weak);
-  border-radius: var(--radius-md);
 }
 
-.add-member-bar label {
+.member-heading > button {
+  margin-inline-start: auto;
+}
+
+.member-table {
+  margin: 0.65rem 0 0;
+}
+
+.member-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.member-form label {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
@@ -285,15 +342,14 @@ watch(
   margin: 0.75rem 0 0;
 }
 
-.ws-divider {
-  height: 1px;
-  background: var(--line);
-  margin: 1.25rem 0;
+.invite-section {
+  margin-top: 1rem;
+  border-top: 1px solid var(--line);
 }
 
-@media (max-width: 720px) {
-  .add-member-bar {
-    grid-template-columns: 1fr;
-  }
+.invite-section > summary {
+  cursor: pointer;
+  padding: 0.75rem 0;
+  font-weight: 650;
 }
 </style>

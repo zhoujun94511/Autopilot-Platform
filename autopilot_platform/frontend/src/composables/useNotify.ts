@@ -119,6 +119,14 @@ export const notifyConfirm = shallowRef<ConfirmState | null>(null);
 export const notifyPrompt = shallowRef<PromptState | null>(null);
 export const notifyCopy = shallowRef<CopyState | null>(null);
 
+export function clearTransientNotifications() {
+  notifyConfirm.value?.resolve(false);
+  notifyPrompt.value?.resolve(null);
+  notifyCopy.value?.resolve();
+  notifyToasts.value.forEach(({ id }) => clearTimer(id));
+  notifyToasts.value = [];
+}
+
 /** 按 kind 停留：成功/提示短、警告/失败更长（对标 Arco / Ant Design）。 */
 export const TOAST_MS: Record<NotifyKind, number> = {
   success: 2800,

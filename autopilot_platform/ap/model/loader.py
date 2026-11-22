@@ -133,8 +133,17 @@ def _parse_desc(root: etree._Element) -> Desc:
     )
 
 
+def _safe_xml_parser() -> etree.XMLParser:
+    return etree.XMLParser(
+        resolve_entities=False,
+        no_network=True,
+        dtd_validation=False,
+        load_dtd=False,
+    )
+
+
 def load_testcase(path: str) -> TestCase:
-    root = etree.parse(path).getroot()
+    root = etree.parse(path, parser=_safe_xml_parser()).getroot()
     tc = TestCase(
         name=os.path.splitext(os.path.basename(path))[0],
         data_id=root.get("db_id", ""),
@@ -153,7 +162,7 @@ def load_testcase(path: str) -> TestCase:
 
 
 def load_testsuite(path: str) -> TestSuite:
-    root = etree.parse(path).getroot()
+    root = etree.parse(path, parser=_safe_xml_parser()).getroot()
     ts = TestSuite(
         name=os.path.splitext(os.path.basename(path))[0],
         data_id=root.get("db_id", ""),

@@ -4,13 +4,14 @@ r"""本机开发一键联调（Platform API + Vite）。不得作为生产部署
 
     python start_dev.py
     python start_dev.py start
-    python start_dev.py start --lan
+    python start_dev.py start --loopback
     python start_dev.py start --no-browser
     python start_dev.py start --verbose-logs
     python start_dev.py stop
 
-拉起后端与前端、等就绪、日志写入仓库根 ``logs/``、Ctrl+C 整树退出。
-``start_dev`` 不含 Runner；远控请在管理台「启动本机托管」。
+默认把 Platform 与 Vite 绑到 ``0.0.0.0``，并打印局域网地址。
+``--loopback`` 只监听本机。拉起后等就绪，日志写入仓库根 ``logs/``，Ctrl+C 整树退出。
+局域网模式下不能从网页启动本机托管 Runner。
 """
 
 from __future__ import annotations
@@ -129,7 +130,7 @@ def _resolve_managed_runner_log_hint() -> str:
     return str(base / "managed-runner.log")
 
 
-def _print_startup_guide(log_paths: dict[str, Path]) -> None:
+def _print_startup_guide(log_paths: dict[str, Path], *, lan: bool) -> None:
     _print("All services are up.")
     _print(f"Frontend:  {CLIENT_URL}")
     _print(f"Backend:   http://127.0.0.1:{BACKEND_PORT}")
@@ -139,10 +140,16 @@ def _print_startup_guide(log_paths: dict[str, Path]) -> None:
         _print(f"  {_service_tag(name):9} → {path}")
     managed_log = _resolve_managed_runner_log_hint()
     _print(f"  {'runner':9} → {managed_log}  （Web「启动本机托管」后写入）")
-    _print(
-        "远控/Android 调试：start_dev 只起 Platform+Vite，不含 Runner。"
-        "请打开管理台 → 执行 → Runners →「启动本机托管」，再开设备远控。"
-    )
+    if lan:
+        _print(
+            "调试局域网下可以在管理台「执行节点」点「启动本机托管」，"
+            "再注册设备并开远控。生产环境没有这个开关。"
+        )
+    else:
+        _print(
+            "远控/Android 调试：start_dev 只起 Platform+Vite，不含 Runner。"
+            "请打开管理台 → 执行节点 →「启动本机托管」，再开设备远控。"
+        )
     _print("完整控制台日志：python start_dev.py start --verbose-logs")
     _print(
         f"联调前端：{CLIENT_URL}（Vite）。"
@@ -567,6 +574,116 @@ def build_env(overrides: dict[str, str]) -> dict[str, str]:
     return env
 
 
+def _upsert_env_keys(path: Path, updates: dict[str, str]) -> None:
+    """改写仓库根 .env 里的键。文件已在 gitignore，不新增注释。"""
+    text = path.read_text(encoding="utf-8") if path.is_file() else ""
+    lines = text.splitlines()
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in lines:
+        raw = line.strip()
+        if not raw or raw.startswith("#") or "=" not in line:
+            out.append(line)
+            continue
+        key = line.split("=", 1)[0].strip()
+        if key in updates:
+            out.append(f"{key}={updates[key]}")
+            seen.add(key)
+        else:
+            out.append(line)
+    for key, value in updates.items():
+        if key not in seen:
+            out.append(f"{key}={value}")
+    path.write_text("\n".join(out) + "\n", encoding="utf-8")
+
+
+def _retire_default_admin_password(new_password: str) -> bool:
+    """库里的引导管理员若仍是 admin，改成与 .env 相同的新密码。"""
+    from sqlalchemy import select
+    from sqlalchemy.orm import sessionmaker
+
+    from autopilot_platform.platform.core.db import get_engine
+    from autopilot_platform.platform.core.models import UserRow
+    from autopilot_platform.platform.core.security import hash_password, verify_password
+    from autopilot_platform.platform.core.settings import bootstrap_admin_username
+
+    engine = get_engine()
+    session_cls = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
+    db = session_cls()
+    try:
+        username = bootstrap_admin_username()
+        row = db.scalars(select(UserRow).where(UserRow.username == username)).first()
+        if row is None or not verify_password("admin", row.password_hash or ""):
+            return False
+        row.password_hash = hash_password(new_password)
+        db.commit()
+        return True
+    finally:
+        db.close()
+
+
+def _ensure_lan_secrets() -> None:
+    """非本机监听不允许默认口令。缺的强凭据写入 .env，已有强凭据不动。"""
+    import secrets
+
+    from autopilot_platform.platform.core.settings import (
+        DEFAULT_API_TOKEN,
+        admin_api_token,
+        api_token,
+        bootstrap_admin_password,
+        jwt_secret_is_default,
+    )
+
+    updates: dict[str, str] = {}
+    token = api_token()
+    if token == DEFAULT_API_TOKEN:
+        token = secrets.token_urlsafe(32)
+        updates["MC_API_TOKEN"] = token
+    if jwt_secret_is_default():
+        updates["MC_JWT_SECRET"] = secrets.token_urlsafe(48)
+    admin_token = admin_api_token()
+    if not admin_token or admin_token == token:
+        updates["MC_ADMIN_API_TOKEN"] = secrets.token_urlsafe(32)
+    rotated_login = False
+    if bootstrap_admin_password() == "admin":
+        new_password = secrets.token_urlsafe(18)
+        updates["MC_ADMIN_PASSWORD"] = new_password
+        rotated_login = True
+    if not updates:
+        return
+    _upsert_env_keys(ROOT / ".env", updates)
+    os.environ.update(updates)
+    if rotated_login and _retire_default_admin_password(updates["MC_ADMIN_PASSWORD"]):
+        _print(
+            "局域网监听已停用默认口令 admin。"
+            f"管理员 {os.environ.get('MC_ADMIN_USER', 'admin')} 的新密码写在仓库根 .env 的 MC_ADMIN_PASSWORD。"
+        )
+    elif rotated_login:
+        _print("MC_ADMIN_PASSWORD 已写入 .env。库里的登录密码不是默认 admin，没有改库。")
+    _print("Runner / JWT / 管理 Token 的强随机值已写入 .env，该文件不会进 git。")
+
+
+def _lan_cors_origins(lan_ip: str | None) -> str:
+    origins = [
+        f"http://127.0.0.1:{CLIENT_PORT}",
+        f"http://localhost:{CLIENT_PORT}",
+        f"http://127.0.0.1:{BACKEND_PORT}",
+        f"http://localhost:{BACKEND_PORT}",
+    ]
+    if lan_ip:
+        origins.append(f"http://{lan_ip}:{CLIENT_PORT}")
+        origins.append(f"http://{lan_ip}:{BACKEND_PORT}")
+    existing = [
+        item.strip()
+        for item in os.environ.get("MC_CORS_ORIGINS", "").split(",")
+        if item.strip()
+    ]
+    for item in origins:
+        if item not in existing:
+            existing.append(item)
+    return ",".join(existing)
+
+
 def _resolve_node() -> str:
     """Locate ``node`` on PATH (Win/Linux/macOS). Optional ``NODE_HOME`` / ``NODEJS_HOME``."""
     found = shutil.which("node")
@@ -645,15 +762,20 @@ def start_mode(args: argparse.Namespace) -> int:
     atexit.register(kill_started_processes)
     install_signal_handlers()
 
-    bind = "0.0.0.0" if args.lan else "127.0.0.1"
+    from autopilot_platform.platform.core.settings import is_production
+
+    if is_production():
+        _print("生产环境禁止用 start_dev 做局域网调试。请挂载稳定域名，走正式部署。")
+        return 2
+    bind = "127.0.0.1" if args.loopback else "0.0.0.0"
+    lan = bind == "0.0.0.0"
+    if lan:
+        _ensure_lan_secrets()
     services: dict[str, subprocess.Popen[Any]] = {}
 
     # 联调只认 Vite：Platform 根路径重定向过去，IDE 打开 :8000 也不会再吃过期 dist。
-    frontend_dev = CLIENT_URL
-    if args.lan:
-        lan_ip = _resolve_local_ip()
-        if lan_ip:
-            frontend_dev = f"http://{lan_ip}:{CLIENT_PORT}"
+    lan_ip = _resolve_local_ip() if lan else None
+    frontend_dev = f"http://{lan_ip}:{CLIENT_PORT}" if lan_ip else CLIENT_URL
     # MC_HOST 与真实 --host 对齐，供 create_app.validate_bind_security 拦截「LAN + 默认凭据」
     backend_env = build_env(
         {
@@ -661,11 +783,17 @@ def start_mode(args: argparse.Namespace) -> int:
             "MC_HOST": bind,
             "MC_FRONTEND_DEV_URL": frontend_dev,
             "MC_PLATFORM_LOGS_DIR": str(DEV_LOG_DIR),
-            # 本地联调自动开放“扫描并注册 Platform 同机设备”；LAN 始终关闭。
-            "MC_ALLOW_MANAGED_RUNNER": (
-                "0"
-                if args.lan
-                else os.environ.get("MC_ALLOW_MANAGED_RUNNER", "1")
+            # 本机联调默认允许网页启动托管 Runner。局域网调试再加开发开关；
+            # 生产环境 start_dev 已拒绝启动，正式部署也不会带这个开关。
+            "MC_ALLOW_MANAGED_RUNNER": os.environ.get("MC_ALLOW_MANAGED_RUNNER", "1"),
+            "MC_DEV_LAN_MANAGED_RUNNER": "1" if lan else "0",
+            **(
+                {
+                    "MC_CORS_ORIGINS": _lan_cors_origins(lan_ip),
+                    "MC_PLATFORM_URL": f"http://{lan_ip}:{BACKEND_PORT}",
+                }
+                if lan and lan_ip
+                else {}
             ),
         }
     )
@@ -732,12 +860,11 @@ def start_mode(args: argparse.Namespace) -> int:
     )
 
     log_paths = {name: _dev_log_path(name) for name in ("platform", "frontend")}
-    _print_startup_guide(log_paths)
-    if args.lan:
-        ip = _resolve_local_ip()
-        if ip:
-            _print(f"Frontend(LAN): http://{ip}:{CLIENT_PORT}")
-            _print(f"Backend(LAN):  http://{ip}:{BACKEND_PORT}")
+    _print_startup_guide(log_paths, lan=lan)
+    if lan:
+        if lan_ip:
+            _print(f"Frontend(LAN): http://{lan_ip}:{CLIENT_PORT}")
+            _print(f"Backend(LAN):  http://{lan_ip}:{BACKEND_PORT}")
         else:
             _print("LAN mode on, but local IP unresolved.")
 
@@ -793,9 +920,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--no-browser", action="store_true")
     p.add_argument("--verbose-logs", action="store_true")
     p.add_argument(
+        "--loopback",
+        action="store_true",
+        help="只绑定 127.0.0.1。默认绑定 0.0.0.0，供局域网打开",
+    )
+    p.add_argument(
         "--lan",
         action="store_true",
-        help="绑定 0.0.0.0 并打印局域网 URL",
+        help="与默认相同：绑定 0.0.0.0 并打印局域网 URL",
     )
     return p.parse_args(argv)
 

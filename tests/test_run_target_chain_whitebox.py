@@ -10,7 +10,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import sys
@@ -385,7 +384,7 @@ def test_frontend_submit_chain_wires_run_target_fields():
     actions = (FE / "composables" / "mcExecActions.ts").read_text(encoding="utf-8")
     assert "isDevicelessPlatform" in actions
     assert "stripDevicelessSubmitPayload" in actions
-    assert "未指定设备时，任意空闲 Runner 均可领取该任务" in actions
+    assert "未指定设备时，任意空闲执行节点都可领取该任务" in actions
     assert "S.scheduleForm.wda_bundle" in actions
     assert "S.scheduleForm.parallel_workers" in actions
     panel = (FE / "components" / "design" / "DesignCasesPanel.vue").read_text(

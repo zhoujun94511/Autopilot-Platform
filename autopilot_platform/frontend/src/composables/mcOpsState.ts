@@ -2,6 +2,7 @@
  * 运维摘要 / 配置中心 / 共享 ACL 状态（单一真源）。
  */
 import { reactive, ref } from "vue";
+import type { AclGrant } from "../api/opsLists";
 
 export const ops = ref<{
   jobs_by_status: Record<string, number>;
@@ -35,7 +36,7 @@ export const ops = ref<{
   };
 } | null>(null);
 
-export const opsConfig = reactive({
+const defaultOpsConfig = {
   MC_WEBHOOK_URL: "",
   MC_WEBHOOK_SECRET: "",
   MC_DESIGN_WEBHOOK_URL: "",
@@ -57,7 +58,9 @@ export const opsConfig = reactive({
   MC_METRICS_ENABLED: "1",
   MC_REQUIRE_JOB_DEVICES: "0",
   MC_REQUIRE_ARTIFACT_MANIFEST: "0",
-});
+};
+
+export const opsConfig = reactive({ ...defaultOpsConfig });
 
 export const opsConfigSources = ref<Record<string, string>>({});
 export const opsConfigMsg = ref("");
@@ -71,19 +74,26 @@ export const designAiSummary = ref<{
   api_key_configured: boolean;
 } | null>(null);
 
-export const shareForm = reactive({
+const defaultShareForm = {
   resource_type: "artifact",
   resource_id: "",
   username: "",
   permission: "read",
-});
+};
+export const shareForm = reactive({ ...defaultShareForm });
 export const shareMsg = ref("");
-export const aclRows = ref<
-  {
-    id: string;
-    resource_type: string;
-    resource_id: string;
-    username: string;
-    permission: string;
-  }[]
->([]);
+export const aclRows = ref<AclGrant[]>([]);
+export const aclLoading = ref(false);
+export const aclError = ref("");
+
+export function resetShareForm() {
+  Object.assign(shareForm, defaultShareForm);
+}
+
+export function resetOpsConfig() {
+  ops.value = null;
+  Object.assign(opsConfig, defaultOpsConfig);
+  opsConfigSources.value = {};
+  opsConfigMsg.value = "";
+  designAiSummary.value = null;
+}

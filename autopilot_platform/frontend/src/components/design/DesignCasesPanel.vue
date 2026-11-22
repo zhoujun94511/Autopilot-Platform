@@ -1,7 +1,8 @@
 <script setup lang="ts">
 defineOptions({ name: "DesignCasesPanel" });
 
-import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onDeactivated, onMounted, ref, watch } from "vue";
+import { useManualPageRefresh } from "../../composables/useManualPageRefresh";
 import { storeToRefs } from "pinia";
 import { useProjectsStore } from "../../stores/projectsStore";
 import { useShellStore } from "../../stores/shellStore";
@@ -30,7 +31,6 @@ import { notify } from "../../composables/useNotify";
 import AutomationStatusSelect from "./AutomationStatusSelect.vue";
 import ApSelect from "../common/ApSelect.vue";
 import DesignCaseGenerateCard from "./DesignCaseGenerateCard.vue";
-import DesignWorkflowBar from "./DesignWorkflowBar.vue";
 import ListPager from "./ListPager.vue";
 import ProjectContextBanner from "./ProjectContextBanner.vue";
 import { useCapabilities } from "../../composables/useCapabilities";
@@ -45,12 +45,24 @@ import { isDevicelessPlatform, isHttpPlatform, isWebPlatform, stripDevicelessSub
 
 const shell = useShellStore();
 const projectsStore = useProjectsStore();
-const { filterProjectId } = storeToRefs(projectsStore);
+const { filterProjectId, filterOrgId } = storeToRefs(projectsStore);
 const exec = useExecStore();
 const { form } = storeToRefs(exec);
 
 const caps = useCapabilities();
 const canEdit = computed(() => Boolean(caps.canEditProject));
+
+function blockWrite(action: string): boolean {
+  if (!filterProjectId.value?.trim()) {
+    error.value = "请先在顶栏选择项目";
+    return true;
+  }
+  if (!canEdit.value) {
+    error.value = `当前项目为只读，无法${action}`;
+    return true;
+  }
+  return false;
+}
 const ctx = ref<{ missing: boolean } | null>(null);
 const cases = ref<LogicalCase[]>([]);
 const caseTotal = ref(0);
@@ -60,23 +72,28 @@ const designStats = ref<DesignDomainStats | null>(null);
 const loading = ref(false);
 const hasLoaded = ref(false);
 const universeEmpty = ref(false);
+const listError = ref("");
 const error = ref("");
+const saveError = ref("");
 const notice = ref("");
 const noticeWarn = ref(false);
 const busy = ref(false);
 const generateCard = ref<{ clear: () => void } | null>(null);
-const auxTools = ref<HTMLDetailsElement | null>(null);
+const activeTool = ref<"generate" | "run" | null>(null);
+const toolPanel = ref<HTMLElement | null>(null);
+let toolOpener: HTMLElement | null = null;
+const searchText = ref("");
+const searchQuery = ref("");
 const automationFilter = ref("");
 const reviewFilter = ref("");
 const selectedIds = ref<string[]>([]);
 const editingCase = ref<LogicalCase | null>(null);
 
-const hasActiveFilter = computed(() => Boolean(reviewFilter.value || automationFilter.value));
+const hasActiveFilter = computed(() => Boolean(searchQuery.value || reviewFilter.value || automationFilter.value));
 
 const automationCounts = computed(
   () => designStats.value?.by_automation_status || ({} as Record<string, number>),
 );
-const pendingVerifyCount = computed(() => automationCounts.value.PENDING_VERIFY || 0);
 
 const allVisibleSelected = computed(
   () =>
@@ -111,9 +128,16 @@ const priorityClass: Record<string, string> = {
   P1: "warn",
 };
 
+const riskLabelMap: Record<string, string> = {
+  low: "低风险",
+  medium: "中风险",
+  high: "高风险",
+};
+
 function qualityText(row: LogicalCase): string {
   const quality = row.generation_metadata?.quality;
-  const risk = String(quality?.risk || "").trim();
+  const riskRaw = String(quality?.risk || "").trim().toLowerCase();
+  const risk = riskLabelMap[riskRaw] || riskRaw;
   const score = quality?.score;
   if (score == null) return risk || "—";
   return risk ? `${risk} · ${score}` : String(score);
@@ -126,6 +150,8 @@ function stepSummary(row: LogicalCase): string {
 }
 
 function clearFilters() {
+  searchText.value = "";
+  searchQuery.value = "";
   reviewFilter.value = "";
   automationFilter.value = "";
   casePage.value = 1;
@@ -133,72 +159,101 @@ function clearFilters() {
   void loadCases();
 }
 
-/** 空态 CTA：生成器在折叠区里，先展开再滚动，否则点了像没反应。 */
-function scrollToGenerate() {
-  const el = auxTools.value;
-  if (!el) return;
-  el.open = true;
-  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+function searchCases() {
+  searchQuery.value = searchText.value.trim();
+  casePage.value = 1;
+  if (universeEmpty.value) return;
+  void loadCases(false);
 }
 
-async function loadDesignStats() {
+async function openTool(tool: "generate" | "run") {
+  if (!canEdit.value) return;
+  if (document.activeElement instanceof HTMLElement) toolOpener = document.activeElement;
+  activeTool.value = tool;
+  await nextTick();
+  toolPanel.value?.scrollIntoView({ block: "nearest" });
+  toolPanel.value?.focus({ preventScroll: true });
+}
+
+function closeTool() {
+  activeTool.value = null;
+  toolOpener?.focus();
+}
+
+let caseRequest = 0;
+let statsRequest = 0;
+
+async function loadDesignStats(projectId: string | undefined) {
+  const request = ++statsRequest;
   try {
-    designStats.value = await fetchDesignStats(filterProjectId.value || undefined);
+    const stats = await fetchDesignStats(projectId);
+    if (request === statsRequest) designStats.value = stats;
   } catch {
-    designStats.value = null;
+    if (request === statsRequest) designStats.value = null;
   }
 }
 
-async function loadCases() {
+async function loadCases(refreshStats = true) {
+  const request = ++caseRequest;
+  const projectId = filterProjectId.value?.trim() || undefined;
   loading.value = true;
-  error.value = "";
+  listError.value = "";
+  if (refreshStats) void loadDesignStats(projectId);
   try {
     const automationStatus = automationFilter.value || undefined;
     const page = await queryLogicalCasesPage({
-      projectId: filterProjectId.value,
+      projectId,
+      q: searchQuery.value || undefined,
       reviewStatus: reviewFilter.value || undefined,
       automationStatus,
       page: casePage.value,
       pageSize: casePageSize.value,
     });
+    if (request !== caseRequest) return;
+    const lastPage = Math.max(1, Math.ceil(page.total / page.page_size));
+    if (!page.items.length && page.total > 0 && casePage.value > lastPage) {
+      casePage.value = lastPage;
+      await loadCases(false);
+      return;
+    }
     cases.value = page.items || [];
     caseTotal.value = page.total || 0;
     casePage.value = page.page || 1;
     casePageSize.value = page.page_size || casePageSize.value;
-    const unfiltered = !reviewFilter.value && !automationFilter.value;
     if (caseTotal.value > 0) universeEmpty.value = false;
-    else if (unfiltered) universeEmpty.value = true;
-    await loadDesignStats();
+    else if (!hasActiveFilter.value) universeEmpty.value = true;
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (request === caseRequest) listError.value = e?.message || String(e);
   } finally {
-    loading.value = false;
-    hasLoaded.value = true;
+    if (request === caseRequest) {
+      loading.value = false;
+      hasLoaded.value = true;
+    }
   }
 }
 
 function onCasePageChange(p: number) {
   casePage.value = p;
-  void loadCases();
+  void loadCases(false);
 }
 
 function onCasePageSizeChange(size: number) {
   casePageSize.value = size;
   casePage.value = 1;
-  void loadCases();
+  void loadCases(false);
 }
 
 function onAutomationFilterChange(value: string) {
   automationFilter.value = value;
   if (universeEmpty.value) return;
   casePage.value = 1;
-  void loadCases();
+  void loadCases(false);
 }
 
 function onReviewFilterChange() {
   if (universeEmpty.value) return;
   casePage.value = 1;
-  void loadCases();
+  void loadCases(false);
 }
 
 async function onGenerate(payload: {
@@ -206,13 +261,10 @@ async function onGenerate(payload: {
   useRag: boolean;
   autoApprove: boolean;
 }) {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法生成用例";
-    return;
-  }
+  if (blockWrite("生成用例")) return;
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   if (!payload.text.trim()) {
@@ -247,7 +299,7 @@ async function onGenerate(payload: {
     noticeWarn.value = degraded;
     const bits = [
       degraded
-        ? "已生成草稿，但 AI 不可用已降级为启发式生成（degraded）——请人工重点审阅步骤质量"
+        ? "已用规则生成草稿，请复核步骤"
         : "已生成意图用例草稿",
     ];
     if (pendingVerify > 0) bits.push(`${pendingVerify} 条进入待首次运行确认`);
@@ -268,13 +320,10 @@ async function onBatchGenerate(payload: {
   useRag: boolean;
   autoApprove: boolean;
 }) {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法生成用例";
-    return;
-  }
+  if (blockWrite("生成用例")) return;
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   if (!payload.requirements.length) {
@@ -300,13 +349,12 @@ async function onBatchGenerate(payload: {
       `批量生成完成，共 ${out.total_cases ?? payload.requirements.length} 条用例`;
     if (out.degraded) {
       noticeWarn.value = true;
-      notice.value +=
-        " ⚠ AI 降级为启发式生成（degraded=true），请人工重点审阅";
+      notice.value += "，含规则生成的草稿，请复核步骤";
     }
     const executed = String(out.summary?.executed_mode || "").toLowerCase();
     if (payload.processMode === "parallel") {
       if (executed === "parallel") {
-        notice.value += `（已并行执行，workers=${out.summary?.max_workers ?? "?"}）`;
+        notice.value += "，已并行处理";
       } else {
         notice.value += `（请求并行，实际${out.summary?.note || "顺序执行"}）`;
         noticeWarn.value = true;
@@ -338,10 +386,7 @@ async function onBatchGenerate(payload: {
 }
 
 async function setReviewStatus(row: LogicalCase, status: string) {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法修改评审状态";
-    return;
-  }
+  if (blockWrite("修改评审状态")) return;
   busy.value = true;
   error.value = "";
   try {
@@ -355,10 +400,7 @@ async function setReviewStatus(row: LogicalCase, status: string) {
 }
 
 async function onDelete(row: LogicalCase) {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法删除";
-    return;
-  }
+  if (blockWrite("删除")) return;
   if (
     !(await confirmDialog(`删除用例「${row.title}」？此操作不可撤销。`, {
       danger: true,
@@ -378,10 +420,7 @@ async function onDelete(row: LogicalCase) {
 }
 
 async function onRegenerate(row: LogicalCase) {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法重新生成";
-    return;
-  }
+  if (blockWrite("重新生成")) return;
   if (!(await confirmDialog(`基于「${row.title}」重新生成用例？原用例保留。`))) return;
   busy.value = true;
   error.value = "";
@@ -396,7 +435,7 @@ async function onRegenerate(row: LogicalCase) {
     );
     noticeWarn.value = degraded;
     notice.value = degraded
-      ? `已重新生成 ${out.length} 条用例，但 AI 不可用已降级为启发式（degraded）——请人工重点审阅`
+      ? `已用规则重新生成 ${out.length} 条用例，请复核步骤`
       : `已重新生成 ${out.length} 条用例`;
     await loadCases();
   } catch (e: any) {
@@ -428,10 +467,12 @@ function toggleSelectAll(checked: boolean) {
 }
 
 function openCase(row: LogicalCase) {
+  saveError.value = "";
   editingCase.value = row;
 }
 
 function closeCase() {
+  saveError.value = "";
   editingCase.value = null;
 }
 
@@ -441,9 +482,9 @@ async function onSaveCase(payload: {
   intent_steps: IntentStep[];
 }) {
   const row = editingCase.value;
-  if (!row || !canEdit.value) return;
+  if (!row || !canEdit.value || busy.value) return;
   busy.value = true;
-  error.value = "";
+  saveError.value = "";
   notice.value = "";
   try {
     await patchLogicalCase(row.logical_case_id, {
@@ -452,21 +493,21 @@ async function onSaveCase(payload: {
       intent_steps: payload.intent_steps,
       logical_steps: payload.intent_steps.map((s) => s.text || s.target || s.action),
     });
+    if (editingCase.value?.logical_case_id !== row.logical_case_id) return;
     notice.value = "已保存用例";
-    editingCase.value = null;
+    closeCase();
     await loadCases();
   } catch (e: any) {
-    error.value = e?.message || String(e);
+    if (editingCase.value?.logical_case_id === row.logical_case_id) {
+      saveError.value = e?.message || String(e);
+    }
   } finally {
     busy.value = false;
   }
 }
 
 async function onBatchDelete() {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法删除";
-    return;
-  }
+  if (blockWrite("删除")) return;
   if (!selectedIds.value.length) {
     error.value = "请先勾选要删除的用例";
     return;
@@ -524,7 +565,7 @@ async function onDownloadTemplate(format: "excel" | "csv") {
 async function onDownloadApprovedBundle() {
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   busy.value = true;
@@ -540,13 +581,10 @@ async function onDownloadApprovedBundle() {
 
 /** O7：入队已通过用例并展示 Binding 软警告。需批跑表单已选制品与设备。 */
 async function onEnqueueApproved() {
-  if (!canEdit.value) {
-    error.value = "当前项目为只读，无法入队";
-    return;
-  }
+  if (blockWrite("入队")) return;
   const projectId = filterProjectId.value?.trim();
   if (!projectId) {
-    error.value = "请先在顶部选择项目";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   const artifactId = String(form.value?.artifact_id || "").trim();
@@ -640,6 +678,7 @@ async function onAutomationStatus(row: LogicalCase, status: string) {
 }
 
 let _skipActivateReload = false;
+useManualPageRefresh("design-cases", loadCases);
 onMounted(() => {
   _skipActivateReload = true;
   void loadCases();
@@ -652,33 +691,40 @@ onActivated(() => {
   void loadCases();
 });
 watch(
-  () => filterProjectId.value,
+  [filterProjectId, filterOrgId],
   () => {
     selectedIds.value = [];
-    editingCase.value = null;
+    activeTool.value = null;
+    closeCase();
+    cases.value = [];
+    caseTotal.value = 0;
+    designStats.value = null;
+    hasLoaded.value = false;
+    notice.value = "";
+    error.value = "";
     automationFilter.value = "";
     casePage.value = 1;
     universeEmpty.value = false;
     void loadCases();
   },
 );
+onDeactivated(() => {
+  closeCase();
+  activeTool.value = null;
+});
 watch(canEdit, (ok) => {
   if (!ok) selectedIds.value = [];
 });
 </script>
 
 <template>
-  <div class="page-stack design-panel">
-    <header class="page-hero">
-      <div class="page-hero-copy">
-        <h2>意图用例</h2>
-        <p class="lede">从需求生成用例草稿，审核后再使用；也可从文档批量生成。</p>
-      </div>
+  <section class="design-panel" aria-labelledby="cases-title">
+    <header class="cases-header">
+      <h2 id="cases-title">意图用例</h2>
       <div class="page-hero-actions">
         <details class="action-menu">
-          <summary class="small">导出 / 模板</summary>
+          <summary class="small">导出</summary>
           <div class="action-menu-panel">
-            <div class="menu-label">导出用例</div>
             <button type="button" :disabled="loading || busy" @click="onExport('excel')">
               导出 Excel
             </button>
@@ -688,47 +734,96 @@ watch(canEdit, (ok) => {
             <button type="button" :disabled="loading || busy" @click="onExport('json')">
               导出 JSON
             </button>
-            <p class="menu-hint">
-              导出可供查阅或交接。本页不能用 Excel/CSV 再导回来，请用「生成」或把已通过的 JSON 包带到另一端。
-            </p>
             <div class="menu-sep"></div>
-            <div class="menu-label">模板与包</div>
             <button type="button" :disabled="loading || busy" @click="onDownloadTemplate('excel')">
-              下载导出模板（字段参考）
+              下载模板
             </button>
             <button type="button" :disabled="loading || busy" @click="onDownloadApprovedBundle">
               已通过 JSON 包
             </button>
-            <button
-              v-if="canEdit"
-              type="button"
-              :disabled="loading || busy"
-              @click="onEnqueueApproved"
-            >
-              入队已通过批跑
-            </button>
           </div>
         </details>
-        <button type="button" class="ghost small" :disabled="loading || busy" @click="loadCases">
+        <button type="button" class="ghost" :disabled="loading || busy" @click="loadCases()">
           刷新
+        </button>
+        <button
+          v-if="canEdit"
+          type="button"
+          :disabled="busy"
+          :aria-expanded="activeTool === 'run'"
+          aria-controls="case-run-config"
+          @click="openTool('run')"
+        >
+          批跑配置
+        </button>
+        <button
+          v-if="canEdit"
+          type="button"
+          class="primary"
+          :disabled="busy"
+          :aria-expanded="activeTool === 'generate'"
+          aria-controls="case-generate"
+          @click="openTool('generate')"
+        >
+          生成用例
         </button>
       </div>
     </header>
 
-    <div v-if="error" class="msg bad">{{ error }}</div>
-    <div v-if="notice" class="msg" :class="noticeWarn ? 'bad' : 'ok'">{{ notice }}</div>
+    <div v-if="error" class="msg bad case-feedback" role="alert">{{ error }}</div>
+    <div v-if="notice" class="msg case-feedback" :class="noticeWarn ? 'bad' : 'ok'" :role="noticeWarn ? 'alert' : 'status'">{{ notice }}</div>
+    <ProjectContextBanner ref="ctx" class="case-feedback" />
+    <ProjectReadonlyBanner class="case-feedback" />
 
-    <ProjectContextBanner ref="ctx" />
-    <ProjectReadonlyBanner />
-    <DesignWorkflowBar page="cases" />
-
-    <section class="surface-card">
-      <div class="card-title-row">
-        <h3>用例列表</h3>
-        <span class="count-chip">{{ loading ? "…" : `共 ${caseTotal} 条` }}</span>
+    <section
+      v-if="canEdit"
+      v-show="activeTool"
+      ref="toolPanel"
+      class="case-tool-panel"
+      tabindex="-1"
+      :aria-label="activeTool === 'run' ? '批跑配置' : '生成用例'"
+    >
+      <button type="button" class="ghost small close-tool" :disabled="busy" @click="closeTool">
+        收起
+      </button>
+      <div v-show="activeTool === 'generate'" id="case-generate" class="case-tool-content">
+        <DesignCaseGenerateCard
+          ref="generateCard"
+          bare
+          :busy="busy || !!ctx?.missing"
+          @generate="onGenerate"
+          @batch-generate="onBatchGenerate"
+        />
+        <button type="button" class="linkish" @click="shell.activeTab = 'design-docs'">
+          从已导入的需求生成用例
+        </button>
       </div>
+      <div v-show="activeTool === 'run'" id="case-run-config" class="case-tool-content">
+        <EnqueueRunConfigCard
+          :approved-count="approvedEnqueueCount"
+          :disabled="busy || !!ctx?.missing"
+        />
+        <div class="enqueue-action-row">
+          <button
+            type="button"
+            class="primary"
+            :disabled="loading || busy || !!ctx?.missing || !approvedEnqueueCount"
+            @click="onEnqueueApproved"
+          >
+            入队已通过批跑
+            <template v-if="approvedEnqueueCount">（{{ approvedEnqueueCount }} 条）</template>
+          </button>
+        </div>
+        <IdeWebhookGuideCard :approved-count="approvedEnqueueCount" compact />
+      </div>
+    </section>
 
-      <div class="list-toolbar">
+    <section class="case-list" aria-label="用例列表" :aria-busy="loading">
+      <div class="case-filter-bar">
+        <form class="list-search" role="search" @submit.prevent="searchCases">
+          <input id="cases-search-input" v-model="searchText" name="cases-search" type="search" aria-label="搜索意图用例" placeholder="搜索用例名称或编号" />
+          <button type="submit" :disabled="busy">搜索</button>
+        </form>
         <label class="field-label inline">
           评审状态
           <ApSelect
@@ -741,6 +836,17 @@ watch(canEdit, (ok) => {
             @change="onReviewFilterChange"
           />
         </label>
+        <button
+          v-if="hasActiveFilter"
+          type="button"
+          class="linkish clear-filters"
+          :disabled="busy"
+          @click="clearFilters"
+        >
+          清空筛选
+        </button>
+      </div>
+      <div class="case-status-bar">
         <div class="filter-chips" role="group" aria-label="按自动化状态筛选">
           <button
             v-for="chip in AUTOMATION_QUICK_FILTERS"
@@ -754,18 +860,9 @@ watch(canEdit, (ok) => {
             @click="onAutomationFilterChange(chip.value)"
           >
             {{ chip.label }}
-            <span v-if="chip.value" class="chip-n">{{ automationCounts[chip.value] || 0 }}</span>
+            <span v-if="chip.value && automationCounts[chip.value]" class="chip-n">{{ automationCounts[chip.value] }}</span>
           </button>
         </div>
-        <button
-          v-if="hasActiveFilter"
-          type="button"
-          class="linkish clear-filters"
-          :disabled="busy"
-          @click="clearFilters"
-        >
-          清空筛选
-        </button>
       </div>
 
       <div v-if="canEdit && selectedIds.length" class="bulk-bar" role="status">
@@ -786,40 +883,29 @@ watch(canEdit, (ok) => {
         </div>
       </div>
 
-      <div v-if="pendingVerifyCount > 0 && canEdit" class="verify-banner">
-        <span>
-          {{ pendingVerifyCount }} 条待首跑验证 — 展开下方「生成 / 批跑配置」入队，或在 IDE 本地运行。
-        </span>
-      </div>
-
-      <div v-if="!cases.length && hasLoaded" class="empty-state">
+      <p v-if="listError" class="msg bad list-error" role="alert">
+        <span>{{ listError }}</span>
+        <button type="button" class="small" :disabled="loading" @click="loadCases()">重试</button>
+      </p>
+      <p v-if="loading" class="result-meta" role="status">{{ cases.length ? '正在刷新用例…' : '正在加载用例…' }}</p>
+      <div v-if="!listError && !cases.length && hasLoaded" class="empty-state cases-empty">
         <p class="empty-title">
-          {{ hasActiveFilter ? "没有符合筛选条件的用例" : "还没有意图用例" }}
-        </p>
-        <p class="empty-desc">
-          {{
-            hasActiveFilter
-              ? "当前筛选下没有结果，清空筛选可查看全部用例。"
-              : "展开下方「生成用例（测设）」粘贴需求生成草稿；有正式材料可从需求文档勾选批量生成。"
-          }}
+          {{ hasActiveFilter ? "无匹配用例" : "暂无意图用例" }}
         </p>
         <div class="empty-actions">
           <button v-if="hasActiveFilter" type="button" class="primary small" @click="clearFilters">
             清空筛选
           </button>
           <template v-else-if="canEdit">
-            <button type="button" class="primary small" @click="scrollToGenerate">
-              去生成用例
-            </button>
             <button type="button" class="small" @click="shell.activeTab = 'design-docs'">
-              有材料：需求文档
+              查看需求文档
             </button>
           </template>
         </div>
       </div>
 
-      <div v-else-if="cases.length" class="table-wrap cases-table">
-        <table>
+      <div v-else-if="cases.length" class="table-wrap cases-table" tabindex="0" role="region" aria-label="意图用例列表">
+          <table aria-label="意图用例">
           <colgroup>
             <col v-if="canEdit" class="col-check" />
             <col />
@@ -878,9 +964,9 @@ watch(canEdit, (ok) => {
                       String(c.generation_metadata?.generator || '').startsWith('heuristic')
                     "
                     class="pill bad"
-                    title="AI 降级为启发式生成，请重点审阅"
+                    title="使用规则生成，请复核步骤"
                   >
-                    降级
+                    规则生成
                   </span>
                   <span v-if="c.generation_metadata?.use_rag" class="meta-note">
                     知识命中 {{ c.generation_metadata?.rag?.hit_count ?? 0 }}
@@ -935,33 +1021,24 @@ watch(canEdit, (ok) => {
               <td class="num">{{ c.intent_steps?.length || c.logical_steps?.length || 0 }}</td>
               <td v-if="canEdit">
                 <div class="row-actions">
-                  <button type="button" class="small" :disabled="busy" @click="openCase(c)">
-                    编辑
-                  </button>
                   <button
                     v-if="c.review_status !== 'APPROVED'"
                     type="button"
-                    class="small primary"
+                    class="small"
                     :disabled="busy"
                     @click="setReviewStatus(c, 'APPROVED')"
                   >
                     通过
                   </button>
-                  <button
-                    v-if="c.review_status !== 'REJECTED'"
-                    type="button"
-                    class="small"
-                    :disabled="busy"
-                    @click="setReviewStatus(c, 'REJECTED')"
-                  >
-                    驳回
-                  </button>
-                  <button type="button" class="small" :disabled="busy" @click="onRegenerate(c)">
-                    重新生成
-                  </button>
-                  <button type="button" class="small danger" :disabled="busy" @click="onDelete(c)">
-                    删除
-                  </button>
+                  <details class="row-more">
+                    <summary :aria-label="`${c.title} 的更多操作`">更多</summary>
+                    <div class="row-more-actions">
+                      <button type="button" class="small" :disabled="busy" @click="openCase(c)">编辑</button>
+                      <button v-if="c.review_status !== 'REJECTED'" type="button" class="small" :disabled="busy" @click="setReviewStatus(c, 'REJECTED')">驳回</button>
+                      <button type="button" class="small" :disabled="busy" @click="onRegenerate(c)">重新生成</button>
+                      <button type="button" class="small danger" :disabled="busy" @click="onDelete(c)">删除</button>
+                    </div>
+                  </details>
                 </div>
               </td>
             </tr>
@@ -971,6 +1048,7 @@ watch(canEdit, (ok) => {
 
       <ListPager
         v-if="caseTotal > 0"
+        class="cases-pager"
         :total="caseTotal"
         :page="casePage"
         :page-size="casePageSize"
@@ -985,89 +1063,108 @@ watch(canEdit, (ok) => {
       :item="editingCase"
       :readonly="!canEdit"
       :busy="busy"
+      :save-error="saveError"
       @save="onSaveCase"
       @close="closeCase"
     />
 
-    <details v-if="canEdit" ref="auxTools" class="aux-tools surface-card">
-      <summary class="aux-tools-summary">生成用例（测设）</summary>
-      <div class="aux-tools-body">
-        <div id="case-generate">
-          <DesignCaseGenerateCard
-            ref="generateCard"
-            :busy="busy || !!ctx?.missing"
-            @generate="onGenerate"
-            @batch-generate="onBatchGenerate"
-          />
-        </div>
-
-        <p class="docs-alt-hint">
-          有 Word / PDF / PRD？
-          <button type="button" class="linkish" @click="shell.activeTab = 'design-docs'">
-            去需求文档导入后勾选生成
-          </button>
-        </p>
-
-        <details class="aux-advanced">
-          <summary class="aux-advanced-summary">高级可选：自动导入本机 / 远程跑任务</summary>
-          <p class="docs-alt-hint">
-            下面这些需要本机工程，不保证生成后就能直接远程跑。平时只要生成用例并审核即可。
-          </p>
-          <IdeWebhookGuideCard :approved-count="approvedEnqueueCount" compact />
-          <EnqueueRunConfigCard
-            :approved-count="approvedEnqueueCount"
-            :disabled="busy || !!ctx?.missing"
-          />
-          <div class="enqueue-action-row">
-            <button
-              type="button"
-              class="ghost"
-              :disabled="loading || busy || !!ctx?.missing || !approvedEnqueueCount"
-              @click="onEnqueueApproved"
-            >
-              入队已通过批跑（可选）
-              <template v-if="approvedEnqueueCount">（{{ approvedEnqueueCount }} 条）</template>
-            </button>
-          </div>
-        </details>
-      </div>
-    </details>
-  </div>
+  </section>
 </template>
 
 <style scoped>
 .design-panel {
-  width: 100%;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+}
+.cases-header {
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+  padding: 14px 20px;
+}
+.case-list {
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
+  overflow: hidden;
+}
+.cases-header,
+.case-filter-bar,
+.case-status-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.cases-header h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--font-size-title);
+  font-weight: 650;
+}
+.case-feedback {
+  margin: 12px 20px;
 }
 .msg.bad {
-  margin: 0;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--danger-soft-bg);
   border: 1px solid var(--danger-soft-border);
   color: var(--danger-soft-fg);
   font-size: 0.85rem;
 }
 .msg.ok {
-  margin: 0;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--ok-soft-bg, var(--brand-soft));
   border: 1px solid var(--ok-soft-border, var(--line));
   color: var(--ok-soft-fg, var(--text));
   font-size: 0.85rem;
 }
-/* —— 列表工具条：标题 / 筛选 / 批量操作分三段，避免挤在标题行溢出 —— */
-.list-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.55rem 1rem;
-  margin: 0 0 0.85rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--line-soft);
+.case-list {
   min-width: 0;
+}
+.case-filter-bar {
+  justify-content: flex-start;
+  gap: var(--space-2) var(--space-4);
+  min-width: 0;
+  padding-block: 12px;
+}
+.case-status-bar {
+  padding-block: 0;
+}
+.list-search {
+  display: flex;
+  flex: 0 1 280px;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.list-search input { min-width: 0; flex: 1 1 auto; }
+.list-search button { flex: 0 0 auto; white-space: nowrap; }
+.result-meta {
+  margin: 0;
+  padding: 10px 20px;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+.list-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 12px 20px;
 }
 .field-label.inline {
   display: inline-flex;
@@ -1076,6 +1173,7 @@ watch(canEdit, (ok) => {
   font-size: 0.82rem;
   color: var(--muted);
   margin: 0;
+  white-space: nowrap;
 }
 .field-label.inline .ap-select {
   min-width: 8rem;
@@ -1083,9 +1181,8 @@ watch(canEdit, (ok) => {
 .filter-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: var(--space-3);
   min-width: 0;
-  margin-left: auto;
 }
 .clear-filters {
   margin: 0;
@@ -1105,10 +1202,8 @@ watch(canEdit, (ok) => {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem 0.85rem;
-  margin-bottom: 0.75rem;
-  padding: 0.45rem 0.7rem;
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md, 6px);
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--line-soft);
   background: var(--brand-soft);
 }
 .bulk-count {
@@ -1127,14 +1222,20 @@ watch(canEdit, (ok) => {
 
 /* —— 表格：固定状态列，用例列吃剩余宽度；标题/步骤单行截断，避免行内再堆一篇文档 —— */
 .cases-table {
-  margin-top: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.cases-table:focus-visible {
+  outline-offset: -2px;
 }
 .cases-table table {
   table-layout: fixed;
+  min-width: 940px;
 }
 .cases-table th,
 .cases-table td {
-  padding: 0.8rem 0.95rem;
+  padding: var(--space-2) var(--space-3);
   vertical-align: middle;
 }
 .cases-table .col-check {
@@ -1159,8 +1260,23 @@ watch(canEdit, (ok) => {
   width: 4.25rem;
 }
 .cases-table .col-actions {
-  width: 16rem;
+  width: 124px;
 }
+.row-more { min-width: 44px; }
+.row-more summary {
+  color: var(--accent-text);
+  padding: var(--space-1) 0;
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: var(--font-size-meta);
+}
+.row-more-actions {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  padding-block: var(--space-1);
+}
+.cases-table td:last-child .row-actions { align-items: flex-start; }
 .cases-table th.num,
 .cases-table td.num {
   text-align: right;
@@ -1237,13 +1353,19 @@ watch(canEdit, (ok) => {
   flex-shrink: 0;
   color: var(--muted);
 }
-.menu-hint {
-  margin: 0.35rem 0.5rem 0.15rem;
-  font-size: 0.72rem;
-  color: var(--muted);
-  line-height: 1.35;
-  white-space: normal;
-  overflow-wrap: break-word;
+.cases-table th:last-child,
+.cases-table td:last-child {
+  padding-inline-end: 20px;
+}
+.cases-pager {
+  margin: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line-soft);
+}
+.cases-empty {
+  min-height: 148px;
+  margin: 0;
+  border: 0;
 }
 .empty-actions {
   display: flex;
@@ -1256,111 +1378,75 @@ watch(canEdit, (ok) => {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: 0 0 1rem;
+  justify-content: flex-end;
 }
-.aux-tools {
-  margin-top: 0.5rem;
+.case-tool-panel {
+  display: grid;
+  gap: var(--space-2);
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--surface-secondary);
 }
-.aux-tools-summary {
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.92rem;
-  padding: 0.25rem 0;
+.close-tool {
+  justify-self: end;
 }
-.aux-tools-body {
+.case-tool-content {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
-  margin-top: 0.75rem;
+  gap: var(--space-3);
+  overflow-wrap: anywhere;
 }
-.aux-advanced {
-  margin-top: 0.25rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px dashed var(--line);
-  border-radius: 8px;
-  background: var(--surface-soft);
-}
-.aux-advanced-summary {
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.docs-alt-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  white-space: normal;
-  overflow-wrap: break-word;
-}
-.docs-alt-hint .linkish {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: inherit;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.verify-banner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.45rem;
-  margin: 0.65rem 0 0;
-  padding: 0.55rem 0.7rem;
-  border-radius: 8px;
-  font-size: 0.78rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  color: var(--text);
-}
-.verify-banner .linkish {
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  font-size: inherit;
-  cursor: pointer;
-  text-decoration: underline;
+.case-tool-content > .linkish {
+  align-self: flex-start;
+  padding-inline-start: 0;
 }
 .chip-btn {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
   margin: 0;
-  padding: 0.25rem 0.6rem;
-  min-height: 26px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
+  padding: 0 6px;
+  min-height: 43px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   background: transparent;
   color: var(--muted);
   font: inherit;
-  font-size: 0.75rem;
+  font-size: var(--font-size-body);
   cursor: pointer;
   transition: var(--transition);
 }
 .chip-btn:hover:not(:disabled) {
-  border-color: var(--border-strong, var(--line));
-  color: var(--text);
+  color: var(--accent-text);
 }
 .chip-btn:disabled {
   opacity: 0.55;
   cursor: default;
 }
 .chip-btn.active {
-  border-color: var(--accent);
+  border-bottom-color: var(--accent);
   color: var(--accent-text, var(--text));
-  background: var(--brand-soft);
   font-weight: 600;
 }
 .chip-n {
-  font-weight: 600;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
   font-variant-numeric: tabular-nums;
+}
+@media (max-width: 720px) {
+  .cases-header,
+  .case-filter-bar,
+  .case-status-bar,
+  .case-tool-panel,
+  .cases-pager {
+    padding-inline: 12px;
+  }
+  .case-status-bar {
+    gap: 0;
+  }
+  .list-search {
+    flex-basis: 100%;
+  }
 }
 </style>

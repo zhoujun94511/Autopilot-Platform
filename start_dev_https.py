@@ -45,7 +45,8 @@ try:
 except (ImportError, OSError, ValueError, TypeError):
     pass
 
-import start_dev as sd
+# start_dev reads MC_PORT during import, so load the workspace .env first.
+import start_dev as sd  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]

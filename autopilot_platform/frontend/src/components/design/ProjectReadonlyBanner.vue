@@ -15,7 +15,7 @@ const caps = useCapabilities();
 .alert-banner {
   margin: 0 0 0.75rem;
   padding: 0.65rem 0.85rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   font-size: 0.85rem;
   line-height: 1.4;
 }

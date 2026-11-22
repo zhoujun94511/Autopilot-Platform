@@ -42,10 +42,28 @@ AI_PROVIDERS: tuple[dict[str, Any], ...] = (
             "gpt-5-mini",
             "gpt-5",
             "gpt-4.1-mini",
-            "gpt-4o-mini",  # legacy
+            "gpt-4o",
         ],
         "accepts_images": True,
-        "vision_models": ["gpt-5.4-mini", "gpt-5-mini", "gpt-5", "gpt-4o-mini"],
+        "vision_models": ["gpt-5.4-mini", "gpt-5-mini", "gpt-5", "gpt-4o"],
+    },
+    {
+        "id": "anthropic",
+        "label": "Anthropic (Claude)",
+        "default_base_url": "https://api.anthropic.com",
+        "default_model": "claude-sonnet-5-5",
+        "models": [
+            "claude-sonnet-5-5",
+            "claude-opus-5-5",
+            "claude-haiku-5-5",
+            "claude-fable-5-1",
+        ],
+        "accepts_images": True,
+        "vision_models": [
+            "claude-sonnet-5-5",
+            "claude-opus-5-5",
+            "claude-haiku-5-5",
+        ],
     },
     {
         "id": "deepseek",
@@ -54,10 +72,9 @@ AI_PROVIDERS: tuple[dict[str, Any], ...] = (
         "default_model": "deepseek-v4-flash",
         "models": [
             "deepseek-v4-flash",
+            "deepseek-flash",
             "deepseek-v4-pro",
             "deepseek-v4-flash-vision-exp",
-            "deepseek-chat",  # legacy → 2026/07/24
-            "deepseek-reasoner",  # legacy
         ],
         "accepts_images": False,  # Chat 默认文本；识图见 vision_models
         "vision_models": ["deepseek-v4-flash-vision-exp"],
@@ -82,15 +99,16 @@ AI_PROVIDERS: tuple[dict[str, Any], ...] = (
         "id": "gemini",
         "label": "Gemini",
         "default_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
-        "default_model": "gemini-3.5-flash",
+        "default_model": "gemini-3.8-flash",
         "models": [
+            "gemini-3.8-flash",
             "gemini-3.5-flash",
             "gemini-3.1-flash-lite",
-            "gemini-2.5-flash",  # legacy / 临近退役
-            "gemini-2.0-flash",
+            "gemini-2.5-flash",
         ],
         "accepts_images": True,
         "vision_models": [
+            "gemini-3.8-flash",
             "gemini-3.5-flash",
             "gemini-3.1-flash-lite",
             "gemini-2.5-flash",
@@ -195,6 +213,7 @@ def ai_api_key() -> str:
     provider = ai_provider()
     vendor_keys = {
         "openai": ("OPENAI_API_KEY",),
+        "anthropic": ("ANTHROPIC_API_KEY",),
         "deepseek": ("DEEPSEEK_API_KEY",),
         "qwen": ("DASHSCOPE_API_KEY", "QWEN_API_KEY"),
         "gemini": ("GEMINI_API_KEY", "GOOGLE_API_KEY"),
@@ -205,17 +224,6 @@ def ai_api_key() -> str:
         if val:
             return val
     for key in vendor_keys.get(provider, ()):
-        val = (os.environ.get(key) or "").strip()
-        if val:
-            return val
-    # 最后兜底扫一遍常见 Key，避免换 provider 后忘改通用 Key
-    for key in (
-        "OPENAI_API_KEY",
-        "DEEPSEEK_API_KEY",
-        "DASHSCOPE_API_KEY",
-        "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-    ):
         val = (os.environ.get(key) or "").strip()
         if val:
             return val
@@ -230,6 +238,7 @@ def ai_base_url() -> str:
     # 分厂商覆盖
     vendor = {
         "openai": _cfg("OPENAI_BASE_URL"),
+        "anthropic": _cfg("ANTHROPIC_BASE_URL"),
         "deepseek": _cfg("DEEPSEEK_BASE_URL"),
         "qwen": _cfg("QWEN_BASE_URL") or _cfg("DASHSCOPE_BASE_URL"),
         "gemini": _cfg("GEMINI_BASE_URL"),
@@ -249,6 +258,7 @@ def ai_model() -> str:
         provider = ai_provider()
         vendor = {
             "openai": _cfg("OPENAI_MODEL"),
+            "anthropic": _cfg("ANTHROPIC_MODEL"),
             "deepseek": _cfg("DEEPSEEK_MODEL"),
             "qwen": _cfg("QWEN_MODEL"),
             "gemini": _cfg("GEMINI_MODEL"),

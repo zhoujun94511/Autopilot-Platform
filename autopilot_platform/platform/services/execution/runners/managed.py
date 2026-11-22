@@ -327,6 +327,8 @@ class ManagedRunnerManager:
         path = self._log_file_path
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
+            if path.is_file() and path.stat().st_size > 5_000_000:
+                os.replace(path, path.with_suffix(".log.1"))
             self._log_file = path.open("a", encoding="utf-8", errors="replace")
             stamp = _utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
             self._log_file.write(f"\n--- managed runner session {stamp} ---\n")

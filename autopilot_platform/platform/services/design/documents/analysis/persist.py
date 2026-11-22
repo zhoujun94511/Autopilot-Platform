@@ -9,9 +9,10 @@ from autopilot_platform.platform.design.design_models import DesignAnalysisHisto
 from autopilot_platform.platform.design.design_schemas import AnalysisHistoryOut, KnowledgeItemCreate, RequirementCreate, RequirementOut
 from autopilot_platform.platform.services.shared.pagination import paginate
 from autopilot_platform.platform.services.design.requirements.crud import create_requirement
-logger = logging.getLogger(__name__)
 from autopilot_platform.platform.services.shared.actors import actor as _actor
 from autopilot_platform.platform.services.design.knowledge import crud as knowledge_svc
+
+logger = logging.getLogger(__name__)
 
 def list_analysis_history(db: Session, *, project_id: str | None=None, project_ids: list[str] | None=None, document_id: str | None=None, page: int=1, page_size: int=50) -> tuple[list[AnalysisHistoryOut], int]:
     q = select(DesignAnalysisHistoryRow).order_by(DesignAnalysisHistoryRow.created_at.desc())

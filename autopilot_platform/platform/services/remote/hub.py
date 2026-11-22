@@ -36,8 +36,10 @@ class DeviceRemoteSocketHub:
         role: str,
         participant_id: str = "",
         connection_id: str = "",
+        accept: bool = True,
     ) -> RemoteSocket:
-        await websocket.accept()
+        if accept:
+            await websocket.accept()
         socket = RemoteSocket(
             websocket=websocket,
             role=role,

@@ -63,6 +63,38 @@ def test_legacy_db_stamps_without_rerunning_baseline(scratch_url):
     assert ver == "f0b8c7d6e5a4"
 
 
+@pytest.mark.parametrize("compatibility_column_exists", [False, True])
+def test_versioned_db_upgrades_from_historical_revision(scratch_url, compatibility_column_exists):
+    command_upgrade(scratch_url, "e9a7b6c5d4f3")
+    engine = create_engine(scratch_url)
+    try:
+        if compatibility_column_exists:
+            with engine.begin() as conn:
+                conn.execute(text("ALTER TABLE jobs ADD COLUMN claimed_at DATETIME"))
+        assert apply_schema_cutover(engine, scratch_url) == "alembic_upgrade"
+        assert [col["name"] for col in inspect(engine).get_columns("jobs")].count("claimed_at") == 1
+        with engine.connect() as conn:
+            assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar_one() == "f0b8c7d6e5a4"
+    finally:
+        engine.dispose()
+
+
+def test_versioned_db_propagates_upgrade_failure(scratch_url, monkeypatch):
+    command_upgrade(scratch_url, "e9a7b6c5d4f3")
+
+    def fail_upgrade(*args):
+        raise RuntimeError("migration failed")
+
+    monkeypatch.setattr("autopilot_platform.platform.core.alembic_align.command_upgrade", fail_upgrade)
+    engine = create_engine(scratch_url)
+    try:
+        with pytest.raises(RuntimeError, match="migration failed"):
+            apply_schema_cutover(engine, scratch_url)
+        assert "claimed_at" not in {col["name"] for col in inspect(engine).get_columns("jobs")}
+    finally:
+        engine.dispose()
+
+
 def test_scratch_upgrade_downgrade_upgrade_drill(tmp_path, monkeypatch):
     """回滚演练：upgrade → downgrade base → upgrade。"""
     db_path = tmp_path / "drill.db"

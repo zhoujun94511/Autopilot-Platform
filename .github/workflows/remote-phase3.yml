@@ -3,6 +3,7 @@ name: Remote Phase 3
 on:
   push:
     paths:
+      - ".github/workflows/remote-phase3.yml"
       - "autopilot_platform/platform/**"
       - "autopilot_platform/runner/remote/**"
       - "autopilot_platform/frontend/**"
@@ -10,6 +11,7 @@ on:
       - "tests/test_*remote*.py"
   pull_request:
     paths:
+      - ".github/workflows/remote-phase3.yml"
       - "autopilot_platform/platform/**"
       - "autopilot_platform/runner/remote/**"
       - "autopilot_platform/frontend/**"
@@ -36,7 +38,7 @@ jobs:
         run: pytest tests/test_device_remote_sessions.py tests/test_remote_link_whitebox.py tests/test_remote_device_dialog_js.py tests/test_remote_turn_optional.py tests/test_remote_phase3_live.py -q
       # TURN：未配置 secrets 时 test_remote_turn_optional 自动 skip
       - name: Remote lint
-        run: ruff check autopilot_platform/platform/api/device_remote*.py autopilot_platform/platform/services/device_remote*.py autopilot_platform/runner/remote
+        run: ruff check autopilot_platform/platform/api/device_remote*.py autopilot_platform/platform/services/remote autopilot_platform/runner/remote
       - name: Frontend typecheck and build
         working-directory: autopilot_platform/frontend
         run: npm ci && npm test && npm run typecheck && npm run build

@@ -182,7 +182,7 @@ onMounted(() => {
 }
 .register-box input {
   padding: 0.45rem 0.6rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--surface-soft);
   color: var(--text);

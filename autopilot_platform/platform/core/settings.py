@@ -138,6 +138,10 @@ def is_exposed_bind_host(host: str | None = None) -> bool:
     return not is_loopback_bind_host(host)
 
 
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in ("1", "true", "yes", "on")
+
+
 def allow_managed_runner() -> bool:
     """是否允许 Platform 进程托管本机 Runner（Web 启停）。
 
@@ -145,14 +149,16 @@ def allow_managed_runner() -> bool:
 
     - 须显式 ``MC_ALLOW_MANAGED_RUNNER=1|true|yes|on``（未设置 / ``0`` → 关）
     - 且 ``MC_HOST`` 为 loopback（``127.0.0.1`` / ``::1`` / ``localhost``）
-    - 非 loopback（``0.0.0.0`` / LAN / ``--lan``）一律禁止：远程会话不可 Web→本机 spawn
+    - 非 loopback 默认禁止，避免远程网页在服务器上拉起进程
+    - 仅调试联调可再开 ``MC_DEV_LAN_MANAGED_RUNNER=1``，且 ``MC_ENV`` 不是 production
     """
-    raw = os.environ.get("MC_ALLOW_MANAGED_RUNNER", "").strip().lower()
-    if raw not in ("1", "true", "yes", "on"):
+    if not _env_flag("MC_ALLOW_MANAGED_RUNNER"):
         return False
-    if is_exposed_bind_host():
+    if not is_exposed_bind_host():
+        return True
+    if is_production():
         return False
-    return True
+    return _env_flag("MC_DEV_LAN_MANAGED_RUNNER")
 
 
 def managed_runner_deny_message() -> str:
@@ -205,6 +211,11 @@ def jwt_secret() -> str:
         os.environ.get("MC_JWT_SECRET", _DEFAULT_JWT_SECRET).strip()
         or _DEFAULT_JWT_SECRET
     )
+
+
+def jwt_secret_is_default() -> bool:
+    """当前 JWT 密钥是否仍是开发默认值。"""
+    return jwt_secret() == _DEFAULT_JWT_SECRET
 
 
 def turn_enabled() -> bool:

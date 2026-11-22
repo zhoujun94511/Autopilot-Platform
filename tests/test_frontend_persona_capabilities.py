@@ -185,10 +185,10 @@ def test_role_labels_source_contract():
 
 
 def test_users_panel_create_duty_one_step():
-    """注册时一次选「来干什么」，系统管理员与项目负责人分开，不再只丢 operator/admin。"""
+    """注册时直接分配账号角色，系统管理员与项目负责人使用各自的 duty。"""
     src = (FE / "components" / "UsersPanel.vue").read_text(encoding="utf-8")
     assert "dutyOptions" in src
-    assert "这个人来干什么" in src
+    assert 'aria-label="账号角色"' in src
     assert "sys_admin" in src
     assert "org_admin" in src
     assert "project_owner" in src
@@ -294,7 +294,8 @@ def test_projects_panel_no_create_org_cta_for_members():
     assert "useCapabilities" in panel
     assert "caps.canCreateOrg || caps.canManageAnyOrg" in panel
     assert "caps.canCreateProject" in panel
-    assert "组织由管理员创建" in panel or "无法自行创建" in panel
+    assert "组织由管理员创建" not in panel
+    assert "创建组织" not in panel
 
     org = (FE / "components" / "projects" / "OrgSettingsSection.vue").read_text(
         encoding="utf-8"
@@ -430,9 +431,11 @@ def test_org_admin_of_project_org_without_current_org_filter():
 
 
 def test_dashboard_layout_is_capability_gated_not_forked():
-    """首页只有一份模板：角色只藏运维卡，不得再分叉「快捷入口」四宫格。"""
+    """角色共用近期执行和运行分析工作区。"""
     src = (FE / "components" / "DashboardPanel.vue").read_text(encoding="utf-8")
-    assert "dash-quick-row" in src
+    assert 'aria-label="常用操作"' in src
+    assert 'aria-controls="overview-execution"' in src
+    assert 'aria-controls="overview-analysis"' in src
     assert "全部任务" in src
     assert "快捷入口" not in src
     assert "btn-quick" not in src
@@ -441,8 +444,8 @@ def test_dashboard_layout_is_capability_gated_not_forked():
     dist_dir = ROOT / "autopilot_platform" / "frontend" / "dist" / "assets"
     for js in dist_dir.glob("DashboardPanel-*.js"):
         built = js.read_text(encoding="utf-8")
-        assert "dash-quick-row" in built, f"stale dist {js.name}: rebuild frontend"
-        assert "快捷入口" not in built, f"stale dist {js.name}: still has old operator layout"
+        assert "overview-execution" in built, f"stale dist {js.name}: rebuild frontend"
+        assert "overview-analysis" in built, f"stale dist {js.name}: rebuild frontend"
 
 
 def test_design_panels_wire_can_edit():
@@ -578,9 +581,9 @@ def test_device_infra_vs_exec_copy():
     assert "租户" not in hub
     assert "管池" not in hub
     assert "基础设施" not in hub
-    assert "自动分配" in hub
-    assert "批跑" in hub
-    assert 'desc: canOps ? ""' in hub or "canOps ? \"\"" in hub
+    assert "自动分配" not in hub
+    assert "批跑" not in hub
+    assert "设备按组织管理" not in hub
     picker = (FE / "components" / "DevicePicker.vue").read_text(encoding="utf-8")
     template = picker.split("<template>", 1)[1]
     assert "Device Farm" not in template
@@ -607,8 +610,9 @@ def test_share_read_does_not_require_selected_project():
     """ACL 查看按 resource_id；只有建立/撤销依赖资源所属项目写权限。"""
     panel = (FE / "components" / "SharePanel.vue").read_text(encoding="utf-8")
     assert "filterProjectId" not in panel
-    assert "输入或点选资源后可以查看已有分享" in panel
-    assert "所属项目的写权限" in panel
+    assert "只读项目，无法修改共享" in panel
+    assert "输入或点选资源后可以查看已有分享" not in panel
+    assert "所属项目的写权限" not in panel
     assert 'v-if="caps.canShareWrite"' in panel
     capabilities = (FE / "composables" / "useCapabilities.ts").read_text(
         encoding="utf-8"

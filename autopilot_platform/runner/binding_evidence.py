@@ -8,7 +8,7 @@ from typing import Any
 
 def _load_yaml(path: str | Path) -> dict[str, Any] | None:
     p = Path(path)
-    if not p.is_file() or not p.suffix.lower() in {".yaml", ".yml"}:
+    if not p.is_file() or p.suffix.lower() not in {".yaml", ".yml"}:
         return None
     try:
         import yaml

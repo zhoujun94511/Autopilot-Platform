@@ -243,6 +243,7 @@ async def _lifespan(_app: FastAPI):
         os.environ.get("MC_ALLOW_MANAGED_RUNNER", "").strip().lower()
         in ("1", "true", "yes", "on")
         and is_exposed_bind_host()
+        and not allow_managed_runner()
     ):
         log.warning(
             "MC_ALLOW_MANAGED_RUNNER=1 ignored: non-loopback bind "

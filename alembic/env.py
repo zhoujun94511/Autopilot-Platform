@@ -3,7 +3,8 @@
 ``init_db()`` 经 ``platform.core.alembic_align`` 调用本环境：
 
 - 空库：``upgrade head``
-- 已有库：``create_all`` + ``migrate_schema`` 后 ``stamp`` / ``upgrade``
+- 有 revision 的库：先 ``upgrade head``，再补齐兼容列
+- 未纳入版本管理的历史库：``create_all`` + ``migrate_schema`` 后 ``stamp``
 
 新表/列变更应新增 revision；``SCHEMA_ADDS`` 为兼容补列层（见 ADR）。
 """
@@ -29,6 +30,9 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
+    explicit_url = config.attributes.get("database_url")
+    if explicit_url is not None:
+        return str(explicit_url)
     url = os.environ.get("MC_DATABASE_URL", "").strip()
     if url:
         return url

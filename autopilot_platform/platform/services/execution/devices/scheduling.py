@@ -742,6 +742,7 @@ def reconcile_orphan_device_busy(db: Session) -> list[str]:
             JobStatus.CANCELLED.value,
         }
     )
+    now = utcnow()
     rows = list(
         db.scalars(select(DeviceRow).where(DeviceRow.busy_job_id.is_not(None))).all()
     )
@@ -751,9 +752,17 @@ def reconcile_orphan_device_busy(db: Session) -> list[str]:
         if not jid:
             continue
         job = db_get(db, JobRow, jid)
+        if job is not None and (job.status or "") == JobStatus.CANCELLED.value:
+            fin = getattr(job, "finished_at", None)
+            if fin is not None:
+                fin_cmp = fin.replace(tzinfo=None) if fin.tzinfo else fin
+                now_cmp = now.replace(tzinfo=None) if now.tzinfo else now
+                # 刚取消的运行中任务需给 Runner 留出收尾宽限，避免抢占物理设备
+                if (now_cmp - fin_cmp).total_seconds() < 120:
+                    continue
         if job is None or (job.status or "") in terminal:
             d.busy_job_id = None
-            d.updated_at = utcnow()
+            d.updated_at = now
             cleared.append(str(d.udid or ""))
     cleared = [u for u in cleared if u]
     if cleared:

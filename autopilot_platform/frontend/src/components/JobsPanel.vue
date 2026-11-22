@@ -1,36 +1,82 @@
 <script setup lang="ts">
 defineOptions({ name: "JobsPanel" });
 
-import { computed, ref, watch } from "vue";
+import { computed, onDeactivated, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
 import type { Job } from "../api";
 import { listJobsPage, OPS_LIST_PAGE_SIZE } from "../api/opsLists";
 import { storeToRefs } from "pinia";
 import { useProjectsStore } from "../stores/projectsStore";
 import { useCapabilities } from "../composables/useCapabilities";
 import { usePagedList } from "../composables/usePagedList";
+import { refreshScopes, registerJobsPage } from "../composables/mcPolling";
+import { hasActiveJobs } from "../composables/mcRefreshScopes";
 import { useExecStore } from "../stores/execution";
 import { useOpsStore } from "../stores/opsStore";
 import { useAdminStore } from "../stores/adminStore";
 import DataPager from "./common/DataPager.vue";
+import ApModal from "./ApModal.vue";
 import ExecProjectGateBanner from "./ExecProjectGateBanner.vue";
 import JobCreatePanel from "./JobCreatePanel.vue";
 import JobLogViewer from "./JobLogViewer.vue";
 import StatusPill from "./StatusPill.vue";
 import { JOB_STATUS_FILTERS } from "../utils/status";
 import { platformBadgeLabel } from "../utils/deviceDisplay";
+import { parseApiTime } from "../utils/parseApiTime";
 
 const projectsStore = useProjectsStore();
-const { filterProjectId } = storeToRefs(projectsStore);
+const { filterProjectId, filterOrgId, projects } = storeToRefs(projectsStore);
 const exec = useExecStore();
 const ops = useOpsStore();
 const admin = useAdminStore();
-const { jobsListVersion, jobMsg, jobMsgOk, logJobId } = storeToRefs(exec);
+const { jobMsg, jobMsgOk, logJobId, artifacts, submitting } = storeToRefs(exec);
 
 const caps = useCapabilities();
 const canCreateJob = computed(() => Boolean(caps.canEditProject));
 const search = ref("");
+const searchQuery = ref("");
 const statusFilter = ref("");
+const route = useRoute();
+const router = useRouter();
 const createOpen = ref(false);
+const createPending = ref(false);
+const createdMessage = ref("");
+const filtered = computed(() => Boolean(statusFilter.value || searchQuery.value));
+const projectNames = computed(() => new Map(projects.value.map((p) => [p.id, p.name])));
+const artifactNames = computed(() => new Map(artifacts.value.map((a) => [a.id, a.name || a.filename])));
+const dateTime = new Intl.DateTimeFormat("zh-CN", {
+  year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hour12: false,
+});
+
+function createdAt(job: Job) {
+  const time = parseApiTime(job.created_at);
+  return Number.isFinite(time) ? dateTime.format(time) : "—";
+}
+
+function executionSource(job: Job) {
+  if (!job.artifact_id) return job.project_dir || "—";
+  return artifactNames.value.get(job.artifact_id) || `制品 ${job.artifact_id.slice(0, 8)}`;
+}
+
+function clearFilters() {
+  search.value = "";
+  searchQuery.value = "";
+  setStatusFilter("");
+}
+
+function setStatusFilter(value: string) {
+  const query = { ...route.query };
+  if (value) query.status = value;
+  else delete query.status;
+  void router.push({ query });
+}
+
+watch(() => [route.meta.tab, route.query.status], ([tab, status]) => {
+  if (tab === "jobs") {
+    statusFilter.value = JOB_STATUS_FILTERS.find((filter) => filter.value === status)?.value ?? "";
+  }
+}, { immediate: true });
 
 const list = usePagedList<Job>({
   immediate: false,
@@ -40,38 +86,66 @@ const list = usePagedList<Job>({
       page,
       pageSize,
       projectId: filterProjectId.value.trim() || undefined,
-      q: search.value.trim() || undefined,
+      q: searchQuery.value || undefined,
       status: statusFilter.value || undefined,
     }),
-  resetSources: [() => filterProjectId.value],
-  filterSources: [statusFilter],
-  isUnfiltered: () => !statusFilter.value && !search.value.trim(),
+  resetSources: [filterOrgId, filterProjectId],
+  filterSources: [statusFilter, searchQuery],
+  // filterSources: [statusFilter] remains part of the empty-state contract.
+  isUnfiltered: () => !statusFilter.value && !searchQuery.value,
 });
 
-const { items, total, page, pageSize, loading, hasLoaded, universeEmpty, reload, setPage, setPageSize } = list;
-
-let searchTimer: ReturnType<typeof setTimeout> | undefined;
-watch(search, () => {
-  if (searchTimer) clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => {
-    if (universeEmpty.value) return;
-    void reload(true);
-  }, 280);
+const { items, total, page, pageSize, loading, hasLoaded, error, reload, setPage, setPageSize } = list;
+registerJobsPage({
+  refresh: () => reload(false),
+  hasActiveJobs: () => hasActiveJobs(items.value),
+  isCreateOpen: () => createOpen.value,
 });
 
-watch(jobsListVersion, () => void reload(false));
+watch(search, (value, _previous, onCleanup) => {
+  const timer = setTimeout(() => { searchQuery.value = value.trim(); }, 280);
+  onCleanup(() => clearTimeout(timer));
+});
+
 void reload(true);
 
 function openCreate() {
+  if (createPending.value || submitting.value) return;
   jobMsg.value = "";
+  createdMessage.value = "";
   const pid = filterProjectId.value.trim();
   if (pid) exec.form.project_id = pid;
   createOpen.value = true;
+  void refreshScopes(["devices", "artifacts", "app-builds", "projects"]);
 }
 
 function closeCreate() {
+  if (createPending.value || submitting.value) return;
   createOpen.value = false;
 }
+
+function closeRowActions(event: Event) {
+  const actions = (event.target as HTMLElement | null)?.closest<HTMLDetailsElement>(".job-row-menu");
+  if (!actions?.open) return;
+  actions.open = false;
+  actions.querySelector("summary")?.focus();
+}
+
+function runRowAction(event: MouseEvent, action: () => unknown) {
+  closeRowActions(event);
+  void action();
+}
+
+onDeactivated(() => {
+  createOpen.value = false;
+  exec.closeJobLog();
+});
+
+watch([filterOrgId, filterProjectId], () => {
+  createOpen.value = false;
+  createdMessage.value = "";
+  exec.closeJobLog();
+});
 
 watch(
   jobMsg,
@@ -81,189 +155,155 @@ watch(
       jobMsgOk.value &&
       String(m || "").startsWith("已创建任务")
     ) {
-      createOpen.value = false;
+      createdMessage.value = m;
+      if (!m.includes("\n")) createOpen.value = false;
     }
   },
 );
 </script>
 
 <template>
-  <section class="panel page-stack jobs-panel">
-    <header class="page-hero">
-      <div class="page-hero-copy">
-        <h2>批跑</h2>
-        <p class="lede">查看正在跑和已完成的任务。点「新建批跑」创建。</p>
-      </div>
+  <section class="jobs-panel" aria-labelledby="jobs-title">
+    <header class="jobs-header">
+      <h2 id="jobs-title">批跑</h2>
       <div class="page-hero-actions">
-        <label class="toolbar-search">
-          <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-          <input v-model="search" type="search" placeholder="搜索名称 / ID / 节点…" />
-        </label>
-        <button
-          v-if="canCreateJob"
-          type="button"
-          class="primary small"
-          @click="openCreate"
-        >
+        <button type="button" class="ghost" :disabled="loading" @click="reload(false)">刷新</button>
+        <button v-if="canCreateJob" type="button" class="primary" @click="openCreate">
           新建批跑
         </button>
       </div>
     </header>
 
-    <ExecProjectGateBanner action-hint="新建批跑" />
+    <div class="vben-card jobs-table-card">
+      <div class="jobs-toolbar">
+        <div class="filter-chips job-status-filters" role="group" aria-label="任务状态筛选">
+          <button
+            v-for="f in JOB_STATUS_FILTERS"
+            :key="f.value || 'all'"
+            type="button"
+            :aria-pressed="statusFilter === f.value"
+            @click="setStatusFilter(f.value)"
+          >
+            {{ f.label }}
+          </button>
+        </div>
+        <div class="jobs-search">
+          <label class="toolbar-search">
+            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" aria-hidden="true">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input id="jobs-search-input" v-model="search" name="jobs-search" type="search" aria-label="搜索批跑任务" placeholder="名称、ID 或节点" />
+          </label>
+        </div>
+      </div>
 
-    <div class="filter-chips" role="tablist" aria-label="任务状态筛选">
-      <button
-        v-for="f in JOB_STATUS_FILTERS"
-        :key="f.value || 'all'"
-        type="button"
-        role="tab"
-        class="filter-chip"
-        :class="{ active: statusFilter === f.value }"
-        :aria-selected="statusFilter === f.value"
-        @click="statusFilter = f.value"
-      >
-        {{ f.label }}
-      </button>
-    </div>
+      <ExecProjectGateBanner class="job-feedback" action-hint="新建批跑" />
+      <div v-if="createdMessage" class="msg ok job-created job-feedback" role="status">{{ createdMessage }}</div>
+      <div v-if="error" class="job-feedback list-error" role="alert">
+        <span>{{ error }}</span>
+        <button type="button" class="linkish" :disabled="loading" @click="reload(false)">重试</button>
+      </div>
 
-    <div class="table-wrap">
-      <table>
+      <div class="table-wrap jobs-results" tabindex="0" role="region" aria-label="批跑列表" :aria-busy="loading">
+      <table class="jobs-table" :class="{ 'has-jobs': items.length > 0 }" aria-label="批跑任务">
         <thead>
           <tr>
-            <th>ID</th>
-            <th>名称</th>
-            <th>状态</th>
-            <th>平台</th>
-            <th>项目 / 制品</th>
-            <th>节点</th>
-            <th>操作</th>
+            <th scope="col">名称</th>
+            <th scope="col">状态</th>
+            <th scope="col">执行目标</th>
+            <th scope="col">创建时间</th>
+            <th scope="col">工程来源</th>
+            <th scope="col">操作</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-if="!items.length && hasLoaded">
-            <td class="empty" colspan="7">
-              <template v-if="total">无匹配任务，请调整搜索或状态筛选</template>
-              <div v-else class="empty-stack">
-                <span>暂无批跑任务</span>
-                <button
-                  v-if="canCreateJob"
-                  type="button"
-                  class="linkish-cta"
-                  @click="openCreate"
-                >
-                  去新建批跑
-                </button>
+          <tr v-if="!items.length && !error">
+            <td class="empty" colspan="6">
+              <div v-if="!items.length && hasLoaded" class="empty-stack">
+                <template v-if="filtered">
+                  <span>无匹配任务</span>
+                  <button type="button" class="linkish" @click="clearFilters">清除筛选</button>
+                </template>
+                <span v-else>暂无批跑任务</span>
               </div>
+              <span v-else role="status">正在加载批跑任务…</span>
             </td>
           </tr>
           <tr v-for="j in items" :key="j.id">
-            <td class="mono font-semibold" :title="j.id">
-              <button type="button" class="small" @click="admin.copyText(j.id)">
-                {{ j.id.slice(0, 8) }}…
+            <td>
+              <strong class="job-title" :title="j.name">{{ j.name }}</strong>
+              <button type="button" class="linkish job-id" :aria-label="'复制任务 ID ' + j.id" :title="j.id" @click="admin.copyText(j.id)">
+                {{ j.id.length > 12 ? j.id.slice(0, 12) + "…" : j.id }}
               </button>
             </td>
-            <td class="job-name-cell">{{ j.name }}</td>
             <td>
               <StatusPill :status="j.status" />
+              <span v-if="j.status === 'failed' && j.error" class="job-meta job-failure" :title="j.error">{{ j.error }}</span>
             </td>
             <td>
-              <span class="platform-mini-badge" :class="j.platform.toLowerCase()">
+              <span class="platform-mini-badge" :class="j.platform?.toLowerCase()">
                 {{ platformBadgeLabel(j.platform) }}
               </span>
+              <span v-if="j.runner_id" class="job-meta" :title="j.runner_id">{{ j.runner_id }}</span>
             </td>
-            <td
-              class="mono artifact-info-cell"
-              :title="[j.artifact_id, j.app_build_id, j.project_dir].filter(Boolean).join(' | ')"
-            >
-              <span v-if="j.project_id" class="pj-tag">{{ j.project_id }}</span>
-              <span class="target-desc">{{ j.artifact_id || j.project_dir || "-" }}</span>
-              <span
-                v-if="j.app_build_id"
-                class="pj-tag app-tag"
-                :title="[j.app_package_id, j.app_build_id].filter(Boolean).join(' · ')"
-              >
-                {{
-                  j.app_build_name
-                    ? `${j.app_build_name}${j.app_version_name ? " v" + j.app_version_name : ""}`
-                    : "app"
-                }}
+            <td class="job-time" :title="j.created_at || undefined">{{ createdAt(j) }}</td>
+            <td>
+              <span class="job-title" :title="j.artifact_id || j.project_dir">{{ executionSource(j) }}</span>
+              <span v-if="j.project_id && !filterProjectId" class="job-meta" :title="j.project_id">{{ projectNames.get(j.project_id) || j.project_id }}</span>
+              <span v-if="j.app_build_id" class="job-meta" :title="j.app_build_id">
+                {{ j.app_build_name || "应用" }}{{ j.app_version_name ? " v" + j.app_version_name : "" }}
               </span>
             </td>
-            <td class="mono runner-id-cell">{{ j.runner_id || "-" }}</td>
-            <td class="actions-cell">
-              <button
-                v-if="exec.canCancel(j.status)"
-                type="button"
-                class="small danger"
-                title="取消正在运行的任务"
-                @click="exec.onCancelJob(j.id)"
-              >
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="15" y1="9" x2="9" y2="15" />
-                  <line x1="9" y1="9" x2="15" y2="15" />
-                </svg>
-                取消
-              </button>
-
-              <button
-                v-if="exec.canRetry(j.status)"
-                type="button"
-                class="small primary"
-                title="重试此失败/取消的任务"
-                @click="exec.onRetryJob(j.id)"
-              >
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38" />
-                </svg>
-                重试
-              </button>
-
-              <button
-                v-if="exec.canViewReport(j.status)"
-                type="button"
-                class="small"
-                title="查看测试报告"
-                @click="exec.onViewReport(j.id)"
-              >
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                报告
-              </button>
-
-              <button
-                type="button"
-                class="small"
-                title="查看实时日志"
-                @click="exec.onViewJobLog(j.id)"
-              >
-                <svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" stroke-width="2" fill="none">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <polyline points="14 2 14 8 20 8" />
-                  <line x1="16" y1="13" x2="8" y2="13" />
-                  <line x1="16" y1="17" x2="8" y2="17" />
-                  <polyline points="10 9 9 9 8 9" />
-                </svg>
-                日志
-              </button>
-
-              <button
-                v-if="caps.canShareWrite"
-                type="button"
-                class="small"
-                title="去共享页，把这个任务分享给别人"
-                @click="ops.selectJobForShare(j.id)"
-              >
-                分享
-              </button>
+            <td>
+              <div class="actions-cell">
+                <button
+                  v-if="exec.canViewReport(j.status)"
+                  type="button"
+                  class="linkish"
+                  title="查看测试报告"
+                  @click="exec.onViewReport(j.id)"
+                >
+                  报告
+                </button>
+                <button type="button" class="linkish" title="查看日志" @click="exec.onViewJobLog(j.id)">
+                  日志
+                </button>
+                <details
+                  v-if="caps.canShareWrite || (!caps.isProjectViewer && (exec.canCancel(j.status) || exec.canRetry(j.status)))"
+                  class="job-row-menu"
+                  name="job-row-actions"
+                  @keydown.esc.stop="closeRowActions"
+                >
+                  <summary :aria-label="`${j.name} 的更多操作`">更多</summary>
+                  <div class="job-row-menu-actions">
+                    <button
+                      v-if="!caps.isProjectViewer && exec.canRetry(j.status)"
+                      type="button"
+                      class="linkish"
+                      @click="runRowAction($event, () => exec.onRetryJob(j.id))"
+                    >
+                      重试
+                    </button>
+                    <button
+                      v-if="caps.canShareWrite"
+                      type="button"
+                      class="linkish"
+                      @click="runRowAction($event, () => ops.selectJobForShare(j.id))"
+                    >
+                      分享
+                    </button>
+                    <button
+                      v-if="!caps.isProjectViewer && exec.canCancel(j.status)"
+                      type="button"
+                      class="linkish job-danger"
+                      @click="runRowAction($event, () => exec.onCancelJob(j.id))"
+                    >
+                      取消任务
+                    </button>
+                  </div>
+                </details>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -271,6 +311,7 @@ watch(
     </div>
     <DataPager
       v-if="total > 0"
+      class="jobs-pager"
       :total="total"
       :page="page"
       :page-size="pageSize"
@@ -278,6 +319,7 @@ watch(
       @update:page="setPage"
       @update:page-size="setPageSize"
     />
+    </div>
 
     <JobLogViewer
       v-if="logJobId"
@@ -285,196 +327,264 @@ watch(
       @close="exec.closeJobLog"
     />
 
-    <Teleport to="body">
-      <div v-if="createOpen" class="modal-mask" @click.self="closeCreate">
-        <section
-          class="modal-card"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="job-create-title"
-        >
-          <header class="modal-head">
-            <div>
-              <h3 id="job-create-title">新建批跑</h3>
-              <p class="modal-sub">分步填写基础信息、工程源与执行目标后提交。</p>
-            </div>
-            <button type="button" class="icon-btn" aria-label="关闭" @click="closeCreate">✕</button>
-          </header>
-          <div class="modal-scroll">
-            <JobCreatePanel embedded />
-          </div>
-        </section>
+    <ApModal
+      v-if="createOpen"
+      variant="drawer"
+      title="新建批跑"
+      :close-on-backdrop="false"
+      :close-on-esc="!createPending && !submitting"
+      @close="closeCreate"
+    >
+      <div class="job-create-scroll">
+        <JobCreatePanel embedded @pending-change="createPending = $event" @cancel="closeCreate" />
       </div>
-    </Teleport>
+    </ApModal>
   </section>
 </template>
 
 <style scoped>
 .jobs-panel {
-  width: 100%;
-  max-width: none;
-  gap: 0.85rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
 }
 
-.filter-chips {
-  margin-bottom: 0;
+.jobs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: 14px 20px;
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  border-radius: var(--vben-radius-xl);
+  box-shadow: var(--vben-shadow-card);
 }
 
-.font-semibold {
-  font-weight: 600;
+.jobs-table-card {
+  overflow: hidden;
 }
 
-.job-name-cell {
-  font-weight: 500;
+.jobs-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: 0 20px;
+  border-bottom: 1px solid var(--vben-border-soft);
+}
+
+.jobs-results {
+  border: none;
+  border-radius: 0;
+}
+
+.jobs-header h2 {
+  margin: 0;
   color: var(--text);
+  font-size: var(--font-size-title);
+  font-weight: 650;
 }
 
-.platform-mini-badge {
-  display: inline-block;
-  min-width: 2.2em;
-  text-align: center;
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  background-color: var(--chip-bg);
+.jobs-toolbar {
+  padding-block: 0;
 }
 
-.platform-mini-badge.android {
-  color: var(--ok-soft-fg);
-  background-color: var(--ok-soft-bg);
+.job-status-filters {
+  gap: var(--space-3);
 }
 
-.platform-mini-badge.ios {
-  color: var(--purple-soft-fg);
-  background-color: var(--purple-soft-bg);
+.job-status-filters button {
+  padding: 0 6px;
+  min-height: 47px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 500;
 }
 
-.platform-mini-badge.web {
-  color: var(--info-soft-fg);
-  background-color: var(--info-soft-bg);
-}
-
-.platform-mini-badge.http {
+.job-status-filters button:hover,
+.job-status-filters button[aria-pressed="true"] {
   color: var(--accent-text);
-  background-color: var(--accent-soft);
 }
 
-.artifact-info-cell {
-  max-width: 250px;
+.job-status-filters button[aria-pressed="true"] {
+  border-bottom-color: var(--accent);
+  font-weight: 650;
+}
+
+.jobs-search {
+  padding-block: 6px;
+}
+
+.jobs-search .toolbar-search {
+  min-width: 0;
+  width: min(260px, 100%);
+}
+
+.jobs-search input {
+  min-width: 0;
+}
+
+.jobs-results {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.jobs-results:focus-visible {
+  outline-offset: -2px;
+}
+
+.jobs-table.has-jobs {
+  min-width: 790px;
+}
+
+.jobs-table th:first-child,
+.jobs-table td:first-child {
+  padding-inline-start: 20px;
+}
+
+.jobs-table th:last-child,
+.jobs-table td:last-child {
+  padding-inline-end: 20px;
+}
+
+.jobs-table td.empty {
+  height: 148px;
+  text-align: center;
+}
+
+.jobs-table .empty-stack {
+  align-items: center;
+  margin-inline: auto;
+}
+
+.jobs-pager {
+  margin: 0;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.job-feedback {
+  margin: var(--space-3) 20px;
+}
+
+.job-created {
+  white-space: pre-wrap;
+}
+
+.list-error {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  color: var(--bad);
+}
+
+.jobs-table .job-title {
+  display: block;
+  max-width: 24rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pj-tag {
-  font-family: var(--font);
-  font-size: 0.68rem;
-  font-weight: 700;
-  background-color: var(--btn-bg);
-  border: 1px solid var(--line);
-  color: var(--muted);
-  padding: 0.05rem 0.3rem;
-  border-radius: 4px;
-  margin-right: 0.4rem;
+.jobs-table .job-id,
+.jobs-table .job-meta {
+  display: block;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.target-desc {
-  color: var(--mono);
+.jobs-table .job-id {
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: var(--font-size-meta);
+  text-decoration: none;
+  text-align: left;
 }
 
-.runner-id-cell {
+.jobs-table .job-id:hover {
+  color: var(--accent-text);
+  text-decoration: underline;
+}
+
+.jobs-table .job-meta,
+.jobs-table .job-time {
   color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+
+.jobs-table .job-failure {
+  margin-top: 0.25rem;
+  color: var(--bad);
+}
+
+.platform-mini-badge {
+  font-size: var(--font-size-meta);
+  color: var(--muted);
+}
+
+.platform-mini-badge.http,
+.platform-mini-badge.web {
+  color: var(--text);
+}
+
+.job-danger {
+  color: var(--bad);
+}
+
+.job-create-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding: 4px;
 }
 
 .actions-cell {
   display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-}
-
-td.empty {
-  text-align: center;
-}
-
-.linkish-cta {
-  background: none;
-  border: none;
-  color: var(--accent-text, #1565c0);
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 0;
-  margin: 0;
-}
-
-.modal-mask {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
   align-items: flex-start;
-  justify-content: center;
-  padding: 1.5rem;
-  overflow-y: auto;
-  background: var(--overlay);
+  gap: 0.65rem;
+  white-space: nowrap;
 }
 
-.modal-card {
-  width: min(920px, 100%);
-  margin: auto 0;
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-medium);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--elevated-shadow);
+.job-row-menu > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: var(--font-size-meta);
+}
+
+.job-row-menu-actions {
   display: flex;
   flex-direction: column;
-  max-height: calc(100vh - 3rem);
-}
-
-.modal-head {
-  display: flex;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 1.1rem 1.2rem 0.85rem;
-  border-bottom: 1px solid var(--line);
-  flex-shrink: 0;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
 }
 
-.modal-head h3 {
-  margin: 0 0 0.3rem;
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--text);
+@media (max-width: 720px) {
+  .jobs-header,
+  .jobs-toolbar,
+  .jobs-pager {
+    padding-inline: 12px;
+  }
+  .jobs-toolbar {
+    gap: 0;
+  }
+  .jobs-search {
+    flex: 1 0 100%;
+  }
 }
 
-.modal-sub {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-  line-height: 1.45;
-}
-
-.icon-btn {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 1rem;
-  padding: 0.2rem 0.4rem;
-  border-radius: var(--radius-sm);
-}
-
-.icon-btn:hover {
-  color: var(--text);
-  background: var(--action-hover);
-}
-
-.modal-scroll {
-  overflow-y: auto;
-  padding: 0.85rem 1.2rem 1.2rem;
-  min-height: 0;
-}
 </style>

@@ -26,7 +26,7 @@ def _normalize_openapi_path(path: str) -> str:
 
 
 @pytest.fixture()
-def openapi_paths(tmp_path, monkeypatch):
+def app(tmp_path, monkeypatch):
     db_path = tmp_path / "cap_reg.db"
     url = f"sqlite:///{db_path.as_posix()}"
     monkeypatch.setenv("MC_ARTIFACTS_DIR", str(tmp_path / "artifacts"))
@@ -42,15 +42,18 @@ def openapi_paths(tmp_path, monkeypatch):
     from autopilot_platform.platform.ops.runtime_config import reload_runtime_config
 
     reload_runtime_config()
-    app = create_app(database_url=url)
+    yield create_app(database_url=url)
+    reset_engine()
+    reload_runtime_config()
+
+
+def _openapi_paths(app):
     spec = app.openapi()
     paths: set[tuple[str, str]] = set()
     for path, methods in spec.get("paths", {}).items():
         for method in methods:
             if method.upper() in ("GET", "POST", "PUT", "PATCH", "DELETE"):
                 paths.add((method.upper(), _normalize_openapi_path(path)))
-    reset_engine()
-    reload_runtime_config()
     return paths
 
 
@@ -59,13 +62,27 @@ def test_registry_capability_ids_are_known():
         assert binding.capability_id in CAPABILITY_IDS, binding
 
 
-def test_registry_routes_exist_in_openapi(openapi_paths):
+def test_registry_http_routes_exist_in_openapi(app):
+    openapi_paths = _openapi_paths(app)
     missing: list[str] = []
     for b in CAPABILITY_ROUTE_BINDINGS:
+        if b.method == "WEBSOCKET":
+            continue
         norm = _normalize_openapi_path(b.path)
         if (b.method, norm) not in openapi_paths:
             missing.append(f"{b.method} {norm} ({b.capability_id})")
     assert not missing, "注册表路由在 OpenAPI 中缺失:\n" + "\n".join(missing)
+
+
+def test_registry_websocket_routes_exist_in_app(app):
+    from autopilot_platform.platform.api.device_remote_ws import device_remote_websocket
+
+    session_id = "capability-check"
+    route = app.url_path_for(device_remote_websocket.__name__, session_id=session_id)
+    assert route.protocol == "websocket"
+    registered_paths = {b.path.format(session_id=session_id) for b in CAPABILITY_ROUTE_BINDINGS
+                        if b.method == "WEBSOCKET"}
+    assert registered_paths == {str(route)}
 
 
 def test_scoped_token_binding_is_platform_admin_only():

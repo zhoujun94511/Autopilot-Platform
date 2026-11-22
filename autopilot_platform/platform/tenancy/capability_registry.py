@@ -56,8 +56,8 @@ CAPABILITY_IDS: frozenset[str] = frozenset(
 @dataclass(frozen=True)
 class RouteCapabilityBinding:
     capability_id: str
-    method: str
-    path: str  # OpenAPI 路径，含 /api/v1 前缀；{param} 占位
+    method: str  # HTTP 方法或 WEBSOCKET
+    path: str  # 路由路径，含 /api/v1 前缀；{param} 占位
     guard: GuardKind
     note: str = ""
 
@@ -311,7 +311,7 @@ CAPABILITY_ROUTE_BINDINGS: tuple[RouteCapabilityBinding, ...] = (
     ),
     RouteCapabilityBinding(
         "cap.devices.remote",
-        "GET",
+        "WEBSOCKET",
         "/api/v1/device-remote-sessions/{session_id}/ws",
         "authenticated",
         "远控 WebSocket；Runner 用 Token，browser 首帧鉴权",

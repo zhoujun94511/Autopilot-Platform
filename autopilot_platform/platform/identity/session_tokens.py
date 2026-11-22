@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from autopilot_platform.core.schemas import TokenOut, UserOut
@@ -89,9 +89,18 @@ def refresh_session(db: Session, raw_refresh: str) -> TokenOut:
 
     new_raw = secrets.token_urlsafe(48)
     new_row = _make_refresh_row(str(user.id), new_raw)
-    row.revoked = True
-    row.replaced_by = new_row.id
-    db.add(row)
+    res = db.execute(
+        update(RefreshTokenRow)
+        .where(
+            RefreshTokenRow.id == row.id,
+            RefreshTokenRow.revoked.is_(False),
+        )
+        .values(revoked=True, replaced_by=new_row.id)
+        .execution_options(synchronize_session=False)
+    )
+    if int(getattr(res, "rowcount", 0) or 0) != 1:
+        db.rollback()
+        raise PermissionError(msg.AUTH_REFRESH_INVALID)
     db.add(new_row)
     db.commit()
 

@@ -12,9 +12,11 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "ant-design-vue": "^4.2.6",
+    "lucide-vue-next": "^1.0.0",
     "pinia": "^4.0.2",
     "run": "^2.0.1",
-    "vue": "^3.5.13",
+    "vue": "^3.5.46",
     "vue-router": "^4.6.4"
   },
   "devDependencies": {
@@ -22,8 +24,8 @@
     "@vue/test-utils": "^2.4.11",
     "jsdom": "^29.1.1",
     "typescript": "~5.7.2",
-    "vite": "^6.0.7",
-    "vitest": "^4.1.11",
+    "vite": "^6.4.6",
+    "vitest": "^4.1.12",
     "vue-tsc": "^2.2.0"
   }
 }

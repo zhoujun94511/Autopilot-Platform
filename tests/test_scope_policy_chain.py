@@ -603,4 +603,10 @@ def test_frontend_scope_policy_wiring():
     pools = (FE / "components" / "ResourcePoolsPanel.vue").read_text(encoding="utf-8")
     assert 'listResourcePoolsPage(orgId.value, "",' in pools
     share = (FE / "components" / "SharePanel.vue").read_text(encoding="utf-8")
-    assert "建立或撤销共享需要该资源所属项目的写权限" in share
+    assert "只读项目，无法修改共享" in share
+    assert 'v-if="grantOpen && caps.canShareWrite"' in share
+    revoke_control = '<td v-if="caps.canShareWrite">'
+    assert revoke_control in share
+    assert "ops.onRevokeAcl(grant.id)" in share.split(revoke_control, 1)[1].split("</td>", 1)[0]
+    submit = share.split("async function submitGrant", 1)[1].split("onDeactivated(", 1)[0]
+    assert "!caps.canShareWrite" in submit and "await ops.onShare(event)" in submit

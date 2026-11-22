@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onDeactivated, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useShellStore } from "../stores/shellStore";
 import { useExecStore } from "../stores/execution";
@@ -151,6 +151,8 @@ function openDetail(r: Runner) {
 function closeDetail() {
   selectedRunner.value = null;
 }
+onDeactivated(closeDetail);
+
 function formatTime(iso?: string | null) {
   if (!iso) return "-";
   const d = new Date(iso);
@@ -493,10 +495,12 @@ async function provisionRunner() {
 </script>
 
 <template>
-  <section class="panel" :class="{ compact: hideChromeTitle, embedded: props.embedded || props.compact }">
-    <div class="panel-header-row">
-      <h2 v-if="!hideChromeTitle">执行节点</h2>
-      <div class="header-actions">
+  <section class="panel page-stack runners-panel" :class="{ compact: hideChromeTitle, embedded: props.embedded || props.compact }">
+    <header v-if="!hideChromeTitle" class="page-hero">
+      <div class="page-hero-copy">
+        <h2>执行节点</h2>
+      </div>
+      <div class="page-hero-actions">
         <button
           v-if="canManageRunners"
           type="button"
@@ -515,7 +519,7 @@ async function provisionRunner() {
           刷新
         </button>
       </div>
-    </div>
+    </header>
 
     <details v-if="canManageRunners" class="managed-box" :open="managedEnabled">
       <summary class="managed-summary">
@@ -717,6 +721,9 @@ async function provisionRunner() {
         </template>
         <template v-else>
           <p>无匹配节点。</p>
+          <p class="hint">
+            <button type="button" class="linkish-inline" @click="runnerFilter = 'all'">查看全部</button>
+          </p>
         </template>
       </div>
     </section>
@@ -731,93 +738,91 @@ async function provisionRunner() {
       @update:page-size="setPageSize"
     />
 
-    <Teleport to="body">
-      <div v-if="selectedRunner" class="drawer-mask" @click="closeDetail">
-        <aside class="drawer" @click.stop>
-          <header class="drawer-head">
-            <div class="drawer-head-main">
-              <h3 class="drawer-title mono">{{ selectedRunner.runner_id }}</h3>
-              <span
-                class="status-badge"
-                :class="runnerOnlineBadgeClass(selectedRunner, runnerPresenceContext(selectedRunner))"
-              >
-                {{ runnerOnlineBadgeLabel(selectedRunner, runnerPresenceContext(selectedRunner)) }}
-              </span>
-              <span
-                class="pill source-pill"
-                :class="{ ok: isManagedRow(selectedRunner) && managedRunning }"
-              >{{ runnerSourceLabel(selectedRunner.registration_source) }}</span>
-            </div>
-            <button type="button" class="icon-btn" @click="closeDetail" aria-label="关闭详情">✕</button>
-          </header>
-          <div class="drawer-body">
-            <dl class="detail-grid">
-              <dt>主机名</dt>
-              <dd>{{ selectedRunner.hostname || "-" }}</dd>
-              <dt>来源</dt>
-              <dd>{{ runnerSourceLabel(selectedRunner.registration_source) }}</dd>
-              <template v-if="selectedRunner.registration_source === 'ide'">
-                <dt>使用范围</dt>
-                <dd>仅所有者与平台管理员，不进入公共设备池</dd>
-              </template>
-              <dt>归属组织</dt>
-              <dd>{{ orgLabel(selectedRunner.org_id || "") || "未绑定" }}</dd>
-              <dt>版本</dt>
-              <dd class="mono">{{ selectedRunner.version || "-" }}</dd>
-              <dt>最近心跳</dt>
-              <dd>{{ runnerDetailHeartbeatLabel(selectedRunner, runnerPresenceContext(selectedRunner)) }}</dd>
-              <dt>专属令牌</dt>
-              <dd>{{ selectedRunner.has_token ? "已授权" : "未签发" }}</dd>
-              <dt>能力</dt>
-              <dd>
-                <span v-for="cap in selectedRunner.capabilities" :key="cap" class="cap-tag">{{ cap }}</span>
-                <span v-if="!selectedRunner.capabilities || !selectedRunner.capabilities.length">-</span>
-              </dd>
-            </dl>
-            <p v-if="!isManagedRow(selectedRunner)" class="detail-empty remote-note">
-              平台共享节点：网页不能替你启动。请在插手机的那台电脑上执行启动命令，机房建议做成开机自启。
-            </p>
-
-            <h4 class="detail-subtitle">挂载设备（{{ detailDevices.length }}）</h4>
-            <p v-if="!detailDevices.length" class="detail-empty">
-              {{
-                selectedRunner.online
-                  ? "该节点当前无在线设备。"
-                  : isManagedRow(selectedRunner) && !managedRunning
-                    ? "本机托管未运行；启动后设备会自动上报。"
-                    : "节点未连接，无法获取其实时设备信息。"
-              }}
-            </p>
-            <div v-else class="detail-device-list">
-              <div v-for="d in pagedDetailDevices" :key="d.udid" class="detail-device-row">
-                <div class="ddr-main">
-                  <span class="platform-mini-badge" :class="d.platform.toLowerCase()">
-                    {{ platformBadgeLabel(d.platform) }}
-                  </span>
-                  <span class="ddr-name">{{ displayName(d) }}</span>
-                  <span v-if="d.busy" class="st busy">占用中</span>
-                  <span v-else-if="d.admin_disabled" class="st maint">维护中</span>
-                  <span v-else class="st free">空闲</span>
-                </div>
-                <div class="ddr-meta mono">
-                  <span :title="d.udid">{{ d.udid }}</span>
-                  <span v-if="d.os_version">· {{ d.os_version }}</span>
-                  <span v-if="d.backends?.length">· {{ d.backends.join(", ") }}</span>
-                </div>
-              </div>
-              <DataPager
-                v-if="detailDevices.length > NESTED_DEVICE_PAGE_SIZE || detailDevicePage > 1"
-                :total="detailDevices.length"
-                :page="detailDevicePage"
-                :page-size="detailDevicePageSize"
-                @update:page="setDetailDevicePage"
-                @update:page-size="setDetailDevicePageSize"
-              />
-            </div>
-          </div>
-        </aside>
+    <ApModal
+      v-if="selectedRunner"
+      :title="`执行节点 · ${selectedRunner.runner_id}`"
+      variant="drawer"
+      @close="closeDetail"
+    >
+      <div class="runner-detail-status">
+        <span
+          class="status-badge"
+          :class="runnerOnlineBadgeClass(selectedRunner, runnerPresenceContext(selectedRunner))"
+        >
+          {{ runnerOnlineBadgeLabel(selectedRunner, runnerPresenceContext(selectedRunner)) }}
+        </span>
+        <span
+          class="pill source-pill"
+          :class="{ ok: isManagedRow(selectedRunner) && managedRunning }"
+        >{{ runnerSourceLabel(selectedRunner.registration_source) }}</span>
       </div>
-    </Teleport>
+      <dl class="detail-grid">
+        <dt>主机名</dt>
+        <dd>{{ selectedRunner.hostname || "-" }}</dd>
+        <dt>来源</dt>
+        <dd>{{ runnerSourceLabel(selectedRunner.registration_source) }}</dd>
+        <template v-if="selectedRunner.registration_source === 'ide'">
+          <dt>使用范围</dt>
+          <dd>仅所有者与平台管理员，不进入公共设备池</dd>
+        </template>
+        <dt>归属组织</dt>
+        <dd>{{ orgLabel(selectedRunner.org_id || "") || "未绑定" }}</dd>
+        <dt>版本</dt>
+        <dd class="mono">{{ selectedRunner.version || "-" }}</dd>
+        <dt>最近心跳</dt>
+        <dd>{{ runnerDetailHeartbeatLabel(selectedRunner, runnerPresenceContext(selectedRunner)) }}</dd>
+        <dt>专属令牌</dt>
+        <dd>{{ selectedRunner.has_token ? "已授权" : "未签发" }}</dd>
+        <dt>能力</dt>
+        <dd>
+          <span v-for="cap in selectedRunner.capabilities" :key="cap" class="cap-tag">{{ cap }}</span>
+          <span v-if="!selectedRunner.capabilities || !selectedRunner.capabilities.length">-</span>
+        </dd>
+      </dl>
+      <p v-if="!isManagedRow(selectedRunner)" class="detail-empty remote-note">
+        平台共享节点：网页不能替你启动。请在插手机的那台电脑上执行启动命令，机房建议做成开机自启。
+      </p>
+
+      <h4 class="detail-subtitle">挂载设备（{{ detailDevices.length }}）</h4>
+      <p v-if="!detailDevices.length" class="detail-empty">
+        {{
+          selectedRunner.online
+            ? "该节点当前无在线设备。"
+            : isManagedRow(selectedRunner) && !managedRunning
+              ? "本机托管未运行；启动后设备会自动上报。"
+              : "节点未连接，无法获取其实时设备信息。"
+        }}
+      </p>
+      <div v-else class="detail-device-list">
+        <div v-for="d in pagedDetailDevices" :key="d.udid" class="detail-device-row">
+          <div class="ddr-main">
+            <span class="platform-mini-badge" :class="d.platform.toLowerCase()">
+              {{ platformBadgeLabel(d.platform) }}
+            </span>
+            <span class="ddr-name">{{ displayName(d) }}</span>
+            <span v-if="d.busy" class="st busy">占用中</span>
+            <span v-else-if="d.admin_disabled" class="st maint">维护中</span>
+            <span v-else class="st free">空闲</span>
+          </div>
+          <div class="ddr-meta mono">
+            <span :title="d.udid">{{ d.udid }}</span>
+            <span v-if="d.os_version">· {{ d.os_version }}</span>
+            <span v-if="d.backends?.length">· {{ d.backends.join(", ") }}</span>
+          </div>
+        </div>
+        <DataPager
+          v-if="detailDevices.length > NESTED_DEVICE_PAGE_SIZE || detailDevicePage > 1"
+          :total="detailDevices.length"
+          :page="detailDevicePage"
+          :page-size="detailDevicePageSize"
+          @update:page="setDetailDevicePage"
+          @update:page-size="setDetailDevicePageSize"
+        />
+      </div>
+      <template #actions>
+        <button type="button" class="ghost" @click="closeDetail">关闭详情</button>
+      </template>
+    </ApModal>
 
     <ApModal
       v-if="deviceManagerOpen"
@@ -1055,24 +1060,6 @@ async function provisionRunner() {
 </template>
 
 <style scoped>
-.panel-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.5rem;
-}
-
-.panel-header-row h2 {
-  margin: 0;
-}
-
-.header-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
 .device-manager-toolbar,
 .inventory-row-head {
   display: flex;
@@ -1096,7 +1083,7 @@ async function provisionRunner() {
   min-width: 0;
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface, var(--control-bg));
   color: inherit;
   font-size: 0.8rem;
@@ -1107,7 +1094,7 @@ async function provisionRunner() {
   max-height: min(52vh, 32rem);
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
 }
 
 .inventory-row {
@@ -1176,7 +1163,7 @@ async function provisionRunner() {
   margin-left: 2rem;
   padding: 0.7rem 0.8rem;
   border: 1px solid var(--warning-soft-border);
-  border-radius: 7px;
+  border-radius: var(--radius-md);
   background: var(--warning-soft-bg);
 }
 
@@ -1199,7 +1186,7 @@ async function provisionRunner() {
   flex: 0 0 auto;
   padding: 0.16rem 0.42rem;
   border: 1px solid var(--warning-soft-border);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--warning-soft-fg);
   background: var(--surface);
   font-size: 0.68rem;
@@ -1240,7 +1227,7 @@ async function provisionRunner() {
 .device-action-result {
   margin: 0.75rem 0 0;
   padding: 0.65rem 0.75rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
   font-size: 0.78rem;
   line-height: 1.5;
@@ -1286,7 +1273,7 @@ async function provisionRunner() {
 .managed-box {
   margin: 0 0 0.85rem;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft, var(--control-bg));
 }
 
@@ -1354,7 +1341,7 @@ async function provisionRunner() {
   line-height: 1.4;
   background: var(--control-bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   white-space: pre-wrap;
   word-break: break-all;
 }
@@ -1567,65 +1554,12 @@ async function provisionRunner() {
   text-decoration: underline;
 }
 
-/* 节点详情抽屉 */
-.drawer-mask {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.35);
-  display: flex;
-  justify-content: flex-end;
-  z-index: 1000;
-}
-
-.drawer {
-  width: min(480px, 92vw);
-  height: 100%;
-  background: var(--surface-elevated);
-  border-left: 1px solid var(--line);
-  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.15);
-  display: flex;
-  flex-direction: column;
-  animation: drawer-in 0.18s ease-out;
-}
-
-@keyframes drawer-in {
-  from { transform: translateX(24px); opacity: 0.4; }
-  to { transform: translateX(0); opacity: 1; }
-}
-
-.drawer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 1rem 1.25rem;
-  border-bottom: 1px solid var(--line);
-}
-
-.drawer-head-main {
+.runner-detail-status {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
-}
-
-.drawer-title {
-  margin: 0;
-  font-size: 0.95rem;
-  word-break: break-all;
-}
-
-.icon-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  font-size: 1rem;
-  color: var(--muted);
-  padding: 0.25rem 0.5rem;
-}
-
-.drawer-body {
-  padding: 1.25rem;
-  overflow: auto;
+  margin-bottom: 1rem;
 }
 
 .detail-grid {
@@ -1670,7 +1604,7 @@ async function provisionRunner() {
 
 .detail-device-row {
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.5rem 0.6rem;
   background: var(--surface-soft, var(--control-bg));
 }
@@ -1717,7 +1651,7 @@ async function provisionRunner() {
   font-size: 0.7rem;
   font-weight: 700;
   padding: 0.05rem 0.4rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
 }
 .st.busy { color: var(--bad); background: var(--danger-soft-bg); }
 .st.maint { color: var(--warning-soft-fg); background: var(--warning-soft-bg); }
@@ -1730,9 +1664,9 @@ async function provisionRunner() {
   padding: 0;
 }
 
-.compact-title {
-  margin: 0 !important;
-  font-size: 0.95rem !important;
+.panel.compact .compact-title {
+  margin: 0;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text);
 }
@@ -1772,14 +1706,9 @@ async function provisionRunner() {
 }
 
 @media (max-width: 700px) {
-  .panel-header-row,
   .runner-list-toolbar {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .header-actions {
-    margin-left: 0;
   }
 
   .runner-table-wrap {

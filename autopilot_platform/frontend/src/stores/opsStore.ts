@@ -15,6 +15,8 @@ export const useOpsStore = defineStore("ops", () => {
     shareForm: O.shareForm,
     shareMsg: O.shareMsg,
     aclRows: O.aclRows,
+    aclLoading: O.aclLoading,
+    aclError: O.aclError,
     refreshOps: OpsActions.refreshOps,
     onAlertTest: OpsActions.onAlertTest,
     refreshOpsConfig: OpsActions.refreshOpsConfig,

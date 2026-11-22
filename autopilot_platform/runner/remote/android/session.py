@@ -321,6 +321,21 @@ class AndroidRemoteSession:
                     if self._active_peer_sid == peer_sid:
                         self._active_peer_sid = None
                     continue
+                if mtype == "control.transferred":
+                    transfer_payload = (
+                        msg.get("payload") if isinstance(msg.get("payload"), dict) else {}
+                    )
+                    new_ctrl = str(
+                        transfer_payload.get("controller_participant_id")
+                        or transfer_payload.get("participant_id")
+                        or msg.get("controller_participant_id")
+                        or msg.get("participant_id")
+                        or ""
+                    )
+                    pm.sync_control_transfer(self.session_id, self.udid, new_ctrl)
+                    if new_ctrl:
+                        self._active_peer_sid = f"{self.session_id}:{new_ctrl}"
+                    continue
                 if mtype == "offer":
                     sdp = str(msg.get("sdp") or "")
                     if not sdp:

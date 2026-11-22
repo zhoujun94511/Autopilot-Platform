@@ -310,10 +310,12 @@ def test_create_app_imports_after_facade_removal(tmp_path, monkeypatch):
     from autopilot_platform.platform.app import create_app
 
     reset_engine()
-    app = create_app(database_url=f"sqlite:///{(tmp_path / 'svc.db').as_posix()}")
-    paths = {getattr(r, "path", "") for r in app.routes}
-    assert "/api/v1/jobs" in paths
-    assert "/api/v1/runners/heartbeat" in paths
-    assert "/api/v1/devices" in paths
-    assert "/api/v1/schedules" in paths
-    reset_engine()
+    try:
+        app = create_app(database_url=f"sqlite:///{(tmp_path / 'svc.db').as_posix()}")
+        paths = app.openapi()["paths"]
+        assert "/api/v1/jobs" in paths
+        assert "/api/v1/runners/heartbeat" in paths
+        assert "/api/v1/devices" in paths
+        assert "/api/v1/schedules" in paths
+    finally:
+        reset_engine()

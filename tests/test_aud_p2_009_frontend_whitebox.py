@@ -256,7 +256,9 @@ def test_route_guards_source_matches_mirror():
     assert "!auth.isPlatformAdmin" in text
     assert 'guards.includes("manageUsers")' in text
     assert "!auth.canManageUsers" in text
-    assert "if (!auth.loggedIn) return true" in text
+    assert re.search(r"if \(!auth\.loggedIn\) return\s*;", text)
+    assert "if (from === START_LOCATION) return true" in text
+    assert "routeAccessRedirect(router.currentRoute.value)" in text
 
 
 def test_router_index_wires_lazy_panels_and_guards_meta():
@@ -412,6 +414,8 @@ def test_session_actions_own_bootstrap_and_apply_auth():
     bbody = boot.group(0)
     assert "ensureFreshSession" in bbody
     assert bbody.index("ensureFreshSession") < bbody.index("refreshForTab")
+    assert bbody.index("refreshOrgs") < bbody.index("enforceRouteAccess")
+    assert bbody.index("enforceRouteAccess") < bbody.index("refreshForTab")
 
 
 def test_use_mc_store_no_capability_exports():
@@ -558,7 +562,8 @@ def test_project_filter_watcher_source_debounce_and_gate():
     assert start >= 0, "installProjectFilterWatcher missing"
     body = text[start : start + 700]
     assert "persistProjectId" in body
-    assert "if (!opts.loggedIn.value) return" in body
+    assert "() => opts.loggedIn.value" in body
+    assert "if (!loggedIn || !wasLoggedIn) return" in body
     assert "refreshForTab" in body
     assert "400" in body
 
@@ -604,7 +609,7 @@ MAIN_PANELS_REQUIRE_PINIA = {
     "components/UsersPanel.vue": ("useAdminStore",),
     "components/design/DesignCasesPanel.vue": ("useExecStore", "useShellStore"),
     "components/design/DesignDocsPanel.vue": ("useShellStore", "useProjectsStore"),
-    "components/design/DesignKnowledgePanel.vue": ("useShellStore", "useProjectsStore"),
+    "components/design/DesignKnowledgePanel.vue": ("useProjectsStore",),
     "components/design/DesignDashboardPanel.vue": ("useShellStore", "useProjectsStore"),
 }
 

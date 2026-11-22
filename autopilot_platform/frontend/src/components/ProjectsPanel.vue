@@ -62,7 +62,7 @@ const hasProjectCtx = computed(
 
  * - 平台/组织管理员且未选组织、无项目 → 组织页
 
- * - 其余（含普通成员、无组织）→ 项目协作，避免诱导「去创建组织」
+ * - 其余（含普通成员、无组织）→ 项目协作
 
  */
 
@@ -139,7 +139,7 @@ watch(
 
 watch(hasOrgs, (now, prev) => {
 
-  if (userPickedSection.value) return;
+  if (userPickedSection.value || route.query.section === "org" || route.query.section === "collab") return;
 
   if (!prev && now) {
 
@@ -239,7 +239,7 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
 <template>
 
-  <section class="panel page-stack projects-panel">
+  <section class="panel page-stack data-page projects-panel">
 
     <header class="page-hero">
 
@@ -247,25 +247,10 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
         <h2>项目</h2>
 
-        <p class="lede">
-
-          <template v-if="caps.canCreateOrg || caps.canManageAnyOrg">
-
-            管理组织和项目，以及成员。可用顶栏切换当前范围。
-
-          </template>
-
-          <template v-else>
-
-            在顶栏选择组织和项目后，可在此查看协作内容。组织由管理员创建并邀请成员加入。
-
-          </template>
-
-        </p>
 
       </div>
 
-      <div class="page-hero-actions">
+      <div v-if="section === 'collab'" class="page-hero-actions">
 
         <button
 
@@ -273,13 +258,13 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
           type="button"
 
-          class="primary"
+          class="ghost"
 
           @click="goOrgSettings"
 
         >
 
-          先配置组织 / 事业部
+          组织设置
 
         </button>
 
@@ -439,23 +424,12 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
 .subnav {
 
-  display: inline-flex;
+  display: flex;
 
   align-items: center;
 
-  gap: 0.25rem;
-
-  padding: 0.25rem;
-
-  background: var(--surface-primary);
-
-  border: 1px solid var(--line);
-
-  border-radius: var(--radius-md);
-
-  width: fit-content;
-
-  max-width: 100%;
+  gap: 1rem;
+  border-bottom: 1px solid var(--line);
 
 }
 
@@ -465,7 +439,8 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
   appearance: none;
 
-  border: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
 
   background: transparent;
 
@@ -477,9 +452,8 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
   font-weight: 650;
 
-  padding: 0.4rem 0.9rem;
-
-  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.15rem;
+  border-radius: 0;
 
   cursor: pointer;
 
@@ -501,7 +475,7 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
 .subnav-item:focus-visible {
 
-  outline: none;
+  outline: 2px solid transparent;
 
   box-shadow: var(--focus-ring);
 
@@ -511,9 +485,8 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
 .subnav-item.active {
 
-  color: var(--nav-active-fg);
-
-  background: var(--nav-active-bg);
+  color: var(--accent);
+  border-bottom-color: var(--accent);
 
 }
 
@@ -521,11 +494,15 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
 .collab-layout {
   display: grid;
-  grid-template-columns: minmax(18rem, 26rem) minmax(0, 1fr);
+  grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
   gap: 1rem;
-  align-items: stretch;
+  align-items: start;
   width: 100%;
-  min-height: min(36rem, calc(100dvh - 16rem));
+}
+
+.collab-layout > :first-child {
+  padding-inline-end: 1rem;
+  border-inline-end: 1px solid var(--line);
 }
 
 
@@ -536,6 +513,13 @@ function onSubnavKeydown(ev: KeyboardEvent) {
 
     grid-template-columns: 1fr;
 
+  }
+
+  .collab-layout > :first-child {
+    padding-inline-end: 0;
+    padding-block-end: 1rem;
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--line);
   }
 
 }

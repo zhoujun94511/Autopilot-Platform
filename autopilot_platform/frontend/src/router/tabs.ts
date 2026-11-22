@@ -19,7 +19,7 @@ export interface TabRouteDef {
 
 /** 主 Tab 路径（不含子区） */
 export const TAB_ROUTES: readonly TabRouteDef[] = [
-  { tab: "dashboard", path: "/dashboard", label: "概览", section: "overview", guards: ["auth"], scopes: TAB_SCOPES.dashboard },
+  { tab: "dashboard", path: "/dashboard", label: "总览", section: "overview", guards: ["auth"], scopes: TAB_SCOPES.dashboard },
   { tab: "projects", path: "/projects", label: "项目", section: "overview", guards: ["auth"], scopes: TAB_SCOPES.projects },
   { tab: "share", path: "/share", label: "共享", section: "overview", guards: ["auth"], scopes: TAB_SCOPES.share },
   { tab: "design-dashboard", path: "/design", label: "设计总览", section: "design", guards: ["auth"], scopes: TAB_SCOPES["design-dashboard"] },
@@ -29,10 +29,10 @@ export const TAB_ROUTES: readonly TabRouteDef[] = [
   { tab: "artifacts", path: "/exec/artifacts", label: "工程制品", section: "exec", guards: ["auth"], scopes: TAB_SCOPES.artifacts },
   { tab: "app-builds", path: "/exec/app-builds", label: "应用资源", section: "exec", guards: ["auth"], scopes: TAB_SCOPES["app-builds"] },
   { tab: "jobs", path: "/exec/jobs", label: "批跑", section: "exec", guards: ["auth"], scopes: TAB_SCOPES.jobs },
-  { tab: "schedules", path: "/exec/schedules", label: "计划", section: "exec", guards: ["auth"], scopes: TAB_SCOPES.schedules },
+  { tab: "schedules", path: "/exec/schedules", label: "定时计划", section: "exec", guards: ["auth"], scopes: TAB_SCOPES.schedules },
   { tab: "reports", path: "/exec/reports", label: "报告", section: "exec", guards: ["auth"], scopes: TAB_SCOPES.reports },
   { tab: "devices", path: "/infra/devices", label: "设备", section: "infra", guards: ["auth"], scopes: TAB_SCOPES.devices },
-  { tab: "ops", path: "/admin/ops", label: "运维 · 配置中心", section: "admin", guards: ["auth", "ops"], scopes: TAB_SCOPES.ops },
+  { tab: "ops", path: "/admin/ops", label: "运维", section: "admin", guards: ["auth", "ops"], scopes: TAB_SCOPES.ops },
   { tab: "audit", path: "/admin/audit", label: "审计", section: "admin", guards: ["auth", "manageUsers"], scopes: TAB_SCOPES.audit },
   { tab: "users", path: "/admin/users", label: "用户", section: "admin", guards: ["auth", "manageUsers"], scopes: TAB_SCOPES.users },
 ] as const;
@@ -66,8 +66,8 @@ export function labelForTab(tab: string): string {
 export const SECTION_LABELS: Record<TabRouteDef["section"], string> = {
   overview: "概览",
   design: "测试设计",
-  exec: "测试与执行",
-  infra: "设备与执行",
+  exec: "执行",
+  infra: "设备",
   admin: "系统管理",
 };
 

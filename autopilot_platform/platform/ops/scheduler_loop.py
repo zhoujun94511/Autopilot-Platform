@@ -43,6 +43,14 @@ def _loop() -> None:
             ids = sched_svc.tick_due_schedules(db)
             if ids:
                 logger.info("schedule tick created jobs: %s", ids)
+            try:
+                from ..services.remote.reservations import expire_reservations
+                from ..services.remote.sessions import expire_remote_sessions
+
+                expire_reservations(db)
+                expire_remote_sessions(db)
+            except BEST_EFFORT_ERRS as remote_exc:
+                logger.warning("remote expire tick failed: %s", remote_exc)
             stale = reclaim_stale_jobs(db)
             if stale:
                 logger.info("reclaimed stale jobs: %s", stale)

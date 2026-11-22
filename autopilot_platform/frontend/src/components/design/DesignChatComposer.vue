@@ -129,7 +129,7 @@ function onTemplatePick(id: string) {
   border: 1px solid var(--line);
   background: var(--chip-bg);
   color: var(--text);
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   padding: 0.2rem 0.55rem;
   font-size: 0.72rem;
   cursor: pointer;

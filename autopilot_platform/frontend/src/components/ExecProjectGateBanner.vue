@@ -33,16 +33,14 @@ const show = computed(() => missingProject.value || viewerBlocked.value);
   <div v-if="show" class="alert-banner warn" role="status">
     <template v-if="missingProject">
       <strong>需要先选择项目</strong>
-      <span
-        >制品 / 批跑 / 计划 / 应用包必须归属项目，不能无项目{{ actionHint }}。请在顶部切换项目。</span
-      >
+      <span>请选择项目后{{ actionHint }}。</span>
       <button type="button" class="small primary" @click="shell.activeTab = 'projects'">
         去选项目
       </button>
     </template>
     <template v-else>
-      <strong>当前为项目只读成员</strong>
-      <span>可查看执行资源，无法{{ actionHint }}。</span>
+      <strong>项目只读</strong>
+      <span>无法{{ actionHint }}。</span>
     </template>
   </div>
 </template>

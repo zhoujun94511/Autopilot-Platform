@@ -6,6 +6,7 @@ import type { Router } from "vue-router";
 import { getActivePinia } from "pinia";
 import { runnerCliFallback } from "../api/bootstrap";
 import { installTabRouteSync } from "../navigation/tabSync";
+import { enforceRouteAccess } from "../router/guards";
 import { useAuthStore } from "../stores/auth";
 import { useContextStore } from "../stores/context";
 import { useExecStore } from "../stores/execution";
@@ -37,11 +38,23 @@ async function refreshProjectsVoid(): Promise<void> {
 function bindSessionActionDeps() {
   SessionActions.bindSessionDeps({
     activeTab: shellState.activeTab,
+    waitForInitialRoute: async () => {
+      try {
+        await shellState.getShellRouter()?.isReady();
+      } catch {
+        // Route load failure must still allow the session and login shell to initialize.
+      }
+    },
+    enforceRouteAccess: async () => {
+      const router = shellState.getShellRouter();
+      if (router) await enforceRouteAccess(router);
+    },
     refreshOrgs: refreshOrgsVoid,
     refreshProjects: refreshProjectsVoid,
     refreshForTab: Polling.refreshForTab,
     startPolling: Polling.startPolling,
     stopPolling: Polling.stopPolling,
+    onAuthCleared: OpsActions.resetOpsSession,
   });
 }
 
@@ -56,6 +69,7 @@ function bindProjectsActionDeps() {
 function bindPollingActionDeps() {
   Polling.bindPollingDeps({
     loggedIn: sessionState.loggedIn,
+    sessionHydrating: sessionState.sessionHydrating,
     pageVisible: shellState.pageVisible,
     activeTab: shellState.activeTab,
     error: shellState.error,
@@ -64,7 +78,6 @@ function bindPollingActionDeps() {
     onUnauthorized: () => {
       void SessionActions.onLogout();
     },
-    refreshHealth: SessionActions.refreshHealth,
     refreshOrgs: refreshOrgsVoid,
     refreshProjects: refreshProjectsVoid,
   });
@@ -80,6 +93,7 @@ function bindAdminActionDeps() {
 function bindOpsActionDeps() {
   OpsActions.bindOpsDeps({
     isAdmin: () => sessionState.user.value?.role === "admin",
+    isLoggedIn: () => sessionState.loggedIn.value,
     activeTab: shellState.activeTab,
   });
 }
@@ -89,7 +103,6 @@ function bindExecActionDeps() {
     filterProjectId: projectsState.filterProjectId,
     isPlatformAdmin: sessionState.isPlatformAdmin,
     listPageSize: LIST_PAGE_SIZE,
-    getRefreshSeq: Polling.getRefreshSeq,
     refreshScopes: Polling.refreshScopes,
     runnerCliFallback,
     appBuildRetentionDays: () => String(opsState.opsConfig.MC_APP_BUILD_RETENTION_DAYS || "90"),

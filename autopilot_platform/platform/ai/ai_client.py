@@ -21,13 +21,128 @@ from .provider_profile import (
     apply_max_output_tokens,
     apply_reasoning_to_body,
     apply_verbosity_to_body,
+    detect_provider,
     should_omit_temperature,
 )
 
 log = logging.getLogger("autopilot_platform.platform.ai")
 
+_ANTHROPIC_VERSION = "2023-06-01"
+
+
+def _is_anthropic_provider(model: str | None = None) -> bool:
+    return (
+        detect_provider(
+            ai_config.ai_provider(),
+            model or ai_config.ai_model(),
+            ai_config.ai_base_url(),
+        )
+        == "anthropic"
+    )
+
+
+def _anthropic_messages_url(base_url: str) -> str:
+    clean = (base_url or "https://api.anthropic.com").rstrip("/")
+    if clean.endswith("/v1"):
+        return f"{clean}/messages"
+    return f"{clean}/v1/messages"
+
+
+def _to_anthropic_content(content: Any) -> Any:
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return str(content or "")
+    blocks: list[dict[str, Any]] = []
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        ptype = part.get("type")
+        if ptype == "text":
+            blocks.append({"type": "text", "text": str(part.get("text") or "")})
+        elif ptype == "image_url":
+            url = str(((part.get("image_url") or {}).get("url")) or "")
+            if url.startswith("data:") and ";base64," in url:
+                header, b64 = url.split(";base64,", 1)
+                media_type = header[5:] or "image/png"
+                blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type,
+                            "data": b64,
+                        },
+                    }
+                )
+            elif url:
+                blocks.append({"type": "image", "source": {"type": "url", "url": url}})
+    return blocks or ""
+
+
+def _build_anthropic_body(
+    *,
+    messages: list[dict[str, Any]],
+    model: str | None = None,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+) -> dict[str, Any]:
+    resolved_model = (model or "").strip() or ai_config.ai_model()
+    resolved_max = (
+        max(1, int(max_tokens))
+        if max_tokens is not None
+        else ai_config.ai_max_tokens()
+    )
+    system_parts: list[str] = []
+    converted: list[dict[str, Any]] = []
+    for msg in messages:
+        role = str(msg.get("role") or "user").strip().lower()
+        raw_content = msg.get("content")
+        if role == "system":
+            if isinstance(raw_content, str) and raw_content.strip():
+                system_parts.append(raw_content.strip())
+            continue
+        norm_role = "assistant" if role == "assistant" else "user"
+        converted.append(
+            {"role": norm_role, "content": _to_anthropic_content(raw_content)}
+        )
+
+    body: dict[str, Any] = {
+        "model": resolved_model,
+        "max_tokens": resolved_max,
+        "messages": converted or [{"role": "user", "content": ""}],
+    }
+    if system_parts:
+        body["system"] = "\n\n".join(system_parts)
+    if not should_omit_temperature("anthropic", resolved_model):
+        temp = (
+            ai_config.ai_temperature()
+            if temperature is None
+            else _clamp_temperature(temperature)
+        )
+        body["temperature"] = temp
+    return body
+
+
+def _extract_anthropic_content(data: dict[str, Any]) -> str:
+    blocks = data.get("content")
+    if not isinstance(blocks, list):
+        raise ValueError(f"Anthropic 响应结构异常: {data!r}")
+    texts = [
+        str(b.get("text") or "")
+        for b in blocks
+        if isinstance(b, dict) and b.get("type") == "text" and b.get("text")
+    ]
+    joined = "".join(texts)
+    if joined.strip():
+        return joined
+    stop_reason = str(data.get("stop_reason") or "n/a")
+    raise ValueError(f"empty_content finish_reason={stop_reason}")
+
 
 def _extract_message_content(data: dict[str, Any]) -> str:
+    if isinstance(data.get("content"), list) and "choices" not in data:
+        return _extract_anthropic_content(data)
     try:
         msg = data["choices"][0]["message"]
     except (KeyError, IndexError, TypeError) as exc:
@@ -136,17 +251,32 @@ def chat_completions(
 
     ai_usage.check_budget_before_call()
 
-    url = f"{ai_config.ai_base_url().rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {ai_config.ai_api_key()}",
-        "Content-Type": "application/json",
-    }
-    body = _build_chat_body(
-        messages=messages,
-        model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    use_anthropic = _is_anthropic_provider(model)
+    if use_anthropic:
+        url = _anthropic_messages_url(ai_config.ai_base_url())
+        headers = {
+            "x-api-key": ai_config.ai_api_key(),
+            "anthropic-version": _ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+        }
+        body = _build_anthropic_body(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    else:
+        url = f"{ai_config.ai_base_url().rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {ai_config.ai_api_key()}",
+            "Content-Type": "application/json",
+        }
+        body = _build_chat_body(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
     timeout_s = float(timeout if timeout is not None else ai_config.ai_timeout_sec())
     attempts = (
         max(1, min(5, int(max_attempts)))
@@ -238,7 +368,14 @@ def chat_completions(
 
 
 def _extract_stream_delta(data: dict[str, Any]) -> str:
-    """从 OpenAI-compatible SSE chunk 取出 content delta。"""
+    """从 OpenAI-compatible 或 Anthropic Messages SSE chunk 取出 content delta。"""
+    if data.get("type") == "content_block_delta":
+        delta = data.get("delta") or {}
+        if isinstance(delta, dict) and delta.get("type") == "text_delta":
+            text = delta.get("text")
+            if isinstance(text, str) and text:
+                return text
+        return ""
     try:
         delta = data["choices"][0].get("delta") or {}
     except (KeyError, IndexError, TypeError):
@@ -247,6 +384,12 @@ def _extract_stream_delta(data: dict[str, Any]) -> str:
     if isinstance(content, str) and content:
         return content
     return ""
+
+
+def _extract_stream_usage(data: dict[str, Any]) -> dict[str, int]:
+    if data.get("type") == "message_start" and isinstance(data.get("message"), dict):
+        return ai_usage.extract_usage(data["message"])
+    return ai_usage.extract_usage(data)
 
 
 def chat_completions_stream(
@@ -267,18 +410,34 @@ def chat_completions_stream(
 
     ai_usage.check_budget_before_call()
 
-    url = f"{ai_config.ai_base_url().rstrip('/')}/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {ai_config.ai_api_key()}",
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-    }
-    body = _build_chat_body(
-        messages=messages,
-        model=model,
-        temperature=temperature,
-        max_tokens=max_tokens,
-    )
+    use_anthropic = _is_anthropic_provider(model)
+    if use_anthropic:
+        url = _anthropic_messages_url(ai_config.ai_base_url())
+        headers = {
+            "x-api-key": ai_config.ai_api_key(),
+            "anthropic-version": _ANTHROPIC_VERSION,
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        body = _build_anthropic_body(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+    else:
+        url = f"{ai_config.ai_base_url().rstrip('/')}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {ai_config.ai_api_key()}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+        }
+        body = _build_chat_body(
+            messages=messages,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
     body["stream"] = True
     timeout_s = float(timeout if timeout is not None else ai_config.ai_timeout_sec())
 
@@ -314,7 +473,7 @@ def chat_completions_stream(
                     continue
                 if not isinstance(payload, dict):
                     continue
-                u = ai_usage.extract_usage(payload)
+                u = _extract_stream_usage(payload)
                 if u["total_tokens"] or u["prompt_tokens"] or u["completion_tokens"]:
                     last_usage = u
                 piece = _extract_stream_delta(payload)

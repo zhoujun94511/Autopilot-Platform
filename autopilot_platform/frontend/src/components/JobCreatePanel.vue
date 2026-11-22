@@ -33,12 +33,13 @@ const caps = useCapabilities();
 
 
 defineProps<{ embedded?: boolean }>();
+const emit = defineEmits<{
+  (e: "pending-change", value: boolean): void;
+  (e: "cancel"): void;
+}>();
+const submitLocked = ref(false);
 
-// ---- 分步向导 ----
-const currentStep = ref(0);
-const lastStep = 4;
-
-// 工程源二选一：制品 / Runner 本地路径
+// 工程源二选一：制品 / 执行节点上的路径
 const sourceMode = ref<"artifact" | "dir">(
   form.value.project_dir && !form.value.artifact_id ? "dir" : "artifact",
 );
@@ -77,13 +78,6 @@ const filteredAppBuilds = computed(() => {
 const isWeb = computed(() => isWebPlatform(form.value.platform));
 const isHttp = computed(() => isHttpPlatform(form.value.platform));
 const isDeviceless = computed(() => isDevicelessPlatform(form.value.platform));
-const steps = computed(() => [
-  { key: "meta", title: "基础信息" },
-  { key: "source", title: "工程源" },
-  { key: "app", title: "应用资源" },
-  { key: "devices", title: isDeviceless.value ? "执行节点" : "设备" },
-  { key: "review", title: "确认提交" },
-]);
 const selectedDeviceCount = computed(() => parseUdids(form.value.device_udids).length);
 
 function artifactLabel(a: Artifact) {
@@ -138,47 +132,23 @@ const missing = computed(() => {
 });
 const canEdit = computed(() => Boolean(caps.canEditProject));
 const canSubmit = computed(
-  () => canEdit.value && missing.value.length === 0 && !submitting.value,
+  () => canEdit.value && missing.value.length === 0 && !submitting.value && !submitLocked.value,
 );
 
-// 每步有效性（用于步骤条勾选、下一步禁用）
-const stepValidity = computed(() => [
-  Boolean(form.value.name.trim() && form.value.platform),
-  hasSource.value && !(artifactEntries.value.length && !form.value.entry_paths.length),
-  true,
-  true,
-  canSubmit.value,
-]);
-const canNext = computed(() => stepValidity.value[currentStep.value]);
-function stepDone(i: number) {
-  return i < currentStep.value && stepValidity.value[i];
-}
-
-const stepHint = computed(() => {
-  if (currentStep.value === 0 && !form.value.name.trim()) return "请先填写任务名称";
-  if (currentStep.value === 1) {
-    if (!hasSource.value) return "请选择工程制品或填写 Runner 本地路径";
-    if (artifactEntries.value.length && !form.value.entry_paths.length) return "请至少勾选一个用例";
-  }
-  return "";
-});
-
-function goto(i: number) {
-  currentStep.value = i;
-}
-function next() {
-  if (canNext.value && currentStep.value < lastStep) currentStep.value += 1;
-}
-function prev() {
-  if (currentStep.value > 0) currentStep.value -= 1;
-}
-
-function onSubmit(ev: Event) {
-  if (currentStep.value < lastStep) {
-    if (canNext.value) next();
+async function onSubmit(ev: Event) {
+  if (!canSubmit.value) {
+    ev.preventDefault();
     return;
   }
-  exec.onCreateJob(ev);
+  if (submitLocked.value) return;
+  submitLocked.value = true;
+  emit("pending-change", true);
+  try {
+    await exec.onCreateJob(ev);
+  } finally {
+    submitLocked.value = false;
+    emit("pending-change", false);
+  }
 }
 
 // ---- 模板栏 ----
@@ -230,81 +200,60 @@ watch(
   <section id="job-create" class="panel" :class="{ embedded }">
     <h2 v-if="!embedded">新建批跑</h2>
 
-    <!-- 模板 / 沿用上次 -->
-    <div class="template-bar">
-      <button
-        v-if="hasLastJobConfig"
-        type="button"
-        class="ghost small"
-        @click="onApplyLast"
-      >
-        ↺ 沿用上次配置
-      </button>
-      <label v-if="jobTemplates.length" class="tpl-load">
-        <ApSelect
-          v-model="pickedTemplate"
-          size="compact"
-          aria-label="从模板载入"
-          :options="templateOptions"
-          @change="onPickTemplate"
-        />
-      </label>
-      <button
-        v-if="pickedTemplate"
-        type="button"
-        class="linkish"
-        @click="onDeleteTemplate"
-      >
-        删除该模板
-      </button>
-      <span class="tpl-spacer" />
-      <button type="button" class="ghost small" @click="onSaveTemplate">存为模板</button>
-    </div>
-
-    <!-- 步骤条 -->
-    <ol class="stepper">
-      <li
-        v-for="(s, i) in steps"
-        :key="s.key"
-        class="stepper-item"
-        :class="{ current: i === currentStep, done: stepDone(i) }"
-      >
-        <button type="button" class="stepper-btn" @click="goto(i)">
-          <span class="stepper-index">
-            <svg v-if="stepDone(i)" viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="3" fill="none">
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <template v-else>{{ i + 1 }}</template>
-          </span>
-          <span class="stepper-title">{{ s.title }}</span>
+    <details class="template-tools">
+      <summary>配置模板</summary>
+      <div class="template-bar">
+        <button
+          v-if="hasLastJobConfig"
+          type="button"
+          class="ghost small"
+          @click="onApplyLast"
+        >
+          沿用上次配置
         </button>
-      </li>
-    </ol>
+        <label v-if="jobTemplates.length" class="tpl-load">
+          <ApSelect
+            v-model="pickedTemplate"
+            size="compact"
+            aria-label="从模板载入"
+            :options="templateOptions"
+            @change="onPickTemplate"
+          />
+        </label>
+        <button
+          v-if="pickedTemplate"
+          type="button"
+          class="linkish"
+          @click="onDeleteTemplate"
+        >
+          删除该模板
+        </button>
+        <button type="button" class="ghost small" @click="onSaveTemplate">存为模板</button>
+      </div>
+    </details>
 
     <form class="job-creation-form" @submit.prevent="onSubmit">
-      <!-- Step 1: Meta -->
-      <div v-show="currentStep === 0" class="form-section">
-        <h3 class="form-section-title">基础信息</h3>
+      <div class="form-section">
         <div class="form-grid-three">
           <div class="form-field">
             <label for="job-name">名称 <span class="req" aria-hidden="true">*</span></label>
             <input
               id="job-name"
               v-model="form.name"
+              data-autofocus
               required
               aria-required="true"
-              placeholder="例如: Nightly_Smoke"
             />
           </div>
           <div class="form-field">
             <label for="job-project"
-              >项目空间 <span class="req" aria-hidden="true">*</span></label
+              >项目 <span class="req" aria-hidden="true">*</span></label
             >
             <ApSelect
               id="job-project"
               v-model="form.project_id"
               required
-              aria-label="项目空间"
+              aria-label="项目"
               :options="projectOptions"
             />
           </div>
@@ -321,11 +270,8 @@ watch(
         </div>
       </div>
 
-      <!-- Step 2: Source -->
-      <div v-show="currentStep === 1" class="form-section">
-        <h3 class="form-section-title">
-          工程源 <span class="title-req">必填 · 二选一</span>
-        </h3>
+      <section class="form-section" aria-labelledby="job-source-title">
+        <h3 id="job-source-title" class="form-section-title">工程来源</h3>
         <div class="source-toggle" role="group" aria-label="工程源类型">
           <button
             type="button"
@@ -334,7 +280,7 @@ watch(
             :aria-pressed="sourceMode === 'artifact'"
             @click="setSourceMode('artifact')"
           >
-            选工程制品
+            工程制品
           </button>
           <button
             type="button"
@@ -343,7 +289,7 @@ watch(
             :aria-pressed="sourceMode === 'dir'"
             @click="setSourceMode('dir')"
           >
-            Runner 本机路径
+            节点路径
           </button>
         </div>
 
@@ -353,30 +299,30 @@ watch(
             id="job-artifact-pick"
             v-model="form.artifact_id"
             aria-label="工程制品"
-            aria-describedby="src-hint"
+            :aria-describedby="filteredArtifacts.length ? undefined : 'src-hint'"
             :options="artifactPickOptions"
           />
-          <p id="src-hint" class="form-field-hint">无列表时先到「工程制品」页上传 zip。</p>
+          <p v-if="!filteredArtifacts.length" id="src-hint" class="form-field-hint">请在「工程制品」页上传 ZIP 文件。</p>
         </div>
         <div v-else class="form-field">
-          <label for="job-dir">本机工程目录</label>
+          <label for="job-dir">工程目录</label>
           <input id="job-dir" v-model="form.project_dir" placeholder="/data/projects/my-suite" aria-describedby="dir-hint" />
           <p id="dir-hint" class="form-field-hint">
-            填写本机执行程序能看到的工程目录，适合不上传、直接在本机跑。
+            路径须可由执行节点访问。
           </p>
         </div>
 
-        <div v-if="sourceMode === 'artifact' && form.artifact_id" class="entry-pick" style="margin-top: 0.75rem">
+        <div v-if="sourceMode === 'artifact' && form.artifact_id" class="entry-pick">
           <div class="entry-pick-head">
             <span class="entry-pick-title">勾选要执行的用例</span>
-            <span class="form-field-hint" style="margin: 0">
+            <span class="form-field-hint">
               {{ form.entry_paths.length }}/{{ artifactEntries.length }}
             </span>
             <button type="button" class="linkish" @click="exec.selectAllEntryPaths">全选</button>
             <button type="button" class="linkish" @click="exec.clearEntryPaths">清空</button>
           </div>
           <p v-if="artifactEntriesLoading" class="form-field-hint">正在加载用例清单…</p>
-          <p v-else-if="artifactEntriesError" class="form-field-hint" style="color: var(--bad)">
+          <p v-else-if="artifactEntriesError" class="form-field-hint field-error">
             {{ artifactEntriesError }}
           </p>
           <p v-else-if="!artifactEntries.length" class="form-field-hint">
@@ -400,48 +346,30 @@ watch(
             </label>
           </div>
         </div>
-      </div>
+      </section>
 
-      <!-- Step 3: App build -->
-      <div v-show="currentStep === 2" class="form-section">
-        <h3 class="form-section-title">
-          应用资源 <span class="title-optional">可选</span>
-        </h3>
-        <p v-if="isWeb" class="form-field-hint">
-          Web 用例无需 apk / ipa 应用资源，本步可直接跳过；被测站点由用例内「浏览器打开」的 URL 决定。
-        </p>
-        <p v-else-if="isHttp" class="form-field-hint">
-          接口用例无需 apk / ipa。被测地址由 api_env.yaml 或步骤里的 base_url 决定。
-        </p>
-        <template v-else>
-          <div class="form-field">
-            <label for="job-app-pick">apk / ipa / xapk（推荐指定）</label>
+      <section class="form-section" aria-labelledby="job-execution-title">
+        <h3 id="job-execution-title" class="form-section-title">执行设置</h3>
+        <div v-if="!isDeviceless" class="form-field">
+            <label for="job-app-pick">应用资源（可选）</label>
             <ApSelect
               id="job-app-pick"
               v-model="form.app_build_id"
               aria-label="应用资源"
               :options="appPickOptions"
             />
-          </div>
-          <p class="form-field-hint">
-            安装包与工程制品分离。指定后 Runner 从应用资源库下载该版本并安装；可不指定——仅当设备已装目标应用且用例不执行安装。
-          </p>
-        </template>
-      </div>
-
-      <!-- Step 4: Devices（web 无移动设备概念，仅需可选指定执行节点） -->
-      <div v-show="currentStep === 3" class="form-section">
+        </div>
         <RunTargetFields
           :model="form"
           :devices="dispatchDevices"
           :disabled="!canEdit"
+          compact
           id-prefix="job"
         />
-      </div>
+      </section>
 
-      <!-- Step 5: Review + submit -->
-      <div v-show="currentStep === 4" class="form-section">
-        <h3 class="form-section-title">确认与提交</h3>
+      <details class="job-review">
+        <summary>提交前核对</summary>
         <div class="review-summary">
           <div class="review-row">
             <span class="review-key">名称</span>
@@ -517,72 +445,67 @@ watch(
           </div>
         </div>
 
-        <div class="form-field" style="margin-top: 0.75rem">
+      </details>
+
+      <details class="job-notification">
+        <summary>完成通知</summary>
+        <div class="form-field">
           <label for="job-webhook">完成后通知地址（可选）</label>
-          <input id="job-webhook" v-model="form.webhook_url" placeholder="任务结束时通知，可留空用系统默认" />
+          <input id="job-webhook" v-model="form.webhook_url" placeholder="留空使用系统默认地址" />
         </div>
+      </details>
+
+      <p v-if="jobMsg" class="msg" :class="jobMsgOk ? 'ok' : 'bad'" :role="jobMsgOk ? 'status' : 'alert'">
+        {{ jobMsg }}
+      </p>
+      <footer class="job-form-actions">
         <p v-if="!canEdit" class="submit-missing-hint">
-          请先选择有写权限的项目；只读成员无法创建批跑。
+          {{ caps.isProjectViewer ? "当前项目为只读，无法创建批跑。" : "请先在顶栏选择项目。" }}
         </p>
         <p v-else-if="missing.length" class="submit-missing-hint">还需填写：{{ missing.join("、") }}</p>
-      </div>
-
-      <!-- 向导导航 -->
-      <div class="wizard-nav">
-        <button type="button" class="ghost" :disabled="currentStep === 0" @click="prev">
-          上一步
-        </button>
-        <div class="wizard-nav-right">
-          <span v-if="stepHint && currentStep < lastStep" class="step-hint">{{ stepHint }}</span>
+        <div class="submit-buttons">
           <button
-            v-if="currentStep < lastStep"
+            v-if="embedded"
             type="button"
-            class="primary"
-            :disabled="!canNext"
-            @click="next"
+            class="ghost"
+            :disabled="submitting || submitLocked"
+            @click="emit('cancel')"
           >
-            下一步
+            关闭
           </button>
           <button
-            v-else
             type="submit"
-            class="primary large-submit-btn"
+            class="primary"
             :disabled="!canSubmit"
-            :title="
-              !canEdit
-                ? '当前项目无写权限'
-                : missing.length
-                  ? `还需填写：${missing.join('、')}`
-                  : '提交批跑任务'
-            "
           >
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none">
-              <polyline points="22 2 15 22 11 13 2 9 22 2" />
-              <line x1="22" y1="2" x2="11" y2="13" />
-            </svg>
             {{ submitting ? "提交中…" : "提交批跑" }}
           </button>
         </div>
-      </div>
+      </footer>
     </form>
-
-    <p v-if="jobMsg" class="msg" :class="jobMsgOk ? 'ok' : 'bad'">
-      {{ jobMsg }}
-    </p>
   </section>
 </template>
 
 <style scoped>
+.template-tools {
+  margin-block-end: 1rem;
+}
+
+.template-tools > summary,
+.job-review > summary,
+.job-notification > summary {
+  color: var(--text);
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  cursor: pointer;
+}
+
 .template-bar {
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  margin: -0.25rem 0 1rem;
+  margin-top: 0.5rem;
   flex-wrap: wrap;
-}
-
-.template-bar .tpl-spacer {
-  flex: 1;
 }
 
 .tpl-load .ap-select {
@@ -594,77 +517,6 @@ watch(
   font-size: 0.8rem;
 }
 
-/* 步骤条 */
-.stepper {
-  display: flex;
-  list-style: none;
-  padding: 0;
-  margin: 0 0 1.25rem;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-}
-
-.stepper-item {
-  flex: 1;
-  min-width: 6rem;
-}
-
-.stepper-btn {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  background: none;
-  border: none;
-  border-bottom: 2px solid var(--line);
-  padding: 0.5rem 0.35rem;
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.stepper-item.current .stepper-btn {
-  color: var(--accent-text, #1565c0);
-  border-bottom-color: var(--accent);
-  font-weight: 700;
-}
-
-.stepper-item.done .stepper-btn {
-  color: var(--ok-soft-fg, #2e7d32);
-}
-
-.stepper-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.4rem;
-  height: 1.4rem;
-  border-radius: 50%;
-  background: var(--control-bg, var(--surface));
-  border: 1px solid var(--line);
-  font-size: 0.72rem;
-  font-weight: 800;
-  flex-shrink: 0;
-}
-
-.stepper-item.current .stepper-index {
-  background: var(--accent);
-  color: var(--on-accent, #fff);
-  border-color: var(--accent);
-}
-
-.stepper-item.done .stepper-index {
-  background: var(--ok-soft-bg, rgba(46, 125, 50, 0.15));
-  color: var(--ok-soft-fg, #2e7d32);
-  border-color: var(--ok-soft-fg, #2e7d32);
-}
-
-.stepper-title {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 .job-creation-form {
   display: flex;
   flex-direction: column;
@@ -672,47 +524,25 @@ watch(
 }
 
 .form-section {
-  background-color: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  padding: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  min-width: 0;
 }
 
-.form-section-title {
-  margin: 0 0 0.5rem !important;
-  font-size: 0.88rem !important;
-  font-weight: 700;
-  color: var(--accent-text);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0.4rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.form-section + .form-section,
+.job-review,
+.job-notification,
+.job-form-actions {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 1rem;
 }
 
-.title-req,
-.title-optional {
-  text-transform: none;
-  letter-spacing: 0;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.05rem 0.4rem;
-  border-radius: 999px;
-}
-
-.title-req {
-  color: var(--bad);
-  background: var(--danger-soft-bg, rgba(198, 40, 40, 0.1));
-}
-
-.title-optional {
-  color: var(--muted);
-  background: var(--chip-bg, rgba(120, 120, 120, 0.12));
+.panel .form-section-title {
+  margin: 0;
+  font-size: var(--font-size-body);
+  font-weight: 650;
+  color: var(--text);
 }
 
 .req {
@@ -723,7 +553,7 @@ watch(
   display: inline-flex;
   gap: 0;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   overflow: hidden;
   width: fit-content;
 }
@@ -743,33 +573,21 @@ watch(
 }
 
 .source-tab.active {
-  background: var(--accent);
-  color: var(--on-accent, #fff);
+  background: var(--nav-active-bg);
+  color: var(--accent-text);
 }
 
 .form-grid-three {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
-}
-
-.form-grid-two {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-}
-
-.form-grid-devices {
-  display: grid;
-  grid-template-columns: 2fr 1fr auto 6rem;
-  gap: 1rem;
-  align-items: end;
 }
 
 .form-field {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .form-field label {
@@ -781,55 +599,13 @@ watch(
 .form-field-hint {
   font-size: 0.75rem;
   color: var(--muted);
-  margin: -0.25rem 0 0;
-  font-style: italic;
+  margin: 0;
   white-space: normal;
   overflow-wrap: break-word;
 }
 
-.flex-one { min-width: 0; }
-.flex-two { min-width: 0; }
-
-.checkbox-field {
-  padding-bottom: 0.55rem;
-  justify-content: flex-end;
-}
-
-.checkbox-label {
-  display: flex;
-  flex-direction: row !important;
-  align-items: center;
-  gap: 0.5rem;
-  cursor: pointer;
-  user-select: none;
-  font-weight: 700 !important;
-  color: var(--text) !important;
-}
-
-.checkbox-label input[type="checkbox"] {
-  width: auto;
-  cursor: pointer;
-}
-
-.workers-field input:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.advanced-block {
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  padding: 0.5rem 0.75rem;
-  background: var(--control-bg, var(--surface));
-  margin-top: 0.75rem;
-}
-
-.advanced-block > summary {
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: var(--accent-text, #1565c0);
-  user-select: none;
+.field-error {
+  color: var(--bad);
 }
 
 .entry-pick-head {
@@ -853,7 +629,7 @@ watch(
   max-height: 200px;
   overflow: auto;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.35rem;
   background: var(--control-bg, var(--surface));
 }
@@ -894,19 +670,9 @@ watch(
 }
 
 .kind-mini-badge {
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  padding: 0.1rem 0.35rem;
-  border-radius: 3px;
-  background: var(--control-bg);
-  border: 1px solid var(--line);
-  text-transform: uppercase;
+  font-size: var(--font-size-meta);
+  color: var(--muted);
 }
-
-.kind-mini-badge.case { color: var(--ok-soft-fg); }
-.kind-mini-badge.suite { color: var(--accent-text); }
-.kind-mini-badge.plan { color: var(--purple-soft-fg); }
 
 .linkish {
   background: none;
@@ -918,11 +684,15 @@ watch(
   text-decoration: underline;
 }
 
-/* 确认页 */
 .review-summary {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem 1.5rem;
+}
+
+.review-summary,
+.job-notification .form-field {
+  margin-block-start: 0.75rem;
 }
 
 .review-row {
@@ -943,6 +713,7 @@ watch(
 .review-val {
   color: var(--text);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .review-val.is-missing {
@@ -954,73 +725,23 @@ watch(
   font-weight: 500;
 }
 
-/* 向导导航 */
-.wizard-nav {
+.job-form-actions {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 1rem;
-  border-top: 1px solid var(--line);
-  padding-top: 1rem;
+  gap: var(--space-3);
   flex-wrap: wrap;
 }
 
-.wizard-nav-right {
+.submit-buttons {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-.step-hint {
-  font-size: 0.78rem;
-  color: var(--bad);
-}
-
-.large-submit-btn {
-  padding: 0.65rem 1.75rem;
-  font-size: 0.92rem;
-  font-weight: 700;
-}
-
-.primary:disabled,
-.large-submit-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+  gap: var(--space-2);
+  margin-inline-start: auto;
 }
 
 .submit-missing-hint {
-  margin: 0.5rem 0 0;
+  margin: 0;
   font-size: 0.78rem;
   color: var(--bad);
-}
-
-.empty-devices {
-  margin: 0;
-}
-
-@media (max-width: 768px) {
-  .form-grid-three,
-  .form-grid-two,
-  .form-grid-devices,
-  .review-summary {
-    grid-template-columns: 1fr;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .checkbox-field {
-    justify-content: flex-start;
-  }
-
-  .stepper-title {
-    display: none;
-  }
-
-  .stepper-item {
-    min-width: 0;
-    flex: 0 0 auto;
-  }
 }
 
 .panel.embedded {
@@ -1029,5 +750,20 @@ watch(
   background: transparent;
   padding: 0;
   margin: 0;
+}
+
+@media (max-width: 768px) {
+  .form-grid-three,
+  .review-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .entry-pick-row {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .entry-path {
+    grid-column: 3;
+  }
 }
 </style>

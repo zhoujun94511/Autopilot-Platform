@@ -146,10 +146,22 @@ def regenerate_logical_case(db: Session, case_id: str, auth: AuthContext, *, max
     rag = bool(use_rag) if use_rag is not None else cfg_bool('AP_ENABLE_CASE_GENERATION_RAG', '1')
     body = LogicalCaseGenerateIn(project_id=existing.project_id, requirement_text=requirement_text, requirement_ids=list(existing.source_requirement_ids or []), max_cases=cap, module=existing.module or '', use_rag=rag)
     created = generate_logical_cases(db, body, auth)
-    for c in created:
-        meta = dict(c.generation_metadata or {})
-        meta['regenerated_from'] = case_id
-        c.generation_metadata = meta
+    if created:
+        from ....core.models import LogicalCaseRow
+
+        by_id = {c.id: c for c in created if c.id}
+        rows = list(
+            db.scalars(
+                select(LogicalCaseRow).where(LogicalCaseRow.id.in_(list(by_id.keys())))
+            ).all()
+        )
+        for row in rows:
+            meta = dict(row.generation_metadata or {})
+            meta["regenerated_from"] = case_id
+            row.generation_metadata = meta
+            if row.id in by_id:
+                by_id[row.id].generation_metadata = dict(meta)
+        db.commit()
     return created
 
 def batch_generate_logical_cases(db: Session, body: Any, auth: AuthContext) -> dict:

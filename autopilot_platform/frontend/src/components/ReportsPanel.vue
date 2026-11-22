@@ -1,17 +1,19 @@
 <script setup lang="ts">
 defineOptions({ name: "ReportsPanel" });
 
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onDeactivated, ref, watch } from "vue";
 import { api, apiErrorMessage, sessionFetch, type Report } from "../api";
 import { listReportsPage, OPS_LIST_PAGE_SIZE } from "../api/opsLists";
 import { storeToRefs } from "pinia";
 import { useProjectsStore } from "../stores/projectsStore";
 import { useShellStore } from "../stores/shellStore";
 import { usePagedList } from "../composables/usePagedList";
+import { workspaceScopeVersion } from "../composables/mcProjectsState";
 import { useExecStore } from "../stores/execution";
 import DataPager from "./common/DataPager.vue";
 import JobQualityCard from "./JobQualityCard.vue";
 import ApSelect from "./common/ApSelect.vue";
+import ApModal from "./ApModal.vue";
 
 const projectsStore = useProjectsStore();
 const { filterProjectId } = storeToRefs(projectsStore);
@@ -29,6 +31,18 @@ const {
   compareOk,
 } = storeToRefs(exec);
 
+const activeTool = ref<"quality" | "compare" | null>(null);
+const comparePending = ref(false);
+
+const hasFilters = computed(() => Boolean(
+  reportFilter.value.app_build_id || reportFilter.value.artifact_id || reportFilter.value.platform,
+));
+
+function clearFilters() {
+  reportFilter.value.app_build_id = "";
+  reportFilter.value.artifact_id = "";
+  reportFilter.value.platform = "";
+}
 
 const list = usePagedList<Report>({
   immediate: false,
@@ -42,7 +56,7 @@ const list = usePagedList<Report>({
       appBuildId: reportFilter.value.app_build_id.trim() || undefined,
       platform: reportFilter.value.platform.trim() || undefined,
     }),
-  resetSources: [() => filterProjectId.value],
+  resetSources: [workspaceScopeVersion],
   filterSources: [
     () => reportFilter.value.app_build_id,
     () => reportFilter.value.artifact_id,
@@ -54,10 +68,54 @@ const list = usePagedList<Report>({
     !reportFilter.value.platform.trim(),
 });
 
-const { items, total, page, pageSize, loading, hasLoaded, reload, setPage, setPageSize } = list;
+const { items, total, page, pageSize, loading, hasLoaded, error, reload, setPage, setPageSize } = list;
 
 watch(reportsListVersion, () => void reload(false));
 void reload(true);
+
+function resetComparison() {
+  compareForm.value.left = "";
+  compareForm.value.right = "";
+  compareResult.value = null;
+  compareMsg.value = "";
+}
+
+function openCompare(jobId?: string) {
+  if (comparePending.value) return;
+  if (jobId) exec.pickCompare(jobId);
+  activeTool.value = "compare";
+}
+
+function closeTools() {
+  if (!comparePending.value) activeTool.value = null;
+}
+
+function goToQualityTarget(tab: string) {
+  closeTools();
+  activeTab.value = tab;
+}
+
+async function runComparison(event: Event) {
+  if (comparePending.value) return;
+  const scope = workspaceScopeVersion.value;
+  comparePending.value = true;
+  try {
+    await exec.onCompareReports(event);
+    if (scope !== workspaceScopeVersion.value) resetComparison();
+  } finally {
+    comparePending.value = false;
+  }
+}
+
+watch([() => compareForm.value.left, () => compareForm.value.right], () => {
+  compareResult.value = null;
+  compareMsg.value = "";
+});
+watch(workspaceScopeVersion, () => {
+  activeTool.value = null;
+  resetComparison();
+}, { flush: "sync" });
+onDeactivated(() => { activeTool.value = null; });
 
 type EvidenceAtt = {
   kind?: string;
@@ -92,6 +150,7 @@ const evidenceSteps = ref<
   }[]
 >([]);
 const blobUrls: string[] = [];
+let evidenceRequest: AbortController | null = null;
 
 function revokeEvidenceBlobs() {
   while (blobUrls.length) {
@@ -111,12 +170,13 @@ function evidenceApiPath(jobId: string, filePath: string): string {
   return `/api/v1/jobs/${jobId}/evidence/${rel.split("/").map(encodeURIComponent).join("/")}`;
 }
 
-async function loadMediaBlob(jobId: string, filePath: string): Promise<string> {
-  if (!filePath) return "";
+async function loadMediaBlob(jobId: string, filePath: string, signal: AbortSignal): Promise<string> {
+  if (!filePath || signal.aborted) return "";
   try {
-    const res = await sessionFetch(evidenceApiPath(jobId, filePath));
+    const res = await sessionFetch(evidenceApiPath(jobId, filePath), { signal });
     if (!res.ok) return "";
     const blob = await res.blob();
+    if (signal.aborted) return "";
     const url = URL.createObjectURL(blob);
     blobUrls.push(url);
     return url;
@@ -125,19 +185,22 @@ async function loadMediaBlob(jobId: string, filePath: string): Promise<string> {
   }
 }
 
-async function loadPreview(jobId: string, filePath: string): Promise<string> {
+async function loadPreview(jobId: string, filePath: string, signal: AbortSignal): Promise<string> {
   if (!filePath || !/\.(png|jpe?g|gif|webp)$/i.test(filePath)) return "";
-  return loadMediaBlob(jobId, filePath);
+  return loadMediaBlob(jobId, filePath, signal);
 }
 
-async function loadVideo(jobId: string, filePath: string): Promise<string> {
+async function loadVideo(jobId: string, filePath: string, signal: AbortSignal): Promise<string> {
   if (!filePath || !/\.mp4$/i.test(filePath)) return "";
-  return loadMediaBlob(jobId, filePath);
+  return loadMediaBlob(jobId, filePath, signal);
 }
 
 async function loadEvidence(jobId: string) {
   if (!jobId) return;
-  revokeEvidenceBlobs();
+  closeEvidence();
+  const request = new AbortController();
+  evidenceRequest = request;
+  const { signal } = request;
   evidenceJobId.value = jobId;
   evidenceLoading.value = true;
   evidenceError.value = "";
@@ -153,20 +216,22 @@ async function loadEvidence(jobId: string) {
       data = await api<{
         attachments?: EvidenceAtt[];
         cases?: { name?: string; steps?: Record<string, unknown>[] }[];
-      }>(`/api/v1/jobs/${jobId}/result`);
+      }>(`/api/v1/jobs/${jobId}/result`, { signal });
     } catch {
       data = null;
     }
+    if (signal.aborted) return;
     const atts = Array.isArray(data?.attachments) ? data!.attachments! : [];
     for (const a of atts) {
       const path = String(a.path || "");
       const kind = String(a.kind || "");
       if (kind === "screenshot" || /\.(png|jpe?g|gif|webp)$/i.test(path)) {
-        a.previewUrl = await loadPreview(jobId, path);
+        a.previewUrl = await loadPreview(jobId, path, signal);
       }
       if (kind === "video" || /\.mp4$/i.test(path)) {
-        a.videoUrl = await loadVideo(jobId, path);
+        a.videoUrl = await loadVideo(jobId, path, signal);
       }
+      if (signal.aborted) return;
       if (!a.case && a.case_name) a.case = a.case_name;
     }
     evidenceAtts.value = atts;
@@ -184,15 +249,17 @@ async function loadEvidence(jobId: string) {
           fail_reason: fr,
           screenshot_path: shot,
           dom_path: dom,
-          previewUrl: shot ? await loadPreview(jobId, shot) : "",
+          previewUrl: shot ? await loadPreview(jobId, shot, signal) : "",
         });
+        if (signal.aborted) return;
       }
     }
     evidenceSteps.value = steps;
 
     const listed = await api<{ files?: { path?: string; kind?: string }[] }>(
-      `/api/v1/jobs/${jobId}/evidence`,
+      `/api/v1/jobs/${jobId}/evidence`, { signal },
     );
+    if (signal.aborted) return;
     const known = new Set(
       atts.map((a) => String(a.path || "").replace(/\\/g, "/").replace(/^.*?(?:reports\/)?evidence\//, "")),
     );
@@ -205,37 +272,41 @@ async function loadEvidence(jobId: string) {
       const kind = String(f.kind || "");
       const item: EvidenceFile = { path, kind };
       if (kind === "image" || /\.(png|jpe?g|gif|webp)$/i.test(path)) {
-        item.previewUrl = await loadPreview(jobId, path);
+        item.previewUrl = await loadPreview(jobId, path, signal);
       }
       if (kind === "video" || /\.mp4$/i.test(path)) {
-        item.videoUrl = await loadVideo(jobId, path);
+        item.videoUrl = await loadVideo(jobId, path, signal);
       }
+      if (signal.aborted) return;
       files.push(item);
     }
     evidenceFiles.value = files;
 
     if (!evidenceAtts.value.length && !steps.length && !files.length) {
-      evidenceError.value = "该任务暂无步骤证据（需执行端上传完整结果或 evidence.zip）";
+      evidenceError.value = "该任务暂无步骤证据。";
     }
   } catch (e: unknown) {
-    evidenceError.value = apiErrorMessage(e);
+    if (!signal.aborted) evidenceError.value = apiErrorMessage(e);
   } finally {
-    evidenceLoading.value = false;
+    if (evidenceRequest === request) evidenceLoading.value = false;
   }
 }
 
 function closeEvidence() {
+  evidenceRequest?.abort();
+  evidenceRequest = null;
   revokeEvidenceBlobs();
   evidenceJobId.value = "";
+  evidenceLoading.value = false;
   evidenceError.value = "";
   evidenceAtts.value = [];
   evidenceFiles.value = [];
   evidenceSteps.value = [];
 }
 
-onBeforeUnmount(() => {
-  revokeEvidenceBlobs();
-});
+watch(workspaceScopeVersion, closeEvidence, { flush: "sync" });
+onDeactivated(closeEvidence);
+onBeforeUnmount(closeEvidence);
 
 const VERDICT_LABEL: Record<string, string> = {
   improved: "改善",
@@ -303,8 +374,8 @@ const reportArtifactOptions = computed(() => [
 ]);
 const reportPlatformOptions = [
   { value: "", label: "全部" },
-  { value: "android", label: "android" },
-  { value: "ios", label: "ios" },
+  { value: "android", label: "Android" },
+  { value: "ios", label: "iOS" },
 ];
 const compareLeftOptions = computed(() => [
   { value: "", label: "选择基准…" },
@@ -331,24 +402,20 @@ function appLabel(r: {
 </script>
 
 <template>
-  <section class="panel page-stack">
+  <section class="panel page-stack data-page">
     <header class="page-hero">
       <div class="page-hero-copy">
         <h2>报告</h2>
-        <p class="lede">查看任务报告和失败步骤，也可对比多次结果。</p>
       </div>
-      <div v-if="total > 0" class="page-hero-actions">
-        <div class="archive-count" aria-label="报告总数">
-          <span class="archive-count-n">{{ total }}</span>
-          <span class="archive-count-l">条归档</span>
-        </div>
+      <div class="page-hero-actions">
+        <button type="button" class="small" @click="activeTool = 'quality'">质量趋势</button>
+        <button type="button" class="small" @click="openCompare()">报告对比</button>
       </div>
     </header>
 
-    <!-- Primary: archive -->
-    <div class="panel-filter-bar" aria-label="报告筛选">
+    <div class="report-filters" role="group" aria-label="报告筛选">
       <div class="filter-field">
-        <label>应用资源</label>
+        <span>应用资源</span>
         <ApSelect
           class="toolbar-select"
           size="toolbar"
@@ -358,7 +425,7 @@ function appLabel(r: {
         />
       </div>
       <div class="filter-field">
-        <label>工程制品</label>
+        <span>工程制品</span>
         <ApSelect
           class="toolbar-select"
           size="toolbar"
@@ -368,7 +435,7 @@ function appLabel(r: {
         />
       </div>
       <div class="filter-field">
-        <label>平台</label>
+        <span>平台</span>
         <ApSelect
           class="toolbar-select"
           size="toolbar"
@@ -377,88 +444,92 @@ function appLabel(r: {
           :options="reportPlatformOptions"
         />
       </div>
+      <button v-if="hasFilters" type="button" class="linkish small" @click="clearFilters">清除筛选</button>
+      <span v-if="hasLoaded && total > 0 && total <= pageSize" class="report-count">{{ total }} 条</span>
     </div>
 
-    <div class="archive-block">
-      <div class="archive-head">
-        <h3 class="section-title">归档列表</h3>
-        <p class="archive-hint">点击「打开报告」查看完整 HTML；「证据」查看失败截图/录像索引。</p>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>任务</th>
-              <th>应用版本</th>
-              <th>工程制品</th>
-              <th>通过</th>
-              <th>失败</th>
-              <th>总数</th>
-              <th>耗时</th>
-              <th>摘要</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-if="!items.length && hasLoaded">
-              <td class="empty" colspan="9">
-                <div class="empty-stack">
-                  <span>还没有报告</span>
-                  <span>任务跑完后会自动出现在这里</span>
-                </div>
-              </td>
-            </tr>
-            <tr v-for="(r, i) in items" :key="r.job_id || i">
-              <td class="mono">
-                <button
-                  type="button"
-                  class="small pick-btn"
-                  :title="'选入对比：' + (r.job_name || r.job_id)"
-                  @click="exec.pickCompare(r.job_id || '')"
-                >
-                  {{ (r.job_id || "").slice(0, 8) }}…
-                </button>
-                <div class="job-name-hint">{{ r.job_name || "" }}</div>
-              </td>
-              <td class="version-cell" :title="r.app_build_id || ''">{{ appLabel(r) }}</td>
-              <td class="version-cell" :title="r.artifact_id || ''">
-                {{ r.artifact_name || (r.artifact_id ? r.artifact_id.slice(0, 8) + "…" : "-") }}
-              </td>
-              <td><span class="badge success">{{ r.passed }}</span></td>
-              <td>
-                <span class="badge" :class="r.failed > 0 ? 'error' : 'secondary'">{{ r.failed }}</span>
-              </td>
-              <td><span class="total-count-lbl">{{ r.total }}</span></td>
-              <td class="mono">{{ formatDuration(r.duration_ms) }}</td>
-              <td class="summary-cell" :title="r.summary">{{ r.summary || "-" }}</td>
-              <td class="ops-cell">
-                <button type="button" class="primary small" @click="exec.onViewReport(r.job_id || '')">
-                  打开报告
-                </button>
-                <button type="button" class="small" @click="loadEvidence(r.job_id || '')">证据</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <DataPager
-        v-if="total > 0"
-        :total="total"
-        :page="page"
-        :page-size="pageSize"
-        :loading="loading"
-        @update:page="setPage"
-        @update:page-size="setPageSize"
-      />
+    <div class="table-wrap">
+      <table aria-label="归档报告" :aria-busy="loading">
+        <thead>
+          <tr>
+            <th scope="col">任务</th>
+            <th scope="col">应用版本</th>
+            <th scope="col">工程制品</th>
+            <th scope="col" class="number-cell">通过</th>
+            <th scope="col" class="number-cell">失败</th>
+            <th scope="col" class="number-cell">总数</th>
+            <th scope="col">耗时</th>
+            <th scope="col">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-if="!items.length && !hasLoaded">
+            <td class="empty" colspan="8">正在加载报告…</td>
+          </tr>
+          <tr v-if="!items.length && hasLoaded">
+            <td class="empty" colspan="8">
+              <div v-if="error" class="empty-stack">
+                <span role="alert">{{ error }}</span>
+                <button type="button" class="linkish" @click="reload()">重试</button>
+              </div>
+              <span v-else-if="hasFilters">当前筛选无匹配报告</span>
+              <div v-else class="empty-stack">
+                <span>暂无归档报告</span>
+                <button type="button" class="linkish" @click="activeTab = 'jobs'">查看批跑</button>
+              </div>
+            </td>
+          </tr>
+          <tr v-for="(report, index) in items" :key="report.job_id || index">
+            <td>
+              <button
+                v-if="report.job_id"
+                type="button"
+                class="linkish task-link"
+                :title="report.job_id"
+                @click="exec.onViewReport(report.job_id)"
+              >{{ report.job_name || report.job_id.slice(0, 8) }}</button>
+              <span v-else>{{ report.job_name || "—" }}</span>
+              <span v-if="report.summary" class="report-summary" :title="report.summary">{{ report.summary }}</span>
+            </td>
+            <td>{{ appLabel(report) }}</td>
+            <td :title="report.artifact_id || ''">
+              {{ report.artifact_name || (report.artifact_id ? report.artifact_id.slice(0, 8) + "…" : "—") }}
+            </td>
+            <td class="mono number-cell">{{ report.passed }}</td>
+            <td class="mono number-cell" :class="{ 'text-error': report.failed > 0 }">{{ report.failed }}</td>
+            <td class="mono number-cell">{{ report.total }}</td>
+            <td class="mono nowrap">{{ formatDuration(report.duration_ms) }}</td>
+            <td>
+              <div v-if="report.job_id" class="row-actions">
+                <button type="button" class="linkish small" @click="loadEvidence(report.job_id)">证据</button>
+                <button type="button" class="linkish small" @click="openCompare(report.job_id)">对比</button>
+              </div>
+              <span v-else>—</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
+    <p v-if="items.length && error" class="msg bad" role="alert">{{ error }}</p>
+    <DataPager
+      v-if="total > 0"
+      :total="total"
+      :page="page"
+      :page-size="pageSize"
+      :loading="loading"
+      @update:page="setPage"
+      @update:page-size="setPageSize"
+    />
 
-    <div v-if="evidenceJobId" class="evidence-drawer" role="dialog" aria-label="失败证据">
-      <div class="evidence-head">
-        <h3>失败证据 · {{ evidenceJobId.slice(0, 8) }}…</h3>
-        <button type="button" class="small" @click="closeEvidence">关闭</button>
-      </div>
-      <p v-if="evidenceLoading" class="evidence-muted">正在加载证据…</p>
-      <p v-else-if="evidenceError" class="evidence-err">{{ evidenceError }}</p>
+    <ApModal
+      v-if="evidenceJobId"
+      :title="`失败证据 · ${evidenceJobId.slice(0, 8)}`"
+      variant="drawer"
+      wide
+      @close="closeEvidence"
+    >
+      <p v-if="evidenceLoading" class="evidence-muted" role="status">正在加载证据…</p>
+      <p v-else-if="evidenceError" class="evidence-err" role="alert">{{ evidenceError }}</p>
       <template v-else>
         <div v-if="evidenceAtts.length" class="evidence-block">
           <div class="evidence-title">附件（{{ evidenceAtts.length }}）</div>
@@ -524,307 +595,238 @@ function appLabel(r: {
             </li>
           </ul>
         </div>
-        <p class="evidence-muted">
-          截图/录像需 Runner 上传 evidence.zip 后可预览；未上传时仅显示路径索引。
-        </p>
       </template>
-    </div>
+      <template #actions>
+        <button type="button" @click="closeEvidence">关闭</button>
+      </template>
+    </ApModal>
 
-    <!-- Secondary: quality + compare -->
-    <details class="secondary-tools">
-      <summary>
-        <div>
-          <div class="secondary-title">分析与对比</div>
-          <div class="secondary-desc">任务质量趋势、两份报告通过率与失败差异（次要）</div>
+    <ApModal v-if="activeTool === 'quality'" title="质量趋势" xwide @close="closeTools">
+      <JobQualityCard
+        :project-id="filterProjectId || undefined"
+        @goto-tab="goToQualityTarget"
+      />
+      <template #actions>
+        <button type="button" @click="closeTools">关闭</button>
+      </template>
+    </ApModal>
+
+    <ApModal
+      v-if="activeTool === 'compare'"
+      title="报告对比"
+      xwide
+      :close-on-backdrop="!comparePending"
+      :close-on-esc="!comparePending"
+      @close="closeTools"
+    >
+      <form class="comparison-grid" :aria-busy="comparePending" @submit.prevent="runComparison">
+        <div class="comp-field">
+          <span>基准任务</span>
+          <ApSelect
+            v-model="compareForm.left"
+            required
+            aria-label="基准任务"
+            :options="compareLeftOptions"
+            :disabled="comparePending"
+          />
         </div>
-        <span class="secondary-toggle" data-closed>展开</span>
-        <span class="secondary-toggle" data-open>收起</span>
-      </summary>
-      <div class="secondary-body">
-        <JobQualityCard
-          class="reports-quality"
-          :project-id="filterProjectId || undefined"
-          @goto-tab="(tab) => (activeTab = tab)"
-        />
+        <div class="comp-field">
+          <span>对比任务</span>
+          <ApSelect
+            v-model="compareForm.right"
+            required
+            aria-label="对比任务"
+            :options="compareRightOptions"
+            :disabled="comparePending"
+          />
+        </div>
+        <button type="submit" class="primary comp-btn" :disabled="comparePending">
+          {{ comparePending ? "正在对比…" : "比对" }}
+        </button>
+      </form>
+      <p v-if="compareMsg && !compareOk" class="msg bad" role="alert">{{ compareMsg }}</p>
 
-        <div class="nested-form-card">
-          <h3 class="comparison-title">报告对比</h3>
-          <form class="comparison-form" @submit.prevent="exec.onCompareReports">
-            <div class="comparison-grid">
-              <div class="comp-field">
-                <label>基准任务 *</label>
-                <ApSelect
-                  v-model="compareForm.left"
-                  required
-                  aria-label="基准任务"
-                  :options="compareLeftOptions"
-                />
-              </div>
-              <div class="comp-field">
-                <label>对比任务 *</label>
-                <ApSelect
-                  v-model="compareForm.right"
-                  required
-                  aria-label="对比任务"
-                  :options="compareRightOptions"
-                />
-              </div>
-              <button type="submit" class="primary comp-btn">比对</button>
-            </div>
-          </form>
-          <p v-if="compareMsg" class="msg" :class="compareOk ? 'ok' : 'bad'">{{ compareMsg }}</p>
+      <div v-if="compareResult" class="comparison-dashboard">
+        <div
+          class="verdict-banner"
+          :class="verdictTone(compareResult.verdict)"
+        >
+          <span class="verdict-label">对比结论</span>
+          <strong>{{ verdictLabel(compareResult.verdict) }}</strong>
+          <span v-if="compareResult.same_app_build === false" class="verdict-hint">跨应用版本</span>
+          <span v-else-if="compareResult.same_artifact === false" class="verdict-hint">跨工程制品</span>
+        </div>
 
-          <div v-if="compareResult" class="comparison-dashboard">
-            <div
-              class="verdict-banner"
-              :class="verdictTone(compareResult.verdict)"
-            >
-              <div class="verdict-details">
-                <span class="verdict-label">结论</span>
-                <span class="verdict-value">{{ verdictLabel(compareResult.verdict) }}</span>
-                <span v-if="compareResult.same_app_build === false" class="verdict-hint">跨应用版本对比</span>
-                <span v-else-if="compareResult.same_artifact === false" class="verdict-hint">跨工程制品对比</span>
-              </div>
-            </div>
-
-            <div class="comparison-stats-row">
-              <div class="comparison-stat-card">
-                <span class="stat-label">失败变化</span>
-                <span class="stat-val" :class="compareResult.delta.failed > 0 ? 'text-error' : 'text-success'">
+        <div class="table-wrap compact">
+          <table>
+            <thead>
+              <tr>
+                <th>对比项</th>
+                <th>基准</th>
+                <th>对比</th>
+                <th>差异</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>任务</td>
+                <td class="mono small">
+                  {{ compareResult.left.job_name }} ({{ compareResult.left.job_id.slice(0, 8) }})
+                </td>
+                <td class="mono small">
+                  {{ compareResult.right.job_name }} ({{ compareResult.right.job_id.slice(0, 8) }})
+                </td>
+                <td class="mono">-</td>
+              </tr>
+              <tr>
+                <td>应用资源</td>
+                <td class="small">
+                  {{ compareResult.left.app_build_name || "-" }}{{ compareResult.left.app_version_name ? ` v${compareResult.left.app_version_name}` : "" }}
+                </td>
+                <td class="small">
+                  {{ compareResult.right.app_build_name || "-" }}{{ compareResult.right.app_version_name ? ` v${compareResult.right.app_version_name}` : "" }}
+                </td>
+                <td class="mono">{{ compareResult.same_app_build ? "同版本" : "不同" }}</td>
+              </tr>
+              <tr>
+                <td>工程制品</td>
+                <td class="small">
+                  {{ compareResult.left.artifact_name || compareResult.left.artifact_id || "-" }}
+                </td>
+                <td class="small">
+                  {{ compareResult.right.artifact_name || compareResult.right.artifact_id || "-" }}
+                </td>
+                <td class="mono">{{ compareResult.same_artifact ? "同制品" : "不同" }}</td>
+              </tr>
+              <tr>
+                <td>通过</td>
+                <td><span class="text-success font-semibold">{{ compareResult.left.passed }}</span></td>
+                <td><span class="text-success font-semibold">{{ compareResult.right.passed }}</span></td>
+                <td :class="compareResult.delta.passed >= 0 ? 'text-success' : 'text-error'">
+                  {{ compareResult.delta.passed >= 0 ? "+" : "" }}{{ compareResult.delta.passed }}
+                </td>
+              </tr>
+              <tr>
+                <td>失败</td>
+                <td><span class="text-error font-semibold">{{ compareResult.left.failed }}</span></td>
+                <td><span class="text-error font-semibold">{{ compareResult.right.failed }}</span></td>
+                <td :class="compareResult.delta.failed <= 0 ? 'text-success' : 'text-error'">
                   {{ compareResult.delta.failed > 0 ? "+" : "" }}{{ compareResult.delta.failed }}
-                </span>
-              </div>
-              <div class="comparison-stat-card">
-                <span class="stat-label">通过变化</span>
-                <span class="stat-val" :class="compareResult.delta.passed >= 0 ? 'text-success' : 'text-error'">
-                  {{ compareResult.delta.passed > 0 ? "+" : "" }}{{ compareResult.delta.passed }}
-                </span>
-              </div>
-              <div class="comparison-stat-card">
-                <span class="stat-label">耗时变化</span>
-                <span class="stat-val text-accent">
+                </td>
+              </tr>
+              <tr>
+                <td>总数</td>
+                <td>{{ compareResult.left.total }}</td>
+                <td>{{ compareResult.right.total }}</td>
+                <td>{{ compareResult.delta.total > 0 ? "+" : "" }}{{ compareResult.delta.total }}</td>
+              </tr>
+              <tr>
+                <td>耗时</td>
+                <td>{{ formatDuration(compareResult.left.duration_ms) }}</td>
+                <td>{{ formatDuration(compareResult.right.duration_ms) }}</td>
+                <td :class="compareResult.delta.duration_ms <= 0 ? 'text-success' : 'text-error'">
                   {{ compareResult.delta.duration_ms > 0 ? "+" : "" }}{{ formatDuration(compareResult.delta.duration_ms) }}
-                </span>
-              </div>
-            </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-            <div class="table-wrap compact">
-              <table>
-                <thead>
-                  <tr>
-                    <th>对比项</th>
-                    <th>基准</th>
-                    <th>对比</th>
-                    <th>差异</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td>任务</td>
-                    <td class="mono small">
-                      {{ compareResult.left.job_name }} ({{ compareResult.left.job_id.slice(0, 8) }})
-                    </td>
-                    <td class="mono small">
-                      {{ compareResult.right.job_name }} ({{ compareResult.right.job_id.slice(0, 8) }})
-                    </td>
-                    <td class="mono">-</td>
-                  </tr>
-                  <tr>
-                    <td>应用资源</td>
-                    <td class="small">
-                      {{ compareResult.left.app_build_name || "-" }}{{ compareResult.left.app_version_name ? ` v${compareResult.left.app_version_name}` : "" }}
-                    </td>
-                    <td class="small">
-                      {{ compareResult.right.app_build_name || "-" }}{{ compareResult.right.app_version_name ? ` v${compareResult.right.app_version_name}` : "" }}
-                    </td>
-                    <td class="mono">{{ compareResult.same_app_build ? "同版本" : "不同" }}</td>
-                  </tr>
-                  <tr>
-                    <td>工程制品</td>
-                    <td class="small">
-                      {{ compareResult.left.artifact_name || compareResult.left.artifact_id || "-" }}
-                    </td>
-                    <td class="small">
-                      {{ compareResult.right.artifact_name || compareResult.right.artifact_id || "-" }}
-                    </td>
-                    <td class="mono">{{ compareResult.same_artifact ? "同制品" : "不同" }}</td>
-                  </tr>
-                  <tr>
-                    <td>通过</td>
-                    <td><span class="text-success font-semibold">{{ compareResult.left.passed }}</span></td>
-                    <td><span class="text-success font-semibold">{{ compareResult.right.passed }}</span></td>
-                    <td :class="compareResult.delta.passed >= 0 ? 'text-success' : 'text-error'">
-                      {{ compareResult.delta.passed >= 0 ? "+" : "" }}{{ compareResult.delta.passed }}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>失败</td>
-                    <td><span class="text-error font-semibold">{{ compareResult.left.failed }}</span></td>
-                    <td><span class="text-error font-semibold">{{ compareResult.right.failed }}</span></td>
-                    <td :class="compareResult.delta.failed <= 0 ? 'text-success' : 'text-error'">
-                      {{ compareResult.delta.failed > 0 ? "+" : "" }}{{ compareResult.delta.failed }}
-                    </td>
-                  </tr>
-                  <tr>
-                    <td>总数</td>
-                    <td>{{ compareResult.left.total }}</td>
-                    <td>{{ compareResult.right.total }}</td>
-                    <td>{{ compareResult.delta.total > 0 ? "+" : "" }}{{ compareResult.delta.total }}</td>
-                  </tr>
-                  <tr>
-                    <td>耗时</td>
-                    <td>{{ formatDuration(compareResult.left.duration_ms) }}</td>
-                    <td>{{ formatDuration(compareResult.right.duration_ms) }}</td>
-                    <td :class="compareResult.delta.duration_ms <= 0 ? 'text-success' : 'text-error'">
-                      {{ compareResult.delta.duration_ms > 0 ? "+" : "" }}{{ formatDuration(compareResult.delta.duration_ms) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+        <p v-if="compareResult.cases && !compareResult.cases.available" class="case-diff-hint">
+          两侧缺少 result.json，仅能对比汇总数字
+        </p>
+        <div v-else-if="compareResult.cases" class="case-diff">
+          <div class="case-diff-grid">
+            <div class="case-diff-col">
+              <h4>新增失败（{{ compareResult.cases.counts?.new_fail || 0 }}）</h4>
+              <ul v-if="(compareResult.cases.new_fail || []).length">
+                <li v-for="(row, i) in caseRows(compareResult.cases.new_fail)" :key="'nf-'+i">
+                  <span class="name">{{ row.name || row.key }}</span>
+                  <span v-if="row.fail_class_label" class="why">{{ row.fail_class_label }}</span>
+                </li>
+              </ul>
             </div>
-
-            <p v-if="compareResult.cases && !compareResult.cases.available" class="case-diff-hint">
-              两侧缺少 result.json，仅能对比汇总数字
-            </p>
-            <div v-else-if="compareResult.cases" class="case-diff">
-              <div class="comparison-stats-row case-diff-stats">
-                <div class="comparison-stat-card">
-                  <span class="stat-label">新增失败</span>
-                  <span class="stat-val text-error">{{ compareResult.cases.counts?.new_fail || 0 }}</span>
-                </div>
-                <div class="comparison-stat-card">
-                  <span class="stat-label">已修复</span>
-                  <span class="stat-val text-success">{{ compareResult.cases.counts?.fixed || 0 }}</span>
-                </div>
-                <div class="comparison-stat-card">
-                  <span class="stat-label">仍失败</span>
-                  <span class="stat-val">{{ compareResult.cases.counts?.still_fail || 0 }}</span>
-                </div>
-              </div>
-              <div class="case-diff-grid">
-                <div v-if="(compareResult.cases.new_fail || []).length" class="case-diff-col">
-                  <h4>新增失败</h4>
-                  <ul>
-                    <li v-for="(row, i) in caseRows(compareResult.cases.new_fail)" :key="'nf-'+i">
-                      <span class="name">{{ row.name || row.key }}</span>
-                      <span v-if="row.fail_class_label" class="why">{{ row.fail_class_label }}</span>
-                    </li>
-                  </ul>
-                </div>
-                <div v-if="(compareResult.cases.fixed || []).length" class="case-diff-col">
-                  <h4>已修复</h4>
-                  <ul>
-                    <li v-for="(row, i) in caseRows(compareResult.cases.fixed)" :key="'fx-'+i">
-                      <span class="name">{{ row.name || row.key }}</span>
-                    </li>
-                  </ul>
-                </div>
-                <div v-if="(compareResult.cases.still_fail || []).length" class="case-diff-col">
-                  <h4>仍失败</h4>
-                  <ul>
-                    <li v-for="(row, i) in caseRows(compareResult.cases.still_fail)" :key="'sf-'+i">
-                      <span class="name">{{ row.name || row.key }}</span>
-                      <span v-if="row.fail_class_label" class="why">{{ row.fail_class_label }}</span>
-                    </li>
-                  </ul>
-                </div>
-              </div>
+            <div class="case-diff-col">
+              <h4>已修复（{{ compareResult.cases.counts?.fixed || 0 }}）</h4>
+              <ul v-if="(compareResult.cases.fixed || []).length">
+                <li v-for="(row, i) in caseRows(compareResult.cases.fixed)" :key="'fx-'+i">
+                  <span class="name">{{ row.name || row.key }}</span>
+                </li>
+              </ul>
+            </div>
+            <div class="case-diff-col">
+              <h4>仍失败（{{ compareResult.cases.counts?.still_fail || 0 }}）</h4>
+              <ul v-if="(compareResult.cases.still_fail || []).length">
+                <li v-for="(row, i) in caseRows(compareResult.cases.still_fail)" :key="'sf-'+i">
+                  <span class="name">{{ row.name || row.key }}</span>
+                  <span v-if="row.fail_class_label" class="why">{{ row.fail_class_label }}</span>
+                </li>
+              </ul>
             </div>
           </div>
         </div>
       </div>
-    </details>
+      <template #actions>
+        <button type="button" :disabled="comparePending" @click="closeTools">关闭</button>
+      </template>
+    </ApModal>
   </section>
 </template>
 
 <style scoped>
-.archive-count {
+.report-filters {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  line-height: 1.1;
-}
-.archive-count-n {
-  font-size: 1.5rem;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
-  color: var(--text);
-}
-.archive-count-l {
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-.archive-block {
-  margin-bottom: 1.25rem;
-}
-.archive-head {
-  margin-bottom: 0.5rem;
-}
-.archive-head .section-title {
-  margin: 0 0 0.25rem !important;
-}
-.archive-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--muted);
-}
-.secondary-tools {
-  margin-top: 0.5rem;
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: var(--surface-soft);
-}
-.secondary-tools > summary {
-  list-style: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.85rem 1.1rem;
-  user-select: none;
-}
-.secondary-tools > summary::-webkit-details-marker {
-  display: none;
-}
-.secondary-title {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: var(--text);
-}
-.secondary-desc {
-  font-size: 0.75rem;
-  color: var(--muted);
-  margin-top: 0.15rem;
-}
-.secondary-toggle {
-  font-size: 0.75rem;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-.secondary-tools[open] > summary .secondary-toggle[data-closed] {
-  display: none;
-}
-.secondary-tools:not([open]) > summary .secondary-toggle[data-open] {
-  display: none;
-}
-.secondary-body {
-  padding: 0 1.1rem 1.1rem;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 1rem;
-}
-.ops-cell {
-  display: flex;
+  align-items: end;
   flex-wrap: wrap;
-  gap: 0.35rem;
+  gap: var(--space-2) var(--space-3);
 }
-.evidence-drawer {
-  margin-top: 1rem;
-  padding: 1rem 1.1rem;
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  background: var(--surface-soft);
+
+.filter-field {
+  display: grid;
+  gap: var(--space-1);
+  flex: 0 1 11rem;
+  min-width: 0;
 }
+
+.filter-field > span,
+.report-count {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.report-count {
+  align-self: center;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.task-link {
+  width: auto;
+  font-weight: 600;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.report-summary {
+  display: block;
+  max-width: 18rem;
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.number-cell {
+  text-align: right;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
 .evidence-img {
   display: block;
   max-width: min(100%, 480px);
@@ -839,17 +841,6 @@ function appLabel(r: {
   border: 1px solid var(--line-soft);
   border-radius: 4px;
   background: #000;
-}
-.evidence-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.6rem;
-}
-.evidence-head h3 {
-  margin: 0;
-  font-size: 0.95rem;
 }
 .evidence-block {
   margin-top: 0.65rem;
@@ -882,31 +873,6 @@ function appLabel(r: {
   color: var(--danger-soft-fg);
   font-size: 0.85rem;
 }
-.nested-form-card {
-  background-color: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: 8px;
-  padding: 1.25rem;
-  margin-bottom: 0;
-  width: 100%;
-}
-
-.comparison-title {
-  margin: 0 0 1rem !important;
-  font-size: 0.95rem !important;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  color: var(--text);
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0.5rem;
-}
-
-.title-svg {
-  color: var(--accent-text);
-}
-
 .comparison-grid {
   display: grid;
   grid-template-columns: minmax(12rem, 1fr) minmax(12rem, 1fr) auto;
@@ -922,7 +888,7 @@ function appLabel(r: {
   min-width: 0;
 }
 
-.comp-field label {
+.comp-field > span {
   font-size: 0.72rem;
   font-weight: 600;
   color: var(--muted);
@@ -938,70 +904,34 @@ function appLabel(r: {
   padding: 0 1.25rem;
 }
 
-.section-title {
-  margin: 1.5rem 0 0.5rem !important;
-  font-size: 1rem !important;
-  font-weight: 700;
-  color: var(--text);
-}
-
 .comparison-dashboard {
   margin-top: 1.25rem;
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  border-top: 1px dashed var(--line);
+  border-top: 1px solid var(--line);
   padding-top: 1.25rem;
 }
 
 .verdict-banner {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  padding: 0.75rem 1.25rem;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: var(--font-size-body);
 }
 
 .verdict-banner.regression {
-  background-color: var(--danger-soft-bg);
-  border-color: var(--danger-soft-border);
   color: var(--danger-soft-fg);
 }
 
 .verdict-banner.pass {
-  background-color: var(--ok-soft-bg);
-  border-color: var(--ok-soft-border);
   color: var(--ok-soft-fg);
 }
 
-.verdict-details {
-  display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
-}
-
-.verdict-label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  opacity: 0.8;
-}
-
-.verdict-value {
-  font-size: 1.1rem;
-  font-weight: 700;
-}
-
+.verdict-label,
 .verdict-hint {
-  font-size: 0.78rem;
-  opacity: 0.85;
-}
-
-.comparison-stats-row {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
+  color: var(--muted);
 }
 
 .case-diff-hint {
@@ -1047,105 +977,13 @@ function appLabel(r: {
   flex-shrink: 0;
 }
 
-.comparison-stat-card {
-  background-color: var(--chip-bg);
-  border: 1px solid var(--line);
-  padding: 0.75rem 1rem;
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
-.stat-label {
-  font-size: 0.72rem;
-  color: var(--muted);
-  margin-bottom: 0.25rem;
-}
-
-.stat-val {
-  font-size: 1.35rem;
-  font-weight: 800;
-}
-
-.badge {
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  border: 1px solid transparent;
-}
-
-.badge.success {
-  background-color: var(--ok-soft-bg);
-  color: var(--ok-soft-fg);
-}
-
-.badge.error {
-  background-color: var(--danger-soft-bg);
-  color: var(--danger-soft-fg);
-}
-
-.badge.secondary {
-  background-color: var(--control-bg);
-  color: var(--muted);
-}
-
-.total-count-lbl {
-  font-weight: 600;
-}
-
-.summary-cell,
-.version-cell {
-  max-width: 160px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 0.82rem;
-}
-
-.job-name-hint {
-  font-size: 0.72rem;
-  color: var(--muted);
-  margin-top: 0.15rem;
-  max-width: 7rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pick-btn {
-  background-color: var(--indigo-soft-bg);
-  border-color: var(--indigo-soft-border);
-  color: var(--indigo-soft-fg);
-  font-weight: 700;
-}
-
-.pick-btn:hover {
-  background-color: var(--indigo-soft-fg);
-  border-color: transparent;
-  color: var(--on-accent);
-}
-
 .text-success { color: var(--ok); }
 .text-error { color: var(--bad); }
-.text-accent { color: var(--accent-text); }
 .font-semibold { font-weight: 600; }
 
 .table-wrap.compact th,
 .table-wrap.compact td {
   padding: 0.55rem 0.75rem;
-}
-
-.reports-quality {
-  margin: 0 0 1rem;
-}
-.secondary-body .reports-quality {
-  margin-bottom: 1rem;
 }
 
 @media (max-width: 768px) {
@@ -1154,9 +992,6 @@ function appLabel(r: {
   }
   .comp-btn {
     width: 100%;
-  }
-  .comparison-stats-row {
-    grid-template-columns: 1fr;
   }
 }
 </style>

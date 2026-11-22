@@ -14,6 +14,7 @@ import { useAdminStore } from "../../stores/adminStore";
 import { usePagedList } from "../../composables/usePagedList";
 import { confirmDialog, notify } from "../../composables/useNotify";
 import ApSelect from "../common/ApSelect.vue";
+import ApModal from "../ApModal.vue";
 import DataPager from "../common/DataPager.vue";
 import { PROJECT_ROLE_LABEL, projectRoleLabel } from "./roleLabels";
 
@@ -32,6 +33,7 @@ const admin = useAdminStore();
 const { memberForm, filterProjectId } = storeToRefs(projectsStore);
 
 const busy = ref(false);
+const createOpen = ref(false);
 const error = ref("");
 const msg = ref("");
 const role = ref("member");
@@ -61,21 +63,33 @@ const {
   pageSize: invitePageSize,
   loading,
   hasLoaded,
+  error: listError,
   reload: reloadInvites,
   setPage: setInvitePage,
   setPageSize: setInvitePageSize,
 } = inviteList;
 
-const activeCount = computed(() => invites.value.filter((i) => !i.revoked).length);
-
 async function reload() {
   await reloadInvites(true);
 }
 
+function openCreate() {
+  error.value = "";
+  msg.value = "";
+  createOpen.value = true;
+}
+
+function closeCreate() {
+  if (busy.value) return;
+  createOpen.value = false;
+  error.value = "";
+}
+
 async function onCreate() {
+  if (busy.value) return;
   const pid = resolvedProjectId.value;
   if (!pid) {
-    error.value = "请先选用项目空间";
+    error.value = "请先在顶栏选择项目";
     return;
   }
   busy.value = true;
@@ -91,6 +105,7 @@ async function onCreate() {
     msg.value = `已创建邀请：${window.location.origin}${inv.invite_path}`;
     label.value = "";
     await reload();
+    createOpen.value = false;
   } catch (e) {
     error.value = apiErrorMessage(e);
   } finally {
@@ -101,12 +116,13 @@ async function onCreate() {
 async function onRevoke(id: string) {
   const pid = resolvedProjectId.value;
   if (
-    !pid ||
+    !pid || busy.value ||
     !(await confirmDialog("撤销该邀请？", {
       danger: true,
     }))
   )
     return;
+  if (busy.value || pid !== resolvedProjectId.value) return;
   busy.value = true;
   error.value = "";
   try {
@@ -129,44 +145,60 @@ function copyLink(inv: ProjectInvite) {
 <template>
   <div class="invite-block" :class="{ embedded }">
     <div class="card-title-row">
-      <h4>邀请管理</h4>
-      <span class="count-chip">{{ activeCount }} 有效</span>
+      <span class="meta-line">{{ inviteTotal }} 条邀请</span>
+      <button type="button" class="linkish" :disabled="busy || !resolvedProjectId" @click="openCreate">创建邀请链接</button>
     </div>
-    <p class="hint">发给同事：已有账号可登录接受；新人可自助注册并加入（普通用户）。</p>
+    <p v-if="msg" class="msg ok invite-message" role="status">{{ msg }}</p>
+    <p v-if="listError" class="msg bad" role="alert">
+      {{ listError }}
+      <button type="button" class="linkish" @click="reloadInvites()">重试</button>
+    </p>
+    <ApModal
+      v-if="createOpen"
+      title="创建项目邀请"
+      :close-on-backdrop="!busy"
+      :close-on-esc="!busy"
+      @close="closeCreate"
+    >
+      <form class="invite-form" :aria-busy="busy" @submit.prevent="onCreate">
+        <div class="form-row">
+          <label>
+            项目角色
+            <ApSelect
+              v-model="role"
+              aria-label="入项角色"
+              :disabled="busy"
+              :options="[
+                { value: 'member', label: PROJECT_ROLE_LABEL.member },
+                { value: 'viewer', label: PROJECT_ROLE_LABEL.viewer },
+              ]"
+            />
+          </label>
+          <label>
+            有效小时（0 为不过期）
+            <input v-model.number="expiresHours" type="number" min="0" :disabled="busy" />
+          </label>
+          <label>
+            次数上限（0 为不限）
+            <input v-model.number="maxUses" type="number" min="0" :disabled="busy" />
+          </label>
+        </div>
+        <label>
+          备注
+          <input v-model="label" :disabled="busy" />
+        </label>
+        <p v-if="error" class="msg bad" role="alert">{{ error }}</p>
+        <footer class="ap-modal-actions">
+          <button type="button" class="ghost" :disabled="busy" @click="closeCreate">取消</button>
+          <button type="submit" class="primary" :disabled="busy || !resolvedProjectId">
+            {{ busy ? "正在创建…" : "创建邀请链接" }}
+          </button>
+        </footer>
+      </form>
+    </ApModal>
 
-    <form class="invite-form" @submit.prevent="onCreate">
-      <div class="form-row">
-        <label>
-          入项角色
-          <ApSelect
-            v-model="role"
-            aria-label="入项角色"
-            :options="[
-              { value: 'member', label: PROJECT_ROLE_LABEL.member },
-              { value: 'viewer', label: PROJECT_ROLE_LABEL.viewer },
-            ]"
-          />
-        </label>
-        <label>
-          有效小时（0=不过期）
-          <input v-model.number="expiresHours" type="number" min="0" />
-        </label>
-        <label>
-          次数上限（0=不限）
-          <input v-model.number="maxUses" type="number" min="0" />
-        </label>
-      </div>
-      <label class="full">
-        备注
-        <input v-model="label" placeholder="可选，如「外包协作」" />
-      </label>
-      <button type="submit" class="primary" :disabled="busy || !resolvedProjectId">创建邀请链接</button>
-    </form>
-    <p v-if="msg" class="msg ok">{{ msg }}</p>
-    <p v-if="error" class="msg bad">{{ error }}</p>
-
-    <div class="table-wrap" style="margin-top: 0.85rem">
-      <table>
+    <div class="table-wrap invite-table">
+      <table aria-label="项目邀请" :aria-busy="loading">
         <thead>
           <tr>
             <th>角色</th>
@@ -178,13 +210,13 @@ function copyLink(inv: ProjectInvite) {
         </thead>
         <tbody>
           <tr v-if="!resolvedProjectId">
-            <td class="empty" colspan="5">请先选用项目空间</td>
+            <td class="empty" colspan="5">请先在顶栏选择项目</td>
           </tr>
           <tr v-else-if="!hasLoaded">
             <td class="empty" colspan="5">加载中…</td>
           </tr>
           <tr v-else-if="!invites.length">
-            <td class="empty" colspan="5">暂无邀请</td>
+            <td class="empty" colspan="5">{{ listError ? "未能加载邀请" : "暂无邀请" }}</td>
           </tr>
           <tr v-for="inv in invites" :key="inv.id">
             <td>{{ projectRoleLabel(inv.role) }}</td>
@@ -213,6 +245,7 @@ function copyLink(inv: ProjectInvite) {
       </table>
     </div>
     <DataPager
+      v-if="inviteTotal > 0"
       mode="page"
       :total="inviteTotal"
       :page="invitePage"
@@ -232,32 +265,18 @@ function copyLink(inv: ProjectInvite) {
   padding: 1rem 1.05rem;
 }
 
-.card-title-row h4 {
-  margin: 0;
-  font-size: 0.9rem;
-  font-weight: 700;
-  color: var(--text);
+.invite-table {
+  margin-top: 0.5rem;
 }
 
-.hint {
-  font-size: 0.78rem;
-  color: var(--muted);
-  margin: 0.35rem 0 0.85rem;
-  line-height: 1.45;
+.invite-message {
+  overflow-wrap: anywhere;
 }
 
 .invite-form {
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
-  padding: 0.75rem 0.85rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--border-weak);
-  border-radius: var(--radius-md);
-}
-
-.embedded .invite-form {
-  background: var(--control-bg);
 }
 
 .form-row {
@@ -276,10 +295,6 @@ function copyLink(inv: ProjectInvite) {
   min-width: 0;
 }
 
-.invite-form label.full {
-  width: 100%;
-}
-
 .msg {
   margin: 0.55rem 0 0;
   font-size: 0.82rem;
@@ -294,7 +309,7 @@ function copyLink(inv: ProjectInvite) {
   color: var(--danger-soft-fg);
 }
 
-@media (max-width: 720px) {
+@media (max-width: 520px) {
   .form-row {
     grid-template-columns: 1fr;
   }

@@ -216,33 +216,49 @@ async function consumeChatSse(
   const dec = new TextDecoder();
   let buf = "";
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, { stream: true });
-    const parts = buf.split("\n\n");
-    buf = parts.pop() || "";
-    for (const part of parts) {
-      let eventName = "";
-      for (const line of part.split("\n")) {
-        if (line.startsWith("event:")) {
-          eventName = line.slice(6).trim();
-          continue;
+  const flushPart = (part: string) => {
+    let eventName = "";
+    for (const line of part.split("\n")) {
+      if (line.startsWith("event:")) {
+        eventName = line.slice(6).trim();
+        continue;
+      }
+      if (!line.startsWith("data:")) continue;
+      const raw = line.slice(5).trim();
+      if (!raw) continue;
+      try {
+        const parsed = JSON.parse(raw) as ChatStreamEvent;
+        if (eventName === "action" && !parsed.type) {
+          parsed.type = "action";
         }
-        if (!line.startsWith("data:")) continue;
-        const raw = line.slice(5).trim();
-        if (!raw) continue;
-        try {
-          const parsed = JSON.parse(raw) as ChatStreamEvent;
-          if (eventName === "action" && !parsed.type) {
-            parsed.type = "action";
-          }
-          onEvent(parsed);
-        } catch {
-          /* ignore malformed chunk */
-        }
+        onEvent(parsed);
+      } catch {
+        /* ignore malformed chunk */
       }
     }
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        buf += dec.decode();
+        break;
+      }
+      buf += dec.decode(value, { stream: true });
+      const parts = buf.split("\n\n");
+      buf = parts.pop() || "";
+      for (const part of parts) {
+        flushPart(part);
+      }
+    }
+    if (buf.trim()) {
+      for (const part of buf.split("\n\n")) {
+        if (part.trim()) flushPart(part);
+      }
+    }
+  } finally {
+    reader.releaseLock();
   }
 }
 

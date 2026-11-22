@@ -117,11 +117,16 @@ class RunResult:
     duration_ms: int = 0           # 用例总耗时
     device_udid: str = ""          # 并行执行时绑定的设备 UDID
     worker_slot: int = -1          # 并行 worker 槽位（-1=串行/未标）
+    cancelled: bool = False
+
+    @property
+    def is_cancelled(self) -> bool:
+        return self.cancelled or any(r.status == "CANCEL" for r in self.results)
 
     @property
     def passed(self) -> bool:
-        # 仅 FAIL 判为用例失败；NOIMPL（有意砍除的关键字）/SKIP 不算失败（报告中仍单独可见）
-        return not any(r.status == "FAIL" for r in self.results)
+        # NOIMPL 和 SKIP 仍可见，取消的用例不能计为通过。
+        return not self.is_cancelled and not any(r.status == "FAIL" for r in self.results)
 
     def counts(self) -> dict[str, int]:
         c: dict[str, int] = {}
@@ -231,16 +236,16 @@ class Executor:
         #     STOP 策略下 before 失败则跳过 case。
         #   after 为 finally：无论成败都执行清理；用户取消时改跑精简版 after（白名单关键字）。
         #   fault 为失败兜底：仅当前面壳出现过失败时才执行。
-        if not self._checkpoint():
+        if not self._checkpoint(result):
             self._run_shell(tc.before, result)
         stop = not result.passed and self.fault_strategy is FaultStrategy.STOP
-        if not stop and not self._checkpoint():
+        if not stop and not self._checkpoint(result):
             self._run_case_shell(tc, result)
-        if self._cancelled():
+        if self._checkpoint(result):
             self._run_teardown_shell(tc.after, result)
-        elif not self._checkpoint():
+        else:
             self._run_shell(tc.after, result)          # finally：总执行清理
-        if not result.passed and not self._checkpoint():
+        if not result.passed and not self._checkpoint(result):
             self._run_shell(tc.fault, result)          # 仅失败时兜底
         result.duration_ms = int((time.time() - start) * 1000)
         return result
@@ -260,7 +265,7 @@ class Executor:
         saved = dict(self.ctx.data_row)
         try:
             for idx, row in enumerate(rows):
-                if self._checkpoint():
+                if self._checkpoint(result):
                     break
                 self.ctx.data_row = {**saved, **row}
                 self._loop_stack.append(idx + 1)
@@ -273,11 +278,10 @@ class Executor:
         finally:
             self.ctx.data_row = saved
 
-    def _cancelled(self) -> bool:
-        return self.cancel_event is not None and self.cancel_event.is_set()
-
-    def _checkpoint(self) -> bool:
-        return checkpoint(self.cancel_event, self.pause_event)
+    def _checkpoint(self, result: RunResult) -> bool:
+        if not result.cancelled:
+            result.cancelled = checkpoint(self.cancel_event, self.pause_event)
+        return result.cancelled
 
     # ---- 内部 ----
     def _run_shell(self, shell: Shell, result: RunResult) -> None:
@@ -301,7 +305,7 @@ class Executor:
 
     def _run_sequence(self, items: list, result: RunResult) -> None:
         for item in items:
-            if self._checkpoint():
+            if self._checkpoint(result):
                 return
             if isinstance(item, LoopBlock):
                 self._run_loop(item, result)
@@ -325,9 +329,10 @@ class Executor:
         )
         rows = self._iter_datapool(start)
         saved_row = dict(self.ctx.data_row)
+        stopped_on_fail = False
         try:
             for idx, row in enumerate(rows):
-                if self._checkpoint():
+                if self._checkpoint(result):
                     break
                 if row is not None:
                     self.ctx.data_row = {**saved_row, **row}
@@ -338,6 +343,9 @@ class Executor:
                 finally:
                     self._loop_stack.pop()
                 failed = any(r.status == "FAIL" for r in result.results[before:])
+                if failed and self.fault_strategy is FaultStrategy.STOP:
+                    stopped_on_fail = True
+                    break
                 if failed and loop_fail == "break":
                     result.results.append(
                         StepResult("loop", block.start.comment, "SKIP",
@@ -346,7 +354,8 @@ class Executor:
                     break
         finally:
             self.ctx.data_row = saved_row
-        result.results.append(StepResult("keyword_loop_end", "", "PASS", "循环结束"))
+        if not stopped_on_fail:
+            result.results.append(StepResult("keyword_loop_end", "", "PASS", "循环结束"))
 
     def _iter_datapool(self, start: Step):
         """根据 loop_start 参数产出迭代数据行；定次循环产出 None 占位。"""
@@ -426,7 +435,7 @@ class Executor:
         saved = dict(self.ctx.data_row)
         try:
             for idx, row in enumerate(rows):
-                if self._checkpoint():
+                if self._checkpoint(result):
                     break
                 self.ctx.data_row = {**saved, **row}
                 self._loop_stack.append(idx + 1)
@@ -636,6 +645,8 @@ class Executor:
 
     def _add(self, result: RunResult, sr: StepResult) -> None:
         """追加步骤结果并触发进度回调（供异步执行更新 UI）。"""
+        if sr.status == "CANCEL":
+            result.cancelled = True
         self._enrich_step_result(sr)
         if sr.loop_index is None and self._loop_stack:
             sr.loop_index = self._loop_stack[-1]     # 标注当前(最内层)迭代号

@@ -303,7 +303,7 @@ async function copyValue(row: InfoRow) {
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--muted);
 }
 
@@ -327,7 +327,7 @@ async function copyValue(row: InfoRow) {
 
 .rdi-chip {
   padding: 0.18rem 0.45rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--info-soft-border, var(--line));
   background: var(--action-selected, var(--surface-soft));
   color: var(--accent-text);
@@ -388,7 +388,7 @@ async function copyValue(row: InfoRow) {
 
 .rdi-meter-track {
   height: 0.32rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--control-bg, rgba(255, 255, 255, 0.06));
   overflow: hidden;
 }
@@ -418,7 +418,7 @@ async function copyValue(row: InfoRow) {
   font-size: 0.68rem;
   font-weight: 700;
   letter-spacing: 0.08em;
-  text-transform: uppercase;
+  text-transform: none;
   color: var(--muted);
 }
 

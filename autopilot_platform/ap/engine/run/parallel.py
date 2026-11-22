@@ -179,6 +179,7 @@ def run_parallel_device(testcases: list[TestCase], config: RunConfig) -> SuiteRe
             for i in range(n)
         }
         aborted = False
+        aborted_on_failure = False
         for fut in as_completed(futures):
             if fut in seen:
                 continue
@@ -189,14 +190,16 @@ def run_parallel_device(testcases: list[TestCase], config: RunConfig) -> SuiteRe
             try:
                 slot_result = fut.result()
                 results.append(slot_result)
-                if not isolate and config.cancel_event is not None:
+                if not isolate and config.cancel_event is not None and not config.cancel_event.is_set():
                     _suite = slot_result[1]
                     cc = _suite.case_counts() if hasattr(_suite, "case_counts") else {}
                     if cc.get("failed", 0) > 0:
+                        aborted_on_failure = True
                         config.cancel_event.set()
             except Exception as e:  # noqa: BLE001
                 results.append(_fail_suite_for_slot(slot_idx, udid, testcases, e))
-                if not isolate and config.cancel_event is not None:
+                if not isolate and config.cancel_event is not None and not config.cancel_event.is_set():
+                    aborted_on_failure = True
                     config.cancel_event.set()
             if config.cancel_event is not None and config.cancel_event.is_set():
                 aborted = True
@@ -213,5 +216,6 @@ def run_parallel_device(testcases: list[TestCase], config: RunConfig) -> SuiteRe
 
     suite = SuiteResult(name=config.name)
     suite.results = _merge_results(results)
+    suite.cancelled = not aborted_on_failure and (aborted or any(s.cancelled for _, s in results))
     suite.duration_ms = int((time.time() - start) * 1000)
     return suite

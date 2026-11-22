@@ -1,11 +1,42 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, computed, ref, onBeforeUnmount, watch } from "vue";
-import { RouterView, useRoute } from "vue-router";
+import { nextTick, onMounted, onUnmounted, computed, ref, onBeforeUnmount, watch } from "vue";
+import { RouterLink, RouterView, useRoute } from "vue-router";
 import { storeToRefs } from "pinia";
+import { theme as antdThemeApi } from "ant-design-vue";
+import zhCN from "ant-design-vue/es/locale/zh_CN";
+import {
+  LayoutDashboard,
+  FolderKanban,
+  Share2,
+  Compass,
+  FileText,
+  ListChecks,
+  BookOpen,
+  Package,
+  AppWindow,
+  Play,
+  Clock,
+  FileBarChart2,
+  Smartphone,
+  Settings,
+  History,
+  Users,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronsLeft,
+  ChevronsRight,
+  ChevronRight,
+  RotateCw,
+  LogOut,
+  AlertCircle,
+} from "lucide-vue-next";
 import { useCapabilities } from "./composables/useCapabilities";
 import { useAuthStore } from "./stores/auth";
 import { useShellStore } from "./stores/shellStore";
-import { labelForTab, sectionIdForTab, sectionLabelForTab } from "./router/tabs";
+import { useTheme } from "./composables/useTheme";
+import { labelForTab, pathForTab, sectionIdForTab, sectionLabelForTab } from "./router/tabs";
+import { refreshPageFromToolbar } from "./composables/useManualPageRefresh";
+import { apiErrorMessage } from "./api";
 import { KEEPALIVE_INCLUDE } from "./router/panels";
 import { APP_TITLE } from "./brand";
 import BrandMark from "./components/BrandMark.vue";
@@ -20,9 +51,12 @@ import RemoteDeviceDialog from "./components/RemoteDeviceDialog.vue";
 import JobReportViewer from "./components/JobReportViewer.vue";
 import ThemeToggle from "./components/ThemeToggle.vue";
 import DesignChatPanel from "./components/design/DesignChatPanel.vue";
+import VbenTabBar from "./components/layout/VbenTabBar.vue";
+import VbenCommandSearch from "./components/layout/VbenCommandSearch.vue";
 
 const auth = useAuthStore();
 const shell = useShellStore();
+const { isDark } = useTheme();
 const {
   loggedIn,
   sessionHydrating,
@@ -33,9 +67,29 @@ const {
 const { activeTab, error } = storeToRefs(shell);
 const caps = useCapabilities();
 
+const antdTheme = computed(() => ({
+  algorithm: isDark.value ? antdThemeApi.darkAlgorithm : antdThemeApi.defaultAlgorithm,
+  token: {
+    colorPrimary: isDark.value ? "#1677ff" : "#006be6",
+    borderRadius: 6,
+    colorBgContainer: isDark.value ? "#1c1e23" : "#ffffff",
+    colorBgElevated: isDark.value ? "#24262d" : "#ffffff",
+    colorBorderSecondary: isDark.value ? "#2a2c32" : "#eef0f3",
+    fontFamily:
+      '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", sans-serif',
+  },
+}));
+
 const route = useRoute();
 const sidebarCollapsed = ref(false);
 const isMobile = ref(false);
+const mobileDrawerOpen = computed(() => isMobile.value && !sidebarCollapsed.value);
+const mobileDrawerClosed = computed(() => isMobile.value && sidebarCollapsed.value);
+const sidebar = ref<HTMLElement | null>(null);
+const sidebarToggle = ref<HTMLButtonElement | null>(null);
+const mainContent = ref<HTMLElement | null>(null);
+const refreshingPage = ref(false);
+const userMenuOpen = ref(false);
 const keepaliveInclude = KEEPALIVE_INCLUDE;
 const NAV_OPEN_KEY = "ap-mc-nav-open-v1";
 const navOpen = ref<Record<string, boolean>>({
@@ -51,23 +105,56 @@ function onVisibilityChange() {
 }
 
 function syncViewport() {
-  const mobile = window.innerWidth < 900;
+  const mobile = window.matchMedia("(max-width: 900px)").matches;
   const wasMobile = isMobile.value;
   isMobile.value = mobile;
-  if (mobile) {
-    sidebarCollapsed.value = true;
+  if (mobile && !wasMobile) {
+    void closeMobileSidebar();
   } else if (wasMobile) {
     readSidebarPref();
   }
 }
 
-/** 共享 ACL：全体已登录用户可查看；写操作由 SharePanel 内 canShare 控制 */
+const DETAILS_MENU_SELECTOR =
+  "details.action-menu, details.job-row-menu, details.schedule-row-menu, details.row-more";
+
+function closeOpenDetailsMenus(except?: HTMLElement | null) {
+  for (const el of document.querySelectorAll<HTMLDetailsElement>(`${DETAILS_MENU_SELECTOR}[open]`)) {
+    if (except && el === except) continue;
+    el.open = false;
+  }
+}
+
+function onGlobalClick(ev: MouseEvent) {
+  const target = ev.target as HTMLElement | null;
+  if (userMenuOpen.value && !target?.closest(".vben-user-menu-wrap")) {
+    userMenuOpen.value = false;
+  }
+  const insideMenu = target?.closest<HTMLDetailsElement>(DETAILS_MENU_SELECTOR) ?? null;
+  closeOpenDetailsMenus(insideMenu);
+}
+
+function onGlobalDetailsToggle(ev: Event) {
+  const target = ev.target as HTMLDetailsElement | null;
+  if (!target?.matches?.(DETAILS_MENU_SELECTOR) || !target.open) return;
+  closeOpenDetailsMenus(target);
+}
+
+function onGlobalKeydown(ev: KeyboardEvent) {
+  if (ev.key === "Escape") {
+    if (userMenuOpen.value) userMenuOpen.value = false;
+    for (const el of document.querySelectorAll<HTMLDetailsElement>(`${DETAILS_MENU_SELECTOR}[open]`)) {
+      el.open = false;
+      el.querySelector("summary")?.focus();
+    }
+  }
+}
+
 const showShareNav = computed(() => Boolean(loggedIn.value));
-/** 设备与执行：operator 只读；管理动作由组件内 useCapabilities 控制 */
 const showDevicesNav = computed(() => Boolean(loggedIn.value));
 
 function guardAdminTabs() {
-  // 旧侧栏「AI 对话」tab 已改为悬浮窗；「设计配置」已并入运维（仅 admin）
+  if (sessionHydrating.value || !loggedIn.value) return;
   if (activeTab.value === "design-chat") activeTab.value = "dashboard";
   if (activeTab.value === "design-config") {
     activeTab.value = caps.canOps ? "ops" : "dashboard";
@@ -97,6 +184,9 @@ onMounted(() => {
   guardAdminTabs();
   window.addEventListener("resize", syncViewport);
   document.addEventListener("visibilitychange", onVisibilityChange);
+  document.addEventListener("click", onGlobalClick);
+  document.addEventListener("keydown", onGlobalKeydown);
+  document.addEventListener("toggle", onGlobalDetailsToggle, true);
   onVisibilityChange();
 });
 
@@ -111,13 +201,16 @@ watch(
 );
 
 watch(
-  () => [activeTab.value, caps.canOps, canManageUsers.value] as const,
+  () => [activeTab.value, sessionHydrating.value, caps.canOps, canManageUsers.value] as const,
   () => guardAdminTabs(),
 );
 
 onUnmounted(() => {
   shell.stopPolling();
   document.removeEventListener("visibilitychange", onVisibilityChange);
+  document.removeEventListener("click", onGlobalClick);
+  document.removeEventListener("keydown", onGlobalKeydown);
+  document.removeEventListener("toggle", onGlobalDetailsToggle, true);
 });
 
 onBeforeUnmount(() => {
@@ -127,26 +220,81 @@ onBeforeUnmount(() => {
 const SIDEBAR_COLLAPSE_KEY = "ap-mc-sidebar-collapsed";
 
 function toggleSidebar() {
-  sidebarCollapsed.value = !sidebarCollapsed.value;
-  if (!isMobile.value) {
-    try {
-      localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed.value ? "1" : "0");
-    } catch {
-      /* ignore */
+  if (isMobile.value) {
+    if (mobileDrawerOpen.value) void closeMobileSidebar();
+    else {
+      sidebarCollapsed.value = false;
+      void nextTick(() => {
+        sidebar.value?.querySelector<HTMLElement>("a[href], button:not([disabled])")?.focus();
+      });
     }
+    return;
+  }
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSE_KEY, sidebarCollapsed.value ? "1" : "0");
+  } catch {
+    /* ignore */
   }
 }
 
-function selectNav(tab: string) {
-  activeTab.value = tab;
-  if (isMobile.value) sidebarCollapsed.value = true;
+async function closeMobileSidebar(focusMain = false) {
+  const restoreFocus = sidebar.value?.contains(document.activeElement);
+  sidebarCollapsed.value = true;
+  if (restoreFocus || focusMain) {
+    await nextTick();
+    (focusMain ? mainContent.value : sidebarToggle.value)?.focus();
+  }
+}
+
+function selectNav(event: MouseEvent) {
+  if (
+    mobileDrawerOpen.value &&
+    event.button === 0 &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    !event.altKey
+  ) {
+    void closeMobileSidebar(true);
+  }
+}
+
+function onSidebarKeydown(event: KeyboardEvent) {
+  if (!mobileDrawerOpen.value) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    void closeMobileSidebar();
+  }
+  if (event.key !== "Tab") return;
+  const controls = Array.from(
+    sidebar.value?.querySelectorAll<HTMLElement>("button:not([disabled]), a[href]") ?? [],
+  ).filter((element) => !element.closest("[inert]") && element.getClientRects().length);
+  const first = controls[0];
+  const last = controls.at(-1);
+  if (!first || !last) return;
+  if (document.activeElement === (event.shiftKey ? first : last)) {
+    event.preventDefault();
+    (event.shiftKey ? last : first).focus();
+  }
+}
+
+async function refreshCurrentPage() {
+  if (refreshingPage.value) return;
+  refreshingPage.value = true;
+  try {
+    await refreshPageFromToolbar(activeTab.value, () => shell.refreshForTab(activeTab.value));
+  } catch (cause) {
+    error.value = apiErrorMessage(cause);
+  } finally {
+    refreshingPage.value = false;
+  }
 }
 
 function readSidebarPref() {
   try {
-    const v = localStorage.getItem(SIDEBAR_COLLAPSE_KEY);
-    if (v === "1") sidebarCollapsed.value = true;
-    if (v === "0") sidebarCollapsed.value = false;
+    sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "1";
   } catch {
     /* ignore */
   }
@@ -178,1107 +326,975 @@ function navGroupOpen(id: string) {
   return sidebarCollapsed.value || navOpen.value[id] !== false;
 }
 
+function handleLogout() {
+  userMenuOpen.value = false;
+  void auth.onLogout();
+}
+
 const currentBreadcrumb = computed(() => labelForTab(activeTab.value));
 const sectionCrumb = computed(() => sectionLabelForTab(activeTab.value));
 const showSectionCrumb = computed(
   () => Boolean(sectionCrumb.value) && sectionCrumb.value !== currentBreadcrumb.value,
 );
+const userInitials = computed(() => (user.value?.username || "U").slice(0, 2).toUpperCase());
 </script>
 
 <template>
-  <a class="skip-link" href="#page-main">跳到主内容</a>
+  <a-config-provider :locale="zhCN" :theme="antdTheme">
+    <a v-if="loggedIn && !sessionHydrating" class="skip-link" href="#page-main" :inert="mobileDrawerOpen">
+      跳到主内容
+    </a>
 
-  <!-- Guest：GitLab / Grafana 式居中登录，不走左右分栏 -->
-  <div v-if="sessionHydrating" class="guest-layout" aria-busy="true">
-    <header class="guest-top">
-      <div class="guest-brand-row">
-        <BrandMark :size="28" />
-        <span class="guest-brand-name">{{ APP_TITLE }}</span>
-      </div>
-      <ThemeToggle />
-    </header>
-    <div class="guest-main">
-      <p class="session-hydrating">正在恢复登录…</p>
-    </div>
-  </div>
-  <div v-else-if="!loggedIn" class="guest-layout">
-    <header class="guest-top">
-      <div class="guest-brand-row">
-        <BrandMark :size="28" />
-        <span class="guest-brand-name">{{ APP_TITLE }}</span>
-      </div>
-      <ThemeToggle />
-    </header>
-    <div class="guest-main">
-      <div class="guest-container">
-        <LoginView />
+    <!-- Hydrating State -->
+    <div v-if="sessionHydrating" class="vben-hydrating" aria-busy="true">
+      <div class="vben-hydrating-card">
+        <BrandMark :size="36" />
+        <span class="vben-hydrating-title">{{ APP_TITLE }}</span>
+        <span class="vben-hydrating-sub">正在恢复会话…</span>
       </div>
     </div>
-  </div>
 
-  <!-- Authenticated Shell Layout -->
-  <div v-else class="app-shell" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
-    <div
-      v-if="isMobile && !sidebarCollapsed"
-      class="sidebar-backdrop"
-      @click="sidebarCollapsed = true"
-    ></div>
-    <!-- Left Sidebar：桌面收成图标轨；移动端抽屉 -->
-    <aside class="sidebar" :aria-expanded="!sidebarCollapsed">
-      <div class="sidebar-header">
-        <BrandMark :size="28" />
-        <div class="brand-text">
-          <span class="brand-name">{{ APP_TITLE }}</span>
+    <!-- Guest: Vben v5 Asymmetric Split Login -->
+    <LoginView v-else-if="!loggedIn" />
+
+    <!-- Authenticated Vben v5 Shell -->
+    <div v-else class="vben-shell" :class="{ 'is-collapsed': sidebarCollapsed }">
+      <div
+        v-if="mobileDrawerOpen"
+        class="vben-sidebar-backdrop"
+        aria-hidden="true"
+        @click="closeMobileSidebar()"
+      ></div>
+
+      <!-- Left Sidebar (224px / 64px rail) -->
+      <aside
+        id="app-sidebar"
+        ref="sidebar"
+        class="vben-sidebar"
+        :inert="mobileDrawerClosed"
+        :role="mobileDrawerOpen ? 'dialog' : undefined"
+        :aria-modal="mobileDrawerOpen ? true : undefined"
+        :aria-label="mobileDrawerOpen ? '导航菜单' : undefined"
+        @keydown="onSidebarKeydown"
+      >
+        <div class="vben-sidebar-brand">
+          <BrandMark :size="28" />
+          <span class="vben-brand-title">{{ APP_TITLE }}</span>
         </div>
-        <button
-          type="button"
-          class="sidebar-collapse-btn"
-          :title="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
-          @click="toggleSidebar"
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2.2" fill="none" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
-      </div>
 
-      <!-- Main Navigation Menu -->
-      <nav class="sidebar-nav" aria-label="主导航">
-        <div class="nav-group">
+        <nav class="vben-sidebar-nav" aria-label="主导航">
+          <!-- 概览 -->
+          <div class="vben-nav-group">
+            <button
+              type="button"
+              class="vben-nav-section"
+              :class="{ 'is-open': navGroupOpen('overview') }"
+              :aria-expanded="navGroupOpen('overview')"
+              @click="toggleNavSection('overview')"
+            >
+              <span class="vben-nav-section-text">概览</span>
+              <ChevronRight :size="14" class="vben-nav-chevron" aria-hidden="true" />
+            </button>
+            <div class="vben-nav-items" :class="{ 'is-collapsed': !navGroupOpen('overview') }" :inert="!navGroupOpen('overview')">
+              <RouterLink class="vben-nav-item" title="总览" :class="{ active: activeTab === 'dashboard' }" :to="pathForTab('dashboard')" @click="selectNav">
+                <LayoutDashboard :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">总览</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="项目" :class="{ active: activeTab === 'projects' }" :to="pathForTab('projects')" @click="selectNav">
+                <FolderKanban :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">项目</span>
+              </RouterLink>
+              <RouterLink v-if="showShareNav" class="vben-nav-item" title="共享" :class="{ active: activeTab === 'share' }" :to="pathForTab('share')" @click="selectNav">
+                <Share2 :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">共享</span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 测试设计 -->
+          <div class="vben-nav-group">
+            <button
+              type="button"
+              class="vben-nav-section"
+              :class="{ 'is-open': navGroupOpen('design') }"
+              :aria-expanded="navGroupOpen('design')"
+              @click="toggleNavSection('design')"
+            >
+              <span class="vben-nav-section-text">测试设计</span>
+              <ChevronRight :size="14" class="vben-nav-chevron" aria-hidden="true" />
+            </button>
+            <div class="vben-nav-items" :class="{ 'is-collapsed': !navGroupOpen('design') }" :inert="!navGroupOpen('design')">
+              <RouterLink class="vben-nav-item" title="设计总览" :class="{ active: activeTab === 'design-dashboard' }" :to="pathForTab('design-dashboard')" @click="selectNav">
+                <Compass :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">设计总览</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="需求文档" :class="{ active: activeTab === 'design-docs' }" :to="pathForTab('design-docs')" @click="selectNav">
+                <FileText :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">需求文档</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="意图用例" :class="{ active: activeTab === 'design-cases' }" :to="pathForTab('design-cases')" @click="selectNav">
+                <ListChecks :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">意图用例</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="知识库" :class="{ active: activeTab === 'design-knowledge' }" :to="pathForTab('design-knowledge')" @click="selectNav">
+                <BookOpen :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">知识库</span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 测试执行 -->
+          <div class="vben-nav-group">
+            <button
+              type="button"
+              class="vben-nav-section"
+              :class="{ 'is-open': navGroupOpen('exec') }"
+              :aria-expanded="navGroupOpen('exec')"
+              @click="toggleNavSection('exec')"
+            >
+              <span class="vben-nav-section-text">执行</span>
+              <ChevronRight :size="14" class="vben-nav-chevron" aria-hidden="true" />
+            </button>
+            <div class="vben-nav-items" :class="{ 'is-collapsed': !navGroupOpen('exec') }" :inert="!navGroupOpen('exec')">
+              <RouterLink class="vben-nav-item" title="工程制品" :class="{ active: activeTab === 'artifacts' }" :to="pathForTab('artifacts')" @click="selectNav">
+                <Package :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">工程制品</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="应用资源" :class="{ active: activeTab === 'app-builds' }" :to="pathForTab('app-builds')" @click="selectNav">
+                <AppWindow :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">应用资源</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="批跑" :class="{ active: activeTab === 'jobs' }" :to="pathForTab('jobs')" @click="selectNav">
+                <Play :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">批跑</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="定时计划" :class="{ active: activeTab === 'schedules' }" :to="pathForTab('schedules')" @click="selectNav">
+                <Clock :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">定时计划</span>
+              </RouterLink>
+              <RouterLink class="vben-nav-item" title="报告" :class="{ active: activeTab === 'reports' }" :to="pathForTab('reports')" @click="selectNav">
+                <FileBarChart2 :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">报告</span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 实验室设备 -->
+          <div v-if="showDevicesNav" class="vben-nav-group">
+            <button
+              type="button"
+              class="vben-nav-section"
+              :class="{ 'is-open': navGroupOpen('infra') }"
+              :aria-expanded="navGroupOpen('infra')"
+              @click="toggleNavSection('infra')"
+            >
+              <span class="vben-nav-section-text">实验室资源</span>
+              <ChevronRight :size="14" class="vben-nav-chevron" aria-hidden="true" />
+            </button>
+            <div class="vben-nav-items" :class="{ 'is-collapsed': !navGroupOpen('infra') }" :inert="!navGroupOpen('infra')">
+              <RouterLink class="vben-nav-item" title="设备" :class="{ active: activeTab === 'devices' }" :to="pathForTab('devices')" @click="selectNav">
+                <Smartphone :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">设备</span>
+              </RouterLink>
+            </div>
+          </div>
+
+          <!-- 系统 / 组织管理 -->
+          <div v-if="caps.canOps || canManageUsers" class="vben-nav-group">
+            <button
+              type="button"
+              class="vben-nav-section"
+              :class="{ 'is-open': navGroupOpen('admin') }"
+              :aria-expanded="navGroupOpen('admin')"
+              @click="toggleNavSection('admin')"
+            >
+              <span class="vben-nav-section-text">{{ caps.canOps ? "系统管理" : "组织管理" }}</span>
+              <ChevronRight :size="14" class="vben-nav-chevron" aria-hidden="true" />
+            </button>
+            <div class="vben-nav-items" :class="{ 'is-collapsed': !navGroupOpen('admin') }" :inert="!navGroupOpen('admin')">
+              <RouterLink v-if="caps.canOps" class="vben-nav-item" title="运维" :class="{ active: activeTab === 'ops' }" :to="pathForTab('ops')" @click="selectNav">
+                <Settings :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">运维</span>
+              </RouterLink>
+              <RouterLink v-if="canManageUsers" class="vben-nav-item" title="审计" :class="{ active: activeTab === 'audit' }" :to="pathForTab('audit')" @click="selectNav">
+                <History :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">审计</span>
+              </RouterLink>
+              <RouterLink v-if="canManageUsers" class="vben-nav-item" title="用户" :class="{ active: activeTab === 'users' }" :to="pathForTab('users')" @click="selectNav">
+                <Users :size="16" class="vben-nav-icon" aria-hidden="true" />
+                <span class="vben-nav-label">用户</span>
+              </RouterLink>
+            </div>
+          </div>
+        </nav>
+
+        <!-- Vben v5 Bottom Collapse Rail -->
+        <div class="vben-sidebar-footer">
           <button
             type="button"
-            class="nav-section-toggle"
-            :class="{ 'is-open': navGroupOpen('overview') }"
-            :aria-expanded="navGroupOpen('overview')"
-            @click="toggleNavSection('overview')"
-          >
-            概览
-            <svg class="nav-section-chevron" viewBox="0 0 12 12" aria-hidden="true">
-              <polyline points="4 2 8 6 4 10" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-          </button>
-          <div class="nav-group-items" :class="{ 'is-collapsed': !navGroupOpen('overview') }">
-        <button class="nav-item" title="概览" :class="{ active: activeTab === 'dashboard' }" @click="selectNav('dashboard')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <rect x="3" y="3" width="7" height="9" />
-            <rect x="14" y="3" width="7" height="5" />
-            <rect x="14" y="12" width="7" height="9" />
-            <rect x="3" y="16" width="7" height="5" />
-          </svg>
-          <span class="nav-label">概览</span>
-        </button>
-
-        <button class="nav-item" title="项目" :class="{ active: activeTab === 'projects' }" @click="selectNav('projects')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-          </svg>
-          <span class="nav-label">项目</span>
-        </button>
-
-        <button
-          v-if="showShareNav"
-          class="nav-item"
-          title="共享"
-          :class="{ active: activeTab === 'share' }"
-          @click="selectNav('share')"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <circle cx="18" cy="5" r="3" />
-            <circle cx="6" cy="12" r="3" />
-            <circle cx="18" cy="19" r="3" />
-            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49" />
-            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49" />
-          </svg>
-          <span class="nav-label">共享</span>
-        </button>
-          </div>
-        </div>
-
-        <div class="nav-group">
-          <button
-            type="button"
-            class="nav-section-toggle"
-            :class="{ 'is-open': navGroupOpen('design') }"
-            :aria-expanded="navGroupOpen('design')"
-            @click="toggleNavSection('design')"
-          >
-            测试设计
-            <svg class="nav-section-chevron" viewBox="0 0 12 12" aria-hidden="true">
-              <polyline points="4 2 8 6 4 10" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-          </button>
-          <div class="nav-group-items" :class="{ 'is-collapsed': !navGroupOpen('design') }">
-        <button class="nav-item" title="设计总览" :class="{ active: activeTab === 'design-dashboard' }" @click="selectNav('design-dashboard')">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" class="nav-icon">
-            <rect x="3" y="3" width="7" height="7" rx="1"/>
-            <rect x="14" y="3" width="7" height="7" rx="1"/>
-            <rect x="3" y="14" width="7" height="7" rx="1"/>
-            <rect x="14" y="14" width="7" height="7" rx="1"/>
-          </svg>
-          <span class="nav-label">设计总览</span>
-        </button>
-        <button class="nav-item" title="需求文档" :class="{ active: activeTab === 'design-docs' }" @click="selectNav('design-docs')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
-            <polyline points="13 2 13 9 20 9" />
-          </svg>
-          <span class="nav-label">需求文档</span>
-        </button>
-        <button class="nav-item" title="意图用例" :class="{ active: activeTab === 'design-cases' }" @click="selectNav('design-cases')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-          </svg>
-          <span class="nav-label">意图用例</span>
-        </button>
-        <button
-          class="nav-item"
-          title="记下常用规则，生成用例时可以用"
-          :class="{ active: activeTab === 'design-knowledge' }"
-          @click="selectNav('design-knowledge')"
-        >
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-          </svg>
-          <span class="nav-label">知识库</span>
-        </button>
-          </div>
-        </div>
-
-        <div class="nav-group">
-          <button
-            type="button"
-            class="nav-section-toggle"
-            :class="{ 'is-open': navGroupOpen('exec') }"
-            :aria-expanded="navGroupOpen('exec')"
-            @click="toggleNavSection('exec')"
-          >
-            测试与执行
-            <svg class="nav-section-chevron" viewBox="0 0 12 12" aria-hidden="true">
-              <polyline points="4 2 8 6 4 10" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-          </button>
-          <div class="nav-group-items" :class="{ 'is-collapsed': !navGroupOpen('exec') }">
-        <button class="nav-item" title="工程制品" :class="{ active: activeTab === 'artifacts' }" @click="selectNav('artifacts')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-            <line x1="12" y1="22.08" x2="12" y2="12" />
-          </svg>
-          <span class="nav-label">工程制品</span>
-        </button>
-
-        <button class="nav-item" title="应用资源" :class="{ active: activeTab === 'app-builds' }" @click="selectNav('app-builds')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-            <line x1="12" y1="18" x2="12.01" y2="18" />
-          </svg>
-          <span class="nav-label">应用资源</span>
-        </button>
-
-        <button class="nav-item" title="批跑" :class="{ active: activeTab === 'jobs' }" @click="selectNav('jobs')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <polygon points="5 3 19 12 5 21 5 3" />
-          </svg>
-          <span class="nav-label">批跑</span>
-        </button>
-
-        <button class="nav-item" title="计划" :class="{ active: activeTab === 'schedules' }" @click="selectNav('schedules')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <circle cx="12" cy="12" r="10" />
-            <polyline points="12 6 12 12 16 14" />
-          </svg>
-          <span class="nav-label">计划</span>
-        </button>
-
-        <button class="nav-item" title="报告" :class="{ active: activeTab === 'reports' }" @click="selectNav('reports')">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-            <line x1="16" y1="13" x2="8" y2="13" />
-            <line x1="16" y1="17" x2="8" y2="17" />
-            <polyline points="10 9 9 9 8 9" />
-          </svg>
-          <span class="nav-label">报告</span>
-        </button>
-          </div>
-        </div>
-
-        <div v-if="showDevicesNav" class="nav-group">
-          <button
-            type="button"
-            class="nav-section-toggle"
-            :class="{ 'is-open': navGroupOpen('infra') }"
-            :aria-expanded="navGroupOpen('infra')"
-            @click="toggleNavSection('infra')"
-          >
-            设备与执行
-            <svg class="nav-section-chevron" viewBox="0 0 12 12" aria-hidden="true">
-              <polyline points="4 2 8 6 4 10" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-          </button>
-          <div class="nav-group-items" :class="{ 'is-collapsed': !navGroupOpen('infra') }">
-          <button class="nav-item" title="设备" :class="{ active: activeTab === 'devices' }" @click="selectNav('devices')">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-              <rect x="5" y="2" width="14" height="20" rx="2" />
-              <line x1="12" y1="18" x2="12.01" y2="18" />
-            </svg>
-            <span class="nav-label">设备</span>
-          </button>
-          </div>
-        </div>
-
-        <div v-if="caps.canOps || canManageUsers" class="nav-group">
-          <button
-            type="button"
-            class="nav-section-toggle"
-            :class="{ 'is-open': navGroupOpen('admin') }"
-            :aria-expanded="navGroupOpen('admin')"
-            @click="toggleNavSection('admin')"
-          >
-            {{ caps.canOps ? "系统管理" : "组织管理" }}
-            <svg class="nav-section-chevron" viewBox="0 0 12 12" aria-hidden="true">
-              <polyline points="4 2 8 6 4 10" fill="none" stroke="currentColor" stroke-width="1.6" />
-            </svg>
-          </button>
-          <div class="nav-group-items" :class="{ 'is-collapsed': !navGroupOpen('admin') }">
-          <button v-if="caps.canOps" class="nav-item" title="运维 · 配置中心" :class="{ active: activeTab === 'ops' }" @click="selectNav('ops')">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
-            </svg>
-            <span class="nav-label">运维</span>
-          </button>
-
-          <button v-if="canManageUsers" class="nav-item" title="审计" :class="{ active: activeTab === 'audit' }" @click="selectNav('audit')">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-              <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-              <path d="M12 6v6l4 2" />
-            </svg>
-            <span class="nav-label">审计</span>
-          </button>
-
-          <button v-if="canManageUsers" class="nav-item" title="用户" :class="{ active: activeTab === 'users' }" @click="selectNav('users')">
-            <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="nav-icon">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-              <circle cx="9" cy="7" r="4" />
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-            </svg>
-            <span class="nav-label">用户</span>
-          </button>
-          </div>
-        </div>
-      </nav>
-
-      <!-- Sidebar Bottom Profile / Signout -->
-      <div class="sidebar-footer">
-        <div class="user-profile-badge" :title="user?.username || ''">
-          <div class="avatar-placeholder">
-            {{ (user?.username || 'U').slice(0, 2).toUpperCase() }}
-          </div>
-          <div class="profile-info">
-            <span class="profile-username">{{ user?.username }}</span>
-            <span class="profile-role">{{ platformRoleLabel(user?.role) }}</span>
-          </div>
-        </div>
-        <button class="btn-logout" title="退出系统" @click="auth.onLogout">
-          <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-        </button>
-      </div>
-    </aside>
-
-    <!-- Right Workspace Area -->
-    <div class="workspace-area">
-      <!-- Global Top Bar -->
-      <header class="topbar">
-        <div class="topbar-left">
-          <button
-            type="button"
-            class="btn-sidebar-toggle"
+            class="vben-rail-btn"
             :title="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
+            aria-controls="app-sidebar"
             @click="toggleSidebar"
           >
-            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" aria-hidden="true">
-              <line x1="3" y1="6" x2="21" y2="6" />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-          <nav class="breadcrumb" aria-label="当前位置">
-            <template v-if="showSectionCrumb">
-              <span class="bc-parent">{{ sectionCrumb }}</span>
-              <span class="bc-divider">/</span>
-            </template>
-            <span class="bc-active">{{ currentBreadcrumb }}</span>
-          </nav>
-        </div>
-
-        <div class="topbar-right">
-          <div class="workspace-switcher" role="group" aria-label="组织与项目上下文">
-            <OrgSelect />
-            <span class="ws-sep" aria-hidden="true"></span>
-            <ProjectSelect />
-          </div>
-
-          <!-- 平台健康：仅运维需要看 /health 信号 -->
-          <div
-            v-if="caps.canOps"
-            class="api-health-tag"
-            :class="healthOk === true ? 'ok' : healthOk === false ? 'bad' : 'pending'"
-          >
-            <span class="health-dot"></span>
-            <span class="health-label">
-              {{ healthOk === true ? "API 正常" : healthOk === false ? "服务异常" : "检测中…" }}
-            </span>
-          </div>
-
-          <ThemeToggle />
-
-          <!-- Manual Refresh -->
-          <button class="btn-refresh" @click="shell.refreshForTab(activeTab)" title="刷新当前页数据" aria-label="刷新">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" aria-hidden="true">
-              <path
-                d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              />
-            </svg>
+            <ChevronsRight v-if="sidebarCollapsed" :size="16" aria-hidden="true" />
+            <ChevronsLeft v-else :size="16" aria-hidden="true" />
           </button>
         </div>
-      </header>
+      </aside>
 
-      <!-- 登录后仍可通过 ?invite= 接受邀请 -->
-      <div class="invite-slot">
-        <InviteAcceptCard />
-      </div>
+      <!-- Right Workspace Area -->
+      <div class="vben-main-wrap" :inert="mobileDrawerOpen">
+        <!-- 50px Vben Topbar -->
+        <header class="vben-topbar">
+          <div class="vben-topbar-left">
+            <button
+              type="button"
+              class="vben-icon-btn"
+              ref="sidebarToggle"
+              :title="sidebarCollapsed ? '展开侧栏' : '折叠侧栏'"
+              aria-controls="app-sidebar"
+              :aria-expanded="!sidebarCollapsed"
+              @click="toggleSidebar"
+            >
+              <PanelLeftOpen v-if="sidebarCollapsed" :size="17" aria-hidden="true" />
+              <PanelLeftClose v-else :size="17" aria-hidden="true" />
+            </button>
 
-      <!-- 顶栏数据层错误横幅（shell.error，不是 Toast） -->
-      <div v-if="error" class="global-error-banner animate-slide-in">
-        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none" class="error-banner-icon">
-          <circle cx="12" cy="12" r="10" />
-          <line x1="12" y1="8" x2="12" y2="12" />
-          <line x1="12" y1="16" x2="12.01" y2="16" />
-        </svg>
-        <span class="error-banner-text">{{ error }}</span>
-        <button class="error-banner-close" @click="error = ''">&times;</button>
-      </div>
+            <nav class="vben-breadcrumb" aria-label="当前位置">
+              <template v-if="showSectionCrumb">
+                <span class="vben-bc-parent">{{ sectionCrumb }}</span>
+                <ChevronRight :size="14" class="vben-bc-sep" aria-hidden="true" />
+              </template>
+              <span class="vben-bc-active">{{ currentBreadcrumb }}</span>
+            </nav>
+          </div>
 
-      <!-- Dynamic Tab content：RouterView + KeepAlive（Phase3） -->
-      <main id="page-main" class="page-body" tabindex="-1">
-        <div class="content-wrapper">
-          <RouterView v-slot="{ Component }">
-            <KeepAlive :include="keepaliveInclude" :max="16">
-              <component
-                :is="Component"
-                :key="String(route.meta.tab || route.path)"
-              />
-            </KeepAlive>
-          </RouterView>
+          <div class="vben-topbar-right">
+            <!-- Workspace Org / Project Context Pill -->
+            <div class="vben-context-pill" role="group" aria-label="组织与项目上下文">
+              <OrgSelect />
+              <span class="vben-context-sep" aria-hidden="true"></span>
+              <ProjectSelect />
+            </div>
+
+            <!-- Ops Health Indicator -->
+            <div
+              v-if="caps.canOps"
+              class="vben-health-badge"
+              :class="healthOk === true ? 'ok' : healthOk === false ? 'bad' : 'pending'"
+              title="平台服务健康状态"
+            >
+              <span class="vben-health-dot"></span>
+              <span>{{ healthOk === true ? "API 正常" : healthOk === false ? "服务异常" : "检测中" }}</span>
+            </div>
+
+            <div class="vben-utility-group">
+              <VbenCommandSearch />
+              <ThemeToggle />
+
+              <button
+                type="button"
+                class="vben-icon-btn"
+                :disabled="refreshingPage"
+                title="刷新当前页数据"
+                aria-label="刷新"
+                @click="refreshCurrentPage"
+              >
+                <RotateCw :size="16" :class="{ 'is-spinning': refreshingPage }" aria-hidden="true" />
+              </button>
+
+              <DesignChatPanel inline />
+
+              <!-- User Avatar Dropdown (Vben v5 style) -->
+              <div class="vben-user-menu-wrap">
+                <button
+                  type="button"
+                  class="vben-user-trigger"
+                  :aria-expanded="userMenuOpen"
+                  aria-haspopup="menu"
+                  :title="`${user?.username || ''} (${platformRoleLabel(user?.role)})`"
+                  @click="userMenuOpen = !userMenuOpen"
+                >
+                  <span class="vben-avatar">
+                    {{ userInitials }}
+                    <span class="vben-avatar-online" aria-hidden="true"></span>
+                  </span>
+                  <span class="vben-user-name">{{ user?.username }}</span>
+                </button>
+
+                <div v-if="userMenuOpen" class="vben-user-dropdown" role="menu">
+                  <div class="vben-user-dropdown-head">
+                    <span class="vben-avatar lg">{{ userInitials }}</span>
+                    <div class="vben-user-meta">
+                      <strong>{{ user?.username }}</strong>
+                      <span>{{ platformRoleLabel(user?.role) }}</span>
+                    </div>
+                  </div>
+                  <div class="vben-dropdown-divider"></div>
+                  <button type="button" class="vben-dropdown-item danger" role="menuitem" @click="handleLogout">
+                    <LogOut :size="15" aria-hidden="true" />
+                    <span>退出系统</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <!-- 38px Vben Multi-Tab Bar -->
+        <VbenTabBar :refreshing="refreshingPage" @refresh="refreshCurrentPage" />
+
+        <!-- Invite Banner Slot -->
+        <div class="invite-slot">
+          <InviteAcceptCard />
         </div>
-      </main>
+
+        <!-- Global Error Banner -->
+        <div v-if="error" class="vben-error-banner" role="alert">
+          <AlertCircle :size="16" aria-hidden="true" />
+          <span class="vben-error-text">{{ error }}</span>
+          <button type="button" class="vben-error-close" aria-label="关闭错误提示" @click="error = ''">&times;</button>
+        </div>
+
+        <!-- Main Deep Canvas Workspace -->
+        <main id="page-main" ref="mainContent" class="vben-page-body" tabindex="-1">
+          <div class="content-wrapper">
+            <RouterView v-slot="{ Component }">
+              <KeepAlive :include="keepaliveInclude" :max="16">
+                <component
+                  :is="Component"
+                  :key="String(route.meta.tab || route.path)"
+                />
+              </KeepAlive>
+            </RouterView>
+          </div>
+        </main>
+      </div>
     </div>
-    <!-- AI 对话：全局悬浮窗（对齐 Scenario_Engine ChatDock；非侧栏 tab） -->
-    <DesignChatPanel />
-  </div>
-  <AppNotifyHost />
-  <ReserveDeviceDialog />
-  <RemoteDeviceDialog />
-  <JobReportViewer />
+
+    <AppNotifyHost />
+    <template v-if="loggedIn">
+      <ReserveDeviceDialog />
+      <RemoteDeviceDialog />
+      <JobReportViewer />
+    </template>
+  </a-config-provider>
 </template>
 
 <style>
-/* CSS styles are primarily centralized in styles.css, but we use these highly robust structure rules in App.vue */
-.app-shell {
-  display: flex;
-  min-height: 100vh;
-  width: 100vw;
-  overflow: hidden;
-  background: var(--bg);
+.skip-link {
+  position: fixed;
+  left: -9999px;
+  top: 8px;
+  z-index: 9999;
+  padding: 6px 12px;
+  background: var(--vben-primary);
+  color: #fff;
+  border-radius: 6px;
+}
+.skip-link:focus {
+  left: 8px;
 }
 
-/* Sidebar —— 展开 248px / 收拢 68px；深色轨 + 浅内容（Arco Pro / Grafana 分区） */
-.sidebar {
-  --sidebar-w: 248px;
-  --sidebar-rail: 68px;
-  width: var(--sidebar-w);
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--sidebar-line);
-  color: var(--sidebar-fg);
+.vben-hydrating {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--vben-bg-deep);
+}
+.vben-hydrating-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 36px;
+  border-radius: 12px;
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  box-shadow: var(--vben-shadow-card);
+}
+.vben-hydrating-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--vben-fg-strong);
+}
+.vben-hydrating-sub {
+  font-size: 13px;
+  color: var(--vben-fg-muted);
+}
+
+/* —— Vben Shell Layout —— */
+.vben-shell {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  background: var(--vben-bg-deep);
+}
+
+.vben-sidebar {
+  width: var(--vben-sidebar-w, 224px);
+  background: var(--vben-bg-surface);
+  border-right: 1px solid var(--vben-border);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   z-index: 100;
+  transition: width 0.2s cubic-bezier(0.2, 0, 0, 1);
   overflow: hidden;
-  transition: width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 1px 0 0 rgba(0, 0, 0, 0.06);
 }
 
-.sidebar-header {
-  height: var(--topbar-height, 56px);
-  padding: 0 0.85rem 0 1rem;
+.vben-shell.is-collapsed .vben-sidebar {
+  width: var(--vben-sidebar-rail, 64px);
+}
+
+.vben-sidebar-brand {
+  height: var(--vben-topbar-h, 50px);
+  padding: 0 16px;
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  border-bottom: 1px solid var(--sidebar-line);
+  gap: 10px;
+  border-bottom: 1px solid var(--vben-border-soft);
   flex-shrink: 0;
-}
-
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  flex: 1;
   overflow: hidden;
-  opacity: 1;
-  max-width: 160px;
-  transition: opacity 0.2s ease, max-width 0.28s ease;
 }
 
-.brand-name {
-  font-size: 0.98rem;
+.vben-shell.is-collapsed .vben-sidebar-brand {
+  justify-content: center;
+  padding: 0;
+}
+
+.vben-brand-title {
+  font-size: 16px;
   font-weight: 700;
-  color: var(--sidebar-brand);
-  letter-spacing: -0.01em;
-  line-height: 1.2;
+  color: var(--vben-fg-strong);
+  letter-spacing: -0.02em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.sidebar-nav {
+.vben-shell.is-collapsed .vben-brand-title {
+  display: none;
+}
+
+.vben-sidebar-nav {
   flex: 1;
-  padding: 0.85rem 0.65rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 8px;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
-  overflow-x: hidden;
-  overflow-y: auto;
+  gap: 4px;
   scrollbar-width: thin;
 }
 
-.nav-section-label {
-  font-size: 0.68rem;
-  font-weight: 600;
-  color: var(--nav-section);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  padding: 0.75rem 0.6rem 0.35rem;
-  white-space: nowrap;
-  overflow: hidden;
-  opacity: 1;
-  max-height: 2.5rem;
-  transition: opacity 0.18s ease, max-height 0.28s ease, padding 0.28s ease;
-}
-
-.nav-item {
+.vben-nav-group {
   display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  background: transparent;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 4px;
+}
+
+.vben-nav-section {
+  appearance: none;
   border: none;
-  color: var(--sidebar-muted);
-  font-size: 0.88rem;
-  font-weight: 500;
-  padding: 0.55rem 0.75rem;
-  border-radius: var(--radius-sm, 4px);
-  cursor: pointer;
-  text-align: left;
-  transition: background 0.15s ease, color 0.15s ease, padding 0.28s ease;
+  background: transparent;
   width: 100%;
-  min-height: 38px;
-  box-shadow: none;
-}
-
-.nav-item:hover {
-  background: var(--nav-hover);
-  color: var(--sidebar-fg);
-}
-
-.nav-item.active {
-  background: var(--nav-active-bg);
-  color: var(--nav-active-fg);
-  font-weight: 600;
-  box-shadow: none;
-}
-
-.nav-icon {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-  opacity: 0.8;
-}
-
-.nav-item.active .nav-icon {
-  color: #9ec5f5;
-  opacity: 1;
-}
-
-.nav-label {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  opacity: 1;
-  max-width: 12rem;
-  transition: opacity 0.18s ease, max-width 0.18s ease;
-}
-.sidebar-footer {
-  padding: 0.85rem 0.65rem;
-  border-top: 1px solid var(--sidebar-line);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.35rem;
-  background: var(--sidebar-footer-bg);
-  flex-shrink: 0;
-  min-height: 64px;
-}
-
-.user-profile-badge {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  min-width: 0;
-  flex: 1;
-}
-
-.avatar-placeholder {
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: var(--accent);
-  color: var(--on-accent);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 6px 10px 4px;
+  font-size: var(--vben-fs-sm, 13px);
   font-weight: 600;
-  font-size: 0.78rem;
-  flex-shrink: 0;
-  letter-spacing: 0.02em;
+  color: var(--nav-section);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s ease;
 }
 
-.profile-info {
+.vben-nav-section:hover {
+  color: var(--vben-fg);
+}
+
+.vben-nav-chevron {
+  transition: transform 0.18s ease;
+  opacity: 0.7;
+}
+
+.vben-nav-section.is-open .vben-nav-chevron {
+  transform: rotate(90deg);
+}
+
+.vben-shell.is-collapsed .vben-nav-section {
+  display: none;
+}
+
+.vben-nav-items {
   display: flex;
   flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-  opacity: 1;
-  max-width: 120px;
-  transition: opacity 0.18s ease, max-width 0.28s ease;
+  gap: 2px;
 }
 
-.profile-username {
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--sidebar-fg);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.vben-nav-items.is-collapsed {
+  display: none;
 }
 
-.profile-role {
-  font-size: 0.7rem;
-  color: var(--sidebar-muted);
-}
-
-.btn-logout {
-  background: transparent;
-  border: none;
-  color: var(--sidebar-muted);
-  cursor: pointer;
-  padding: 0.4rem;
-  border-radius: 6px;
+.vben-nav-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  transition: background 0.18s ease, color 0.18s ease;
-  flex-shrink: 0;
-  box-shadow: none;
-}
-
-.btn-logout:hover {
-  background: var(--danger-soft-bg);
-  color: var(--bad);
-}
-
-.sidebar-collapse-btn {
-  margin-left: auto;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--sidebar-line);
+  gap: 10px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 8px;
+  font-size: var(--vben-fs-nav, 14.5px);
+  font-weight: 500;
   color: var(--sidebar-muted);
-  cursor: pointer;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vben-nav-item:hover {
+  background: var(--nav-hover);
+  color: var(--vben-fg-strong);
+}
+
+.vben-nav-item.active {
+  background: var(--nav-active-bg);
+  color: var(--nav-active-fg);
+  font-weight: 600;
+}
+
+.vben-nav-icon {
+  flex-shrink: 0;
+}
+
+.vben-shell.is-collapsed .vben-nav-item {
+  justify-content: center;
+  padding: 0;
+}
+
+.vben-shell.is-collapsed .vben-nav-label {
+  display: none;
+}
+
+.vben-sidebar-footer {
+  height: 40px;
+  border-top: 1px solid var(--vben-border-soft);
+  padding: 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-shrink: 0;
+}
+
+.vben-shell.is-collapsed .vben-sidebar-footer {
+  justify-content: center;
+}
+
+.vben-rail-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--vben-fg-muted);
   width: 28px;
   height: 28px;
   border-radius: 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
   padding: 0;
-  transition: background 0.18s ease, color 0.18s ease, transform 0.28s ease;
-  box-shadow: none;
+  transition: background-color 0.15s ease, color 0.15s ease;
 }
 
-.sidebar-collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--sidebar-fg);
+.vben-rail-btn:hover {
+  background: var(--vben-bg-hover);
+  color: var(--vben-fg-strong);
 }
 
-.sidebar-collapse-btn svg {
-  display: block;
-  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-/* Right Workspace Container */
-.workspace-area {
+/* —— Right Workspace —— */
+.vben-main-wrap {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background: var(--main-bg);
 }
 
-/* Topbar */
-.topbar {
-  height: var(--topbar-height, 56px);
-  border-bottom: 1px solid var(--line);
-  padding: 0 1.5rem;
+.vben-topbar {
+  height: var(--vben-topbar-h, 50px);
+  background: var(--vben-bg-surface);
+  border-bottom: 1px solid var(--vben-border);
+  padding: 0 16px 0 10px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: var(--header-bg);
+  gap: 12px;
   flex-shrink: 0;
-  box-shadow: none;
 }
 
-.breadcrumb {
+.vben-topbar-left {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.88rem;
-}
-
-.bc-parent {
-  color: var(--muted);
-}
-
-.bc-divider {
-  color: var(--nav-section);
-}
-
-.bc-active {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
+  gap: 8px;
   min-width: 0;
 }
 
-@media (max-width: 1100px) {
-  .workspace-switcher {
-    max-width: 16rem;
+.vben-icon-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--vben-fg);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.vben-icon-btn:hover:not(:disabled) {
+  background: var(--vben-bg-hover);
+  color: var(--vben-primary);
+}
+
+.vben-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.vben-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--vben-fs-base, 15px);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.vben-bc-parent {
+  color: var(--vben-fg-muted);
+}
+
+.vben-bc-sep {
+  color: var(--vben-fg-subtle);
+  flex-shrink: 0;
+}
+
+.vben-bc-active {
+  color: var(--vben-fg-strong);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vben-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.vben-context-pill {
+  display: inline-flex;
+  align-items: center;
+  background: var(--vben-bg-muted);
+  border: 1px solid var(--vben-border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.vben-context-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--vben-border);
+  flex-shrink: 0;
+}
+
+.vben-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--vben-border);
+  background: var(--vben-bg-muted);
+  color: var(--vben-fg-muted);
+  white-space: nowrap;
+}
+
+.vben-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--vben-fg-subtle);
+}
+
+.vben-health-badge.ok {
+  color: var(--ok-soft-fg);
+  background: var(--ok-soft-bg);
+  border-color: var(--ok-soft-border);
+}
+.vben-health-badge.ok .vben-health-dot {
+  background: #10b981;
+}
+.vben-health-badge.bad {
+  color: var(--danger-soft-fg);
+  background: var(--danger-soft-bg);
+  border-color: var(--danger-soft-border);
+}
+.vben-health-badge.bad .vben-health-dot {
+  background: #ef4444;
+}
+
+.vben-utility-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* User Avatar Dropdown */
+.vben-user-menu-wrap {
+  position: relative;
+  margin-left: 4px;
+}
+
+.vben-user-trigger {
+  appearance: none;
+  border: none;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 2px 8px 2px 4px;
+  border-radius: 999px;
+  cursor: pointer;
+  color: var(--vben-fg);
+  transition: background-color 0.15s ease;
+}
+
+.vben-user-trigger:hover {
+  background: var(--vben-bg-hover);
+}
+
+.vben-avatar {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #006be6, #4f46e5);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.vben-avatar.lg {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.vben-avatar-online {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #22c55e;
+  border: 1.5px solid var(--vben-bg-surface);
+}
+
+.vben-user-name {
+  font-size: 13px;
+  font-weight: 500;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vben-user-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  padding: 6px;
+  border-radius: 10px;
+  background: var(--vben-bg-surface);
+  border: 1px solid var(--vben-border);
+  box-shadow: var(--vben-shadow-elevated);
+  z-index: 300;
+}
+
+.vben-user-dropdown-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+}
+
+.vben-user-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vben-user-meta strong {
+  font-size: 14px;
+  color: var(--vben-fg-strong);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vben-user-meta span {
+  font-size: 12px;
+  color: var(--vben-fg-muted);
+}
+
+.vben-dropdown-divider {
+  height: 1px;
+  background: var(--vben-border-soft);
+  margin: 4px 0;
+}
+
+.vben-dropdown-item {
+  appearance: none;
+  border: none;
+  background: transparent;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--vben-fg);
+  cursor: pointer;
+}
+
+.vben-dropdown-item:hover {
+  background: var(--vben-bg-hover);
+}
+
+.vben-dropdown-item.danger {
+  color: #ef4444;
+}
+.vben-dropdown-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.vben-error-banner {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--danger-soft-bg);
+  border: 1px solid var(--danger-soft-border);
+  color: var(--danger-soft-fg);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.vben-error-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.vben-error-close {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.vben-page-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  background: var(--vben-bg-deep);
+}
+
+.content-wrapper {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-width: 0;
+}
+
+.vben-sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 90;
+}
+
+.is-spinning {
+  animation: vben-app-spin 0.8s linear infinite;
+}
+
+@keyframes vben-app-spin {
+  from {
+    transform: rotate(0deg);
   }
-  .health-label {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 1100px) {
+  .vben-health-badge,
+  .vben-user-name {
     display: none;
   }
 }
 
-.project-filter-input {
-  position: relative;
-  display: flex;
-  align-items: center;
-}
-
-.input-search-icon {
-  position: absolute;
-  left: 0.65rem;
-  color: var(--muted);
-  pointer-events: none;
-}
-
-.project-filter-input input {
-  padding-left: 2rem;
-  min-width: 180px;
-  font-size: 0.82rem;
-  height: 32px;
-}
-
-.api-health-tag {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.22rem 0.55rem;
-  border-radius: var(--radius-sm, 4px);
-  background: var(--chip-bg);
-  border: 1px solid var(--line);
-  font-size: 0.78rem;
-}
-
-.health-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted);
-}
-
-.api-health-tag.ok .health-dot {
-  background: var(--ok);
-}
-
-.api-health-tag.bad .health-dot {
-  background: var(--bad);
-}
-
-.api-health-tag.pending .health-dot {
-  background: var(--warning);
-}
-
-.btn-refresh {
-  box-sizing: border-box;
-  background: var(--control-bg);
-  border: 1px solid var(--line);
-  color: var(--text);
-  cursor: pointer;
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  padding: 0;
-  border-radius: 6px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: var(--transition);
-  flex-shrink: 0;
-  opacity: 1;
-}
-
-.btn-refresh svg {
-  display: block;
-  flex-shrink: 0;
-  color: inherit;
-}
-
-.btn-refresh:hover {
-  border-color: var(--accent);
-  color: var(--accent-text);
-  background: var(--brand-soft);
-  transform: none;
-}
-
-.btn-refresh:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-/* Page body */
-.content-wrapper {
-  max-width: none;
-  width: 100%;
-}
-
-.page-body {
-  flex: 1;
-  padding: 1rem 1.25rem 1.5rem;
-  overflow-y: auto;
-  background: var(--main-bg);
-}
-
-.tab-panel-layout {
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-}
-
-/* Guest：单画布居中（GitLab / Grafana / GitHub），禁止左右分色 */
-.guest-layout {
-  position: relative;
-  min-height: 100dvh;
-  width: 100vw;
-  display: flex;
-  flex-direction: column;
-  background: var(--main-bg);
-  color: var(--text);
-}
-
-.guest-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: var(--topbar-height, 56px);
-  padding: 0 1.25rem;
-  border-bottom: 1px solid var(--line-soft);
-  background: var(--header-bg);
-  flex-shrink: 0;
-}
-
-.guest-brand-row {
-  display: flex;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.guest-brand-name {
-  font-size: 0.95rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-
-.guest-main {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 2.5rem 1.25rem 3.5rem;
-}
-
-.session-hydrating {
-  margin: 0;
-  font-size: 0.92rem;
-  color: var(--muted);
-}
-
-.guest-container {
-  width: 100%;
-  max-width: 22rem;
-}
-
-/* Error banner */
-.global-error-banner {
-  margin: 1rem 1.75rem 0;
-  background: var(--danger-soft-bg);
-  border: 1px solid var(--danger-soft-border);
-  border-radius: 8px;
-  padding: 0.75rem 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  position: relative;
-}
-
-.error-banner-icon {
-  color: var(--bad);
-  flex-shrink: 0;
-}
-
-.error-banner-text {
-  font-size: 0.85rem;
-  color: var(--danger-soft-fg);
-  flex: 1;
-}
-
-.error-banner-close {
-  background: transparent;
-  border: none;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 1.25rem;
-  padding: 0;
-  line-height: 1;
-}
-
-.error-banner-close:hover {
-  color: var(--text);
-}
-
-/* Simple animation */
-.animate-fade-in {
-  animation: fadeIn 0.4s ease-out;
-}
-.animate-slide-in {
-  animation: slideIn 0.3s ease-out;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes slideIn {
-  from { opacity: 0; transform: translateY(-8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.sidebar-backdrop {
-  position: fixed;
-  inset: 0;
-  background: var(--overlay);
-  z-index: 90;
-  animation: fadeIn 0.2s ease-out;
-}
-
-.btn-sidebar-toggle {
-  background: var(--control-bg);
-  border: 1px solid var(--line);
-  color: var(--text);
-  width: 32px;
-  height: 32px;
-  min-width: 32px;
-  padding: 0;
-  border-radius: 6px;
-  cursor: pointer;
-  margin-right: 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.18s ease, border-color 0.18s ease;
-}
-
-.btn-sidebar-toggle:hover {
-  background: var(--control-bg-hover);
-  border-color: var(--accent);
-}
-
-.topbar-left {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-/* 桌面：收拢为图标轨（非消失） */
-.app-shell.sidebar-collapsed .sidebar {
-  width: var(--sidebar-rail);
-}
-
-.app-shell.sidebar-collapsed .brand-text,
-.app-shell.sidebar-collapsed .nav-label,
-.app-shell.sidebar-collapsed .profile-info,
-.app-shell.sidebar-collapsed .nav-section-toggle {
-  opacity: 0;
-  max-width: 0;
-  width: 0;
-  overflow: hidden;
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.app-shell.sidebar-collapsed .nav-group-items.is-collapsed {
-  display: flex;
-}
-
-.app-shell.sidebar-collapsed .sidebar-header {
-  position: relative;
-  justify-content: center;
-  padding: 0;
-  gap: 0;
-}
-
-.app-shell.sidebar-collapsed .sidebar-header :deep(.ap-mark) {
-  margin: 0 auto;
-}
-
-.app-shell.sidebar-collapsed .sidebar-collapse-btn {
-  display: none;
-}
-
-.app-shell.sidebar-collapsed .sidebar-nav {
-  padding: 0.65rem 0.45rem;
-  align-items: center;
-}
-
-.app-shell.sidebar-collapsed .nav-group {
-  width: 100%;
-  align-items: center;
-}
-
-.app-shell.sidebar-collapsed .nav-group-items {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  width: 100%;
-}
-
-.app-shell.sidebar-collapsed .nav-item {
-  justify-content: center;
-  padding: 0.55rem;
-  width: 44px;
-  gap: 0;
-}
-
-.app-shell.sidebar-collapsed .sidebar-footer {
-  flex-direction: column;
-  justify-content: center;
-  padding: 0.65rem 0.35rem;
-  gap: 0.35rem;
-}
-
-.app-shell.sidebar-collapsed .user-profile-badge {
-  justify-content: center;
-  flex: 0;
-}
-
 @media (max-width: 900px) {
-  .sidebar {
+  .vben-sidebar {
     position: fixed;
-    left: 0;
     top: 0;
+    left: 0;
     bottom: 0;
-    width: var(--sidebar-w);
     transform: translateX(0);
-    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.18);
-    transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1), width 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: transform 0.2s ease;
   }
-
-  .app-shell.sidebar-collapsed .sidebar {
-    width: var(--sidebar-w);
+  .vben-shell.is-collapsed .vben-sidebar {
+    width: var(--vben-sidebar-w, 224px);
     transform: translateX(-100%);
-    box-shadow: none;
   }
-
-  /* 移动端折叠是隐藏抽屉，不走图标轨样式 */
-  .app-shell.sidebar-collapsed .brand-text,
-  .app-shell.sidebar-collapsed .nav-label,
-  .app-shell.sidebar-collapsed .profile-info,
-  .app-shell.sidebar-collapsed .nav-section-label,
-  .app-shell.sidebar-collapsed .nav-section-toggle {
-    opacity: 1;
-    max-width: none;
-    max-height: none;
-    width: auto;
-    overflow: visible;
-    visibility: visible;
-    pointer-events: auto;
+  .vben-topbar {
+    padding: 0 10px;
   }
-
-  .app-shell.sidebar-collapsed .sidebar-nav,
-  .app-shell.sidebar-collapsed .nav-item,
-  .app-shell.sidebar-collapsed .sidebar-footer,
-  .app-shell.sidebar-collapsed .sidebar-header {
-    padding: revert;
-    width: revert;
-    justify-content: revert;
-    flex-direction: revert;
-    align-items: revert;
-    gap: revert;
+  .vben-context-pill {
+    max-width: 240px;
   }
-
-  .app-shell.sidebar-collapsed .sidebar-collapse-btn {
-    display: inline-flex;
-    opacity: 1;
-    pointer-events: auto;
-    position: static;
-  }
-
-  .app-shell.sidebar-collapsed .nav-item {
-    width: 100%;
-  }
-
-  .app-shell:not(.sidebar-collapsed) .sidebar {
-    width: var(--sidebar-w);
-    transform: translateX(0);
+  .vben-page-body {
+    padding: 12px;
   }
 }
 </style>

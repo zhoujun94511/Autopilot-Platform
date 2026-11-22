@@ -13,7 +13,6 @@ const emit = defineEmits<{
     <header>
       <h3>快捷控制</h3>
     </header>
-    <p class="muted">对齐 WebAppFlaskscrcpy 侧栏快开：电源、音量、通知、亮灭屏等。</p>
     <div class="remote-tool-actions">
       <button type="button" class="small" :disabled="readonly" @click="emit('androidKey', 26)">
         电源

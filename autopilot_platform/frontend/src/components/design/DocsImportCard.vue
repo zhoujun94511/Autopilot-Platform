@@ -86,8 +86,7 @@ defineExpose({ clearFiles });
       <span class="count-chip">{{ fileLabel }}</span>
     </div>
     <p class="hint-line">
-      对齐 TestPilot：多文件上传需求原文，可选上传后自动分析入库。支持 TXT / MD / CSV / JSON /
-      YAML / DOCX / PDF / XLSX。
+      支持 TXT、Markdown、CSV、JSON、YAML、Word、PDF 和 Excel。
     </p>
 
     <div
@@ -186,7 +185,7 @@ defineExpose({ clearFiles });
   min-height: 7.5rem;
   padding: 1rem;
   border: 1px dashed var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
   cursor: pointer;
   transition: var(--transition);
@@ -223,7 +222,7 @@ defineExpose({ clearFiles });
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.4rem 0.55rem;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--chip-bg);
   border: 1px solid var(--line-soft);
   font-size: 0.8rem;

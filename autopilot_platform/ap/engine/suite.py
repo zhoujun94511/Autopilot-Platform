@@ -29,12 +29,21 @@ class SuiteResult:
     name: str
     results: list[RunResult] = field(default_factory=list)
     duration_ms: int = 0
+    cancelled: bool = False
 
     def case_counts(self) -> dict[str, int]:
-        """按用例聚合 通过/失败 数（含 NOIMPL/FAIL 视为不通过）。"""
+        """聚合已有的用例结果。未开始的用例没有结果。"""
         passed = sum(1 for r in self.results if r.passed)
+        cancelled = sum(1 for r in self.results if r.is_cancelled)
         return {"total": len(self.results), "passed": passed,
-                "failed": len(self.results) - passed}
+                "failed": len(self.results) - passed - cancelled, "cancelled": cancelled}
+
+    @property
+    def status(self) -> str:
+        counts = self.case_counts()
+        if self.cancelled or (counts["cancelled"] and not counts["failed"]):
+            return "cancelled"
+        return "failed" if counts["failed"] else "succeeded"
 
     def step_counts(self) -> dict[str, int]:
         agg: dict[str, int] = {}
@@ -208,13 +217,16 @@ def run_cases(testcases: list[TestCase], name: str = "Suite",
     start = time.time()
     for tc in testcases:
         if cancel_event is not None and cancel_event.is_set():
+            suite.cancelled = True
             break
         if pause_event is not None:
             if checkpoint(cancel_event, pause_event):
+                suite.cancelled = True
                 break
         rr = None
         for attempt in range(retries + 1):
             if attempt > 0 and cancel_event is not None and cancel_event.is_set():
+                suite.cancelled = True
                 break
             ctx = ExecutionContext()
             if on_context is not None:
@@ -224,30 +236,48 @@ def run_cases(testcases: list[TestCase], name: str = "Suite",
                 _apply_case_device_vars(ctx, tc, base_vars)
             for mf in (maps or []):
                 ctx.register_map(mf)
-            rr = Executor(ctx, fault_strategy, keyword_store=keyword_store,
-                          cancel_event=cancel_event, pause_event=pause_event,
-                          on_step=on_step).run_testcase(tc)
-            # noinspection PyBroadException
             try:
-                from ..keywords.mobile.driver import get_manager  # 延迟：可选 Appium 会话清理
-                get_manager(ctx).close()
-            except Exception:
-                pass
-            # noinspection PyBroadException
-            try:
-                web_mgr = getattr(ctx, "web", None)
-                if web_mgr is not None:
-                    web_mgr.quit_all()
-            except Exception:
-                pass
-            if rr.passed or attempt >= retries:
+                rr = Executor(ctx, fault_strategy, keyword_store=keyword_store,
+                              cancel_event=cancel_event, pause_event=pause_event,
+                              on_step=on_step).run_testcase(tc)
+            finally:
+                # noinspection PyBroadException
+                try:
+                    from ..keywords.mobile.driver import get_manager  # 延迟：可选 Appium 会话清理
+                    get_manager(ctx).close()
+                except Exception:
+                    pass
+                # noinspection PyBroadException
+                try:
+                    web_mgr = getattr(ctx, "web", None)
+                    if web_mgr is not None:
+                        web_mgr.quit_all()
+                except Exception:
+                    pass
+                # noinspection PyBroadException
+                try:
+                    if getattr(ctx, "ssh", None) is not None:
+                        ctx.ssh.close()
+                except Exception:
+                    pass
+                # noinspection PyBroadException
+                try:
+                    if getattr(ctx, "http_session", None) is not None:
+                        ctx.http_session.close()
+                except Exception:
+                    pass
+            if rr.passed or rr.cancelled or attempt >= retries:
                 break
             if cancel_event is not None and cancel_event.is_set():
+                suite.cancelled = True
                 break
         if rr is not None:
             suite.results.append(rr)
             if on_case is not None:
                 on_case(rr)
+            if rr.cancelled:
+                suite.cancelled = True
+                break
     suite.duration_ms = int((time.time() - start) * 1000)
     _teardown_suite_appium(base_vars)
     return suite

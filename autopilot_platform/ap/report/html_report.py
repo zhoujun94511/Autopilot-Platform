@@ -131,6 +131,8 @@ def _case_duration(rr) -> int:
 
 def _first_failure(suite: SuiteResult):
     for rr in suite.results:
+        if rr.is_cancelled:
+            continue
         for sr in rr.results:
             if sr.status == "FAIL":
                 return rr, sr
@@ -182,7 +184,7 @@ def _display_step(sr: Any) -> Any:
 
 
 def _qa_review_for_case(rr: Any) -> dict[str, Any]:
-    if bool(getattr(rr, "passed", False)):
+    if bool(getattr(rr, "passed", False)) or bool(getattr(rr, "is_cancelled", False)):
         return {}
     from .fail_review import review_failed_case  # 延迟：仅失败用例事后二审
 
@@ -281,6 +283,7 @@ def _build_context(
             "id": cid,
             "name": rr.case_name,
             "passed": rr.passed,
+            "cancelled": rr.is_cancelled,
             "counts": counts,
             "source_path": getattr(rr, "source_path", "") or "",
             "platform": getattr(rr, "platform", "") or "",
@@ -295,7 +298,7 @@ def _build_context(
             "first_fail_label": "",
             "search_text": _case_search_text(rr, kw_names),
         }
-        if not rr.passed:
+        if not rr.passed and not case["cancelled"]:
             for sr in rr.results:
                 if sr.status == "FAIL":
                     case["first_fail_label"] = _step_fail_label(sr) or (
@@ -318,7 +321,8 @@ def _build_context(
         "cc": cc,
         "sc": sc,
         "pass_rate": pass_rate,
-        "overall_passed": cc["failed"] == 0,
+        "overall_passed": suite.status == "succeeded",
+        "suite_cancelled": suite.status == "cancelled",
         "cases": cases,
         "failed_cases": failed_cases,
         "fail_case": fail_rr,
@@ -551,7 +555,7 @@ details.env>summary::-webkit-details-marker{display:none}
     </p>
    </div>
    <div class="chip {{ 'ok' if overall_passed else 'bad' }}">
-    {% if overall_passed %}全部通过{% else %}存在失败{% endif %}
+    {% if suite_cancelled %}执行已取消{% elif overall_passed %}全部通过{% else %}存在失败{% endif %}
     · {{ '%.1f'|format(pass_rate) }}%
    </div>
   </div>
@@ -559,6 +563,7 @@ details.env>summary::-webkit-details-marker{display:none}
    <div class="kpi"><div class="n">{{ cc.total }}</div><div class="l">用例</div></div>
    <div class="kpi pass"><div class="n">{{ cc.passed }}</div><div class="l">通过</div></div>
    <div class="kpi fail"><div class="n">{{ cc.failed }}</div><div class="l">未通过</div></div>
+   {% if cc.cancelled %}<div class="kpi"><div class="n">{{ cc.cancelled }}</div><div class="l">已取消</div></div>{% endif %}
    <div class="kpi"><div class="n">{{ fmt_dur(suite.duration_ms) }}</div><div class="l">总耗时</div></div>
   </div>
   <div class="rate" aria-hidden="true">
@@ -635,15 +640,15 @@ details.env>summary::-webkit-details-marker{display:none}
     </tr></thead>
     <tbody>
     {% for c in cases %}
-    <tr class="{{ 'row-fail' if not c.passed else '' }}"
-        data-passed="{{ '1' if c.passed else '0' }}"
+    <tr class="{{ 'row-fail' if not c.passed and not c.cancelled else '' }}"
+        data-failed="{{ '1' if not c.passed and not c.cancelled else '0' }}"
         data-search="{{ c.search_text }}">
      <td>{{ c.index }}</td>
      <td>
       <a href="#{{ c.id }}">{{ c.name }}</a>
       {% if c.tag %}<div class="case-meta">{{ c.tag }}</div>{% endif %}
      </td>
-     <td>{% if c.passed %}<span class="badge pass">通过</span>{% else %}<span class="badge fail">未通过</span>{% endif %}</td>
+     <td>{% if c.cancelled %}<span class="badge">已取消</span>{% elif c.passed %}<span class="badge pass">通过</span>{% else %}<span class="badge fail">未通过</span>{% endif %}</td>
      <td>{{ c.platform or '—' }}</td>
      <td>{{ c.pass_count }}/{{ c.steps|length }}{% if c.fail_count %} <span class="badge fail">{{ c.fail_count }}</span>{% endif %}</td>
      <td>{{ fmt_dur(c.duration_ms) }}</td>
@@ -663,8 +668,8 @@ details.env>summary::-webkit-details-marker{display:none}
   </div>
 
   {% for c in cases %}
-  <details class="case {{ 'bad' if not c.passed else '' }}" id="{{ c.id }}"
-           data-passed="{{ '1' if c.passed else '0' }}"
+  <details class="case {{ 'bad' if not c.passed and not c.cancelled else '' }}" id="{{ c.id }}"
+           data-failed="{{ '1' if not c.passed and not c.cancelled else '0' }}"
            data-search="{{ c.search_text }}"
            {% if not c.passed %}open{% endif %}>
    <summary>
@@ -677,7 +682,7 @@ details.env>summary::-webkit-details-marker{display:none}
      </div>
     </div>
     <div class="case-right">
-     {% if c.passed %}<span class="badge pass">通过</span>{% else %}<span class="badge fail">未通过</span>{% endif %}
+     {% if c.cancelled %}<span class="badge">已取消</span>{% elif c.passed %}<span class="badge pass">通过</span>{% else %}<span class="badge fail">未通过</span>{% endif %}
      <div style="margin-top:4px">{{ c.pass_count }} 通过{% if c.fail_count %} / {{ c.fail_count }} 失败{% endif %}</div>
     </div>
    </summary>
@@ -791,9 +796,9 @@ function applyFilter(){
   var qEl=document.getElementById('q');
   var q=((qEl && qEl.value) || '').trim().toLowerCase();
   document.querySelectorAll('.case, #case-overview tbody tr').forEach(function(el){
-    var pass=el.getAttribute('data-passed')==='1';
+    var fail=el.getAttribute('data-failed')==='1';
     var hay=(el.getAttribute('data-search')||'').toLowerCase();
-    var ok=(!failOnly || !pass) && (!q || hay.indexOf(q)>=0);
+    var ok=(!failOnly || fail) && (!q || hay.indexOf(q)>=0);
     el.style.display=ok?'':'none';
   });
 }
@@ -804,7 +809,7 @@ function toggleFailOnly(){
   applyFilter();
 }
 </script>
-</body></html>""")
+</body></html>""", autoescape=True)
 
 
 def render_report(

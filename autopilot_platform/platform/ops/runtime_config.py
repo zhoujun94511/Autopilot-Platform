@@ -14,9 +14,9 @@ import threading
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from ..core.settings import data_dir
+
+logger = logging.getLogger(__name__)
 
 _lock = threading.RLock()
 _cache: dict[str, Any] | None = None
@@ -785,7 +785,7 @@ def validate_design_config_values(values: dict[str, Any]) -> list[str]:
         if k not in DESIGN_CONFIG_KEYS:
             errors.append(f"不允许的配置键: {k}")
             continue
-        if k in SECRET_KEYS:
+        if k in SECRET_KEYS or raw is None:
             continue
         rule = _DESIGN_VALIDATE.get(k)
         if not rule:

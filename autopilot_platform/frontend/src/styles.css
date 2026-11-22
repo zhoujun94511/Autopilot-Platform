@@ -1,13 +1,8 @@
 /**
  * AutoPilot 管理台设计系统
  *
- * 借鉴（语义层，非抄皮肤）：
- * - Grafana：canvas → primary → secondary → elevated 表面栈；border weak/medium/strong；action.hover
- * - GitLab Pajamas：语义文本层级；蓝=交互态；浅色靠阴影/边框分层、表面不发光
- * - Arco Design Pro：深色侧栏 + 浅内容区；radius 2/4/8；次要按钮中性填充
- *
- * 品牌强调色对齐桌面 IDE branding.BRAND_COLOR (#1565C0)
- * 主题：html[data-theme="dark"|"light"]（默认 dark）
+ * 工作台主题令牌与公共界面样式
+ * 品牌强调色来自 AutoPilot IDE (#1565C0)
  */
 
 :root,
@@ -18,11 +13,10 @@
   --brand-pressed: #0f5299;
   --brand-soft: rgba(21, 101, 192, 0.18);
 
-  /* Grafana 式表面栈（暗色：亮度分层） */
-  --surface-canvas: #0e1116;
-  --surface-primary: #161a22;
-  --surface-secondary: #1c212b;
-  --surface-elevated: #242a36;
+  --surface-canvas: #101418;
+  --surface-primary: #191e24;
+  --surface-secondary: #20262d;
+  --surface-elevated: #262d36;
 
   --bg: var(--surface-canvas);
   --panel: var(--surface-primary);
@@ -55,12 +49,11 @@
   --transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
     box-shadow 0.15s ease;
 
-  /* 侧栏：略深于 canvas，分区清晰（Arco menu-dark） */
-  --sidebar-bg: #0a0d12;
-  --sidebar-footer-bg: #07090d;
-  --sidebar-line: rgba(255, 255, 255, 0.07);
+  --sidebar-bg: #191e24;
+  --sidebar-footer-bg: var(--sidebar-bg);
+  --sidebar-line: var(--line);
   --sidebar-fg: #e8ecf2;
-  --sidebar-muted: #8b97a8;
+  --sidebar-muted: #b1bccb;
   --sidebar-brand: #ffffff;
   --header-bg: var(--surface-primary);
   --main-bg: var(--surface-canvas);
@@ -77,8 +70,8 @@
 
   --nav-hover: rgba(255, 255, 255, 0.05);
   --nav-active-bg: rgba(21, 101, 192, 0.22);
-  --nav-active-fg: #ffffff;
-  --nav-section: #6b7789;
+  --nav-active-fg: #a7cdff;
+  --nav-section: #8c9aad;
   --brand-name: var(--sidebar-brand);
 
   --chip-bg: rgba(255, 255, 255, 0.05);
@@ -163,10 +156,15 @@
   --log-ok-soft-border: rgba(61, 155, 106, 0.3);
   --log-ok-soft-fg: #8fd4ae;
 
-  /* Arco：small / medium / large */
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --control-height: 36px;
+  --table-row-min: 44px;
 }
 
 [data-theme="light"] {
@@ -175,10 +173,9 @@
   --brand-pressed: #0a3d7a;
   --brand-soft: rgba(21, 101, 192, 0.1);
 
-  /* Grafana light：canvas 灰底 + 白 primary；GitLab：浅色靠边框/阴影分层 */
-  --surface-canvas: #f0f2f5;
+  --surface-canvas: #f4f6f9;
   --surface-primary: #ffffff;
-  --surface-secondary: #f7f8fa;
+  --surface-secondary: #f6f8fb;
   --surface-elevated: #ffffff;
 
   --bg: var(--surface-canvas);
@@ -188,8 +185,8 @@
   --border-weak: #e8eaed;
   --border-medium: #d8dce3;
   --border-strong: #c2c8d1;
-  --line: #d8dce3;
-  --line-soft: #e8eaed;
+  --line: #dfe5ed;
+  --line-soft: #e9edf3;
 
   --text: #1a1d24;
   --text-secondary: #5c6573;
@@ -211,13 +208,12 @@
   --transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease,
     box-shadow 0.15s ease;
 
-  /* 深色侧栏：Arco Pro / Portainer 运维台惯例 */
-  --sidebar-bg: #1b2430;
-  --sidebar-footer-bg: #151c26;
-  --sidebar-line: rgba(255, 255, 255, 0.08);
-  --sidebar-fg: #e8eef6;
-  --sidebar-muted: #9aa8ba;
-  --sidebar-brand: #ffffff;
+  --sidebar-bg: var(--surface-primary);
+  --sidebar-footer-bg: var(--sidebar-bg);
+  --sidebar-line: var(--line);
+  --sidebar-fg: var(--text);
+  --sidebar-muted: #425167;
+  --sidebar-brand: var(--text);
   --header-bg: #ffffff;
   --main-bg: var(--surface-canvas);
   --topbar-height: 56px;
@@ -231,10 +227,10 @@
   --btn-bg-hover: #f7f8fa;
   --btn-border: #c2c8d1;
 
-  --nav-hover: rgba(255, 255, 255, 0.06);
-  --nav-active-bg: rgba(21, 101, 192, 0.28);
-  --nav-active-fg: #ffffff;
-  --nav-section: #7a8798;
+  --nav-hover: #f0f4fa;
+  --nav-active-bg: #e6f0fc;
+  --nav-active-fg: #1255a2;
+  --nav-section: #626e80;
   --brand-name: var(--sidebar-brand);
 
   --chip-bg: #eef0f4;
@@ -253,14 +249,14 @@
   --table-stripe: #f7f8fa;
   --table-hover: rgba(21, 101, 192, 0.06);
   --table-cell: #3a4252;
-  --th-bg: #f0f2f5;
+  --th-bg: #f5f7fb;
   --mono: #0d4f9e;
 
   --form-surface: #f7f8fa;
   --form-surface-border: #d8dce3;
   /* 浅色：阴影 > 亮度（GitLab light principle） */
-  --panel-shadow: 0 1px 2px rgba(26, 29, 36, 0.04), 0 1px 3px rgba(26, 29, 36, 0.06);
-  --elevated-shadow: 0 4px 16px rgba(26, 29, 36, 0.1), 0 1px 3px rgba(26, 29, 36, 0.06);
+  --panel-shadow: none;
+  --elevated-shadow: 0 8px 24px rgba(26, 29, 36, 0.12);
   --track-bg: #d8dce3;
 
   --ok-soft-bg: rgba(27, 133, 94, 0.1);
@@ -321,6 +317,12 @@
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --control-height: 36px;
+  --table-row-min: 44px;
 }
 
 /* 远控画面区：light/dark 下视口均保持深色，占位文案/图标用固定高对比色 */
@@ -349,6 +351,8 @@ html,
 body {
   margin: 0;
   font-family: var(--font);
+  font-size: var(--font-size-body);
+  line-height: 1.5;
   background-color: var(--bg);
   color: var(--text);
   min-height: 100dvh;
@@ -401,15 +405,22 @@ body {
 input,
 textarea {
   font-family: inherit;
-  font-size: 0.88rem;
+  font-size: var(--font-size-body);
   border-radius: var(--radius-sm);
   border: 1px solid var(--border-medium);
   background-color: var(--input-bg);
   color: var(--text);
-  padding: 0.55rem 0.75rem;
+  padding: 0 var(--space-2);
+  min-height: var(--control-height);
   outline: none;
   transition: var(--transition);
   width: 100%;
+}
+
+textarea {
+  min-height: 80px;
+  padding: var(--space-2);
+  line-height: 1.5;
 }
 
 input[type="checkbox"],
@@ -421,7 +432,7 @@ input[type="radio"] {
 
 ::file-selector-button {
   font: inherit;
-  font-size: 0.78rem;
+  font-size: var(--font-size-meta);
   font-weight: 600;
   border: 1px solid var(--btn-border);
   background: var(--btn-bg);
@@ -441,14 +452,14 @@ textarea:focus {
 /* —— 按钮层级：默认=次要 outline；primary / ghost / danger —— */
 button {
   font-family: inherit;
-  font-size: 0.85rem;
+  font-size: var(--font-size-body);
   font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid var(--btn-border);
   background-color: var(--btn-bg);
   color: var(--btn-fg);
-  padding: 0.5rem 0.95rem;
-  min-height: 34px;
+  padding: 0 var(--space-3);
+  min-height: var(--control-height);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -536,9 +547,9 @@ button.danger:hover {
 }
 
 button.small {
-  padding: 0.3rem 0.6rem;
-  min-height: 28px;
-  font-size: 0.78rem;
+  padding: 0 10px;
+  min-height: 32px;
+  font-size: var(--font-size-meta);
   font-weight: 600;
 }
 
@@ -549,7 +560,7 @@ button.small {
   padding: 0.2rem 0.5rem;
   border-radius: var(--radius-sm);
   background-color: var(--chip-bg);
-  font-size: 0.75rem;
+  font-size: var(--vben-fs-xs, 0.75rem);
   font-weight: 500;
   color: var(--muted);
   border: 1px solid var(--line);
@@ -578,8 +589,8 @@ button.small {
   background-color: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  box-shadow: var(--panel-shadow);
+  padding: 1rem 1.25rem;
+  box-shadow: var(--vben-shadow-card, none);
   display: flex;
   flex-direction: column;
   height: fit-content;
@@ -613,35 +624,38 @@ button.small {
 .table-wrap {
   width: 100%;
   overflow-x: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--vben-border-soft, var(--line));
+  border-radius: var(--radius-lg);
   background-color: var(--table-bg);
-  margin-top: 1rem;
+  margin-top: 0;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
+  font-size: var(--font-size-body);
 }
 
 th {
   background-color: var(--th-bg);
-  color: var(--muted);
+  color: var(--vben-text-secondary, var(--muted));
   font-weight: 600;
   text-transform: none;
-  font-size: 0.75rem;
-  letter-spacing: 0.01em;
-  padding: 0.55rem 0.85rem;
+  font-size: var(--vben-fs-sm, var(--font-size-meta));
+  letter-spacing: 0;
+  padding: 10px 14px;
+  height: var(--table-row-min);
   border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
 }
 
 td {
-  padding: 0.55rem 0.85rem;
+  padding: 10px 14px;
+  height: var(--table-row-min);
   border-bottom: 1px solid var(--line-soft);
   color: var(--table-cell);
+  font-size: var(--vben-fs-base, var(--font-size-body));
   vertical-align: middle;
   font-variant-numeric: tabular-nums;
 }
@@ -660,7 +674,7 @@ tbody tr:hover td {
 
 td.mono {
   font-family: "JetBrains Mono", ui-monospace, Consolas, monospace;
-  font-size: 0.8rem;
+  font-size: var(--vben-fs-sm, 0.875rem);
   color: var(--mono);
 }
 
@@ -682,11 +696,11 @@ td.empty {
 .empty-stack {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   gap: 0.4rem;
   max-width: 28rem;
-  margin: 0 auto;
+  margin: 0;
   white-space: normal;
 }
 
@@ -710,7 +724,7 @@ td.empty {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  font-size: 0.8rem;
+  font-size: var(--font-size-meta);
   font-weight: 600;
   color: var(--muted);
 }
@@ -738,7 +752,7 @@ td.empty {
 
 .msg {
   margin: 0.75rem 0 0;
-  font-size: 0.82rem;
+  font-size: var(--font-size-meta);
   font-weight: 500;
   padding: 0.5rem 0.75rem;
   border-radius: var(--radius-sm);
@@ -766,7 +780,7 @@ td.empty {
   justify-content: center;
   padding: 0.18rem 0.55rem;
   border-radius: var(--radius-sm);
-  font-size: 0.72rem;
+  font-size: var(--vben-fs-xs, 0.75rem);
   font-weight: 700;
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -881,7 +895,7 @@ td.empty {
 }
 
 .panel-filter-bar .filter-field label {
-  font-size: 0.72rem;
+  font-size: var(--vben-fs-xs, 0.75rem);
   font-weight: 600;
   color: var(--muted);
 }
@@ -924,7 +938,7 @@ td.empty {
   border: none;
   background: transparent;
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--font-size-meta);
   outline: none;
   padding: 0;
   height: 100%;
@@ -940,7 +954,7 @@ td.empty {
   border: 1px solid var(--line);
   background: var(--input-bg);
   color: var(--text);
-  font-size: 0.82rem;
+  font-size: var(--font-size-meta);
   flex: 0 1 auto;
 }
 
@@ -968,7 +982,7 @@ td.empty {
   border: 1px solid var(--line);
   background: var(--control-bg);
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: var(--vben-fs-xs, 0.75rem);
   font-weight: 600;
   padding: 0.25rem 0.65rem;
   border-radius: var(--radius-sm);
@@ -997,7 +1011,7 @@ td.empty {
   min-width: 0;
 }
 
-/* 工作台页：去掉套娃卡片，标题行即 chrome（GitLab / Grafana） */
+/* 列表页的标题、操作与表格保持各自的边界。 */
 .page-stack.panel,
 section.panel.page-stack,
 .panel.page-workbench {
@@ -1011,15 +1025,15 @@ section.panel.page-stack,
 .page-hero,
 .page-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.85rem 1.25rem;
-  padding: 0 0 0.85rem;
-  margin: 0 0 0.15rem;
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--line-soft);
-  border-radius: 0;
+  align-items: center;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  margin: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
   box-shadow: none;
 }
 
@@ -1030,13 +1044,13 @@ section.panel.page-stack,
   min-width: 0;
 }
 
-.page-hero-copy h2,
+.page-hero h2,
 .page-head h2,
 .panel-toolbar-left h2 {
   margin: 0;
-  font-size: 1.125rem;
-  font-weight: 650;
-  letter-spacing: -0.02em;
+  font-size: var(--font-size-title);
+  font-weight: 600;
+  letter-spacing: 0;
   color: var(--text);
   line-height: 1.3;
   text-wrap: balance;
@@ -1048,7 +1062,7 @@ section.panel.page-stack,
   margin: 0.2rem 0 0;
   max-width: 46rem;
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: var(--font-size-meta);
   line-height: 1.45;
   white-space: normal;
   overflow-wrap: break-word;
@@ -1063,7 +1077,7 @@ section.panel.page-stack,
   color: var(--accent);
   cursor: pointer;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: var(--font-size-meta);
   text-decoration: underline;
 }
 
@@ -1073,7 +1087,9 @@ section.panel.page-stack,
   align-items: center;
   justify-content: flex-end;
   gap: 0.45rem;
-  flex-shrink: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .page-hero-actions .action-group {
@@ -1086,12 +1102,31 @@ section.panel.page-stack,
   border-left: 1px solid var(--line);
 }
 
+.page-stack.data-page {
+  padding: var(--space-4);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--vben-shadow-card, none);
+}
+
+.data-page > .page-hero {
+  padding: 0 0 var(--space-3);
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  border-radius: 0;
+}
+
+.data-page > .table-wrap {
+  margin-top: 0;
+}
+
 .surface-card {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  padding: 1.15rem 1.25rem;
-  box-shadow: var(--panel-shadow);
+  padding: 0.85rem 1rem;
+  box-shadow: none;
 }
 
 .surface-card.elevated {
@@ -1202,11 +1237,11 @@ section.panel.page-stack,
 
 .action-menu-panel .menu-label {
   padding: 0.35rem 0.7rem 0.2rem;
-  font-size: 0.68rem;
+  font-size: 0.75rem;
   font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--text-disabled);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
 }
 
 .surface-card > .card-title,
@@ -1244,37 +1279,7 @@ section.panel.page-stack,
   font-weight: 600;
 }
 
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 0.35rem;
-  padding: 2.25rem 1.25rem;
-  border: 1px dashed var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-soft);
-}
-
-.empty-state .empty-title {
-  margin: 0;
-  font-size: 0.95rem;
-  font-weight: 650;
-  color: var(--text);
-  font-style: normal;
-}
-
-.empty-state .empty-desc {
-  margin: 0;
-  max-width: 26rem;
-  color: var(--muted);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  font-style: normal;
-  white-space: normal;
-  overflow-wrap: break-word;
-}
+/* .empty-state 与 .empty-title / .empty-desc 统一由 vben-theme.css 定义 */
 
 .field-stack {
   display: flex;
@@ -1571,60 +1576,6 @@ section.panel.page-stack,
   align-self: stretch;
 }
 
-.nav-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.nav-section-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.35rem;
-  width: 100%;
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  color: var(--nav-section);
-  font-size: 0.7rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: none;
-  padding: 0.7rem 0.55rem 0.3rem;
-  min-height: 0;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.nav-section-toggle:hover {
-  background: transparent;
-  color: var(--sidebar-muted);
-  border-color: transparent;
-}
-
-.nav-section-toggle .nav-section-chevron {
-  width: 10px;
-  height: 10px;
-  opacity: 0.7;
-  transition: transform 0.18s ease;
-  flex-shrink: 0;
-}
-
-.nav-section-toggle.is-open .nav-section-chevron {
-  transform: rotate(90deg);
-}
-
-.nav-group-items {
-  display: flex;
-  flex-direction: column;
-  gap: 0.1rem;
-}
-
-.nav-group-items.is-collapsed {
-  display: none;
-}
-
 .linkish {
   background: none;
   border: none;
@@ -1672,10 +1623,12 @@ section.panel.page-stack,
   overflow-y: auto;
   background: var(--elevated);
   border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 1.25rem 1.35rem;
-  box-shadow: var(--panel-shadow);
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.2rem;
+  box-shadow: var(--elevated-shadow);
 }
+
+/* .ap-drawer-backdrop 与 .ap-modal.ap-drawer 统一由 vben-theme.css 定义 */
 
 .ap-modal.wide {
   width: min(520px, 100%);
@@ -1730,7 +1683,7 @@ section.panel.page-stack,
   box-sizing: border-box;
   margin-bottom: 1rem;
   padding: 0.55rem 0.7rem;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   border: 1px solid var(--line);
   background: var(--input-bg);
   color: var(--text);
@@ -1751,7 +1704,7 @@ section.panel.page-stack,
 }
 
 .ap-btn {
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   padding: 0.45rem 0.9rem;
   font-size: 0.85rem;
   font-weight: 600;
@@ -1825,8 +1778,8 @@ section.panel.page-stack,
 }
 
 .ap-chip {
-  padding: 0.34rem 0.7rem;
-  border-radius: 999px;
+  padding: 0.28rem 0.55rem;
+  border-radius: 2px;
   border: 1px solid var(--line);
   background: var(--chip-bg);
   color: var(--text);

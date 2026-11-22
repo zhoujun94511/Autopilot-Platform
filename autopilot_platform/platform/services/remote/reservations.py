@@ -142,6 +142,9 @@ def expire_reservations(
             )
             .values(reservation_id=None, updated_at=now)
         )
+        from .sessions import close_sessions_for_reservation
+
+        close_sessions_for_reservation(db, row.id)
     if expired_ids and commit:
         db.commit()
     return expired_ids

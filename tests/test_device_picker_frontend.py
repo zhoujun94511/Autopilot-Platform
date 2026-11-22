@@ -60,8 +60,8 @@ def test_device_board_is_org_view_not_project_filter():
     job = (FE / "components" / "JobCreatePanel.vue").read_text(encoding="utf-8")
     assert ':devices="dispatchDevices"' in job
     panel = (FE / "components" / "DevicesPanel.vue").read_text(encoding="utf-8")
-    assert "组织在线设备" in panel
-    assert "不跟顶栏项目走" in panel
+    assert "组织在线设备" not in panel
+    assert "不跟顶栏项目走" not in panel
     runners = (FE / "components" / "RunnersPanel.vue").read_text(encoding="utf-8")
     assert "不绑某个项目" in runners
     assert "请先在顶栏选择设备归属组织" not in runners

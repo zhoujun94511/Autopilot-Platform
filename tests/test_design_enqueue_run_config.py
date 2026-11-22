@@ -72,7 +72,7 @@ def test_dashboard_run_readiness_card():
     assert "run-ready-card" in dash
     assert "runReadiness" in dash
     assert "ideUploadSteps" in dash
-    assert "可以远程跑了" in dash
+    assert "可执行批跑" in dash
 
 
 def test_enqueue_config_ide_upload_guide_when_empty():
@@ -159,7 +159,9 @@ def test_automation_status_hints_and_verifier_filter():
         encoding="utf-8"
     )
     assert "automationFilter" in panel
-    assert "verify-banner" in panel
+    assert 'aria-controls="case-run-config"' in panel
+    assert '@click="openTool(\'run\')"' in panel
+    assert 'id="case-run-config"' in panel
     assert "filter-chips" in panel
     sel = (FE / "components" / "design" / "AutomationStatusSelect.vue").read_text(
         encoding="utf-8"

@@ -963,9 +963,12 @@ def intent_to_mini_program(ctx: ExecutionContext, urlPath: str = "", **_kw) -> N
     if not str(urlPath).strip():
         raise KeywordError("缺少 urlPath（URL Scheme），无法跳转")
     serial = _serial(ctx)
-    # 转义 & (shell 特殊字符)，避免 scheme 里的查询串被截断
-    safe = str(urlPath).replace("&", "\\&")
-    adb_shell(f"am start -a android.intent.action.VIEW -d '{safe}'", serial=serial)
+    import shlex as _shlex
+
+    raw_url = str(urlPath).strip()
+    if any(ch in raw_url for ch in ("\r", "\n", "\0")) or "://" not in raw_url:
+        raise KeywordError("非法的 URL Scheme，无法跳转")
+    adb_shell(f"am start -a android.intent.action.VIEW -d {_shlex.quote(raw_url)}", serial=serial)
     ctx.log(f"已通过 URL Scheme 跳转: {urlPath}")
 
 

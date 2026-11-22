@@ -2,7 +2,7 @@
  * 组织 / 项目上下文状态（单一真源）。
  * useMcStore 与 useContextStore / useProjectsStore 共用。
  */
-import { reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
 import { loadOrgId } from "../api";
 import type { Organization } from "../api/orgs";
 
@@ -45,3 +45,8 @@ export const memberMsg = ref("");
 export const filterProjectId = ref(loadStoredProjectId());
 export const filterOrgId = ref(loadOrgId());
 export const orgs = ref<Organization[]>([]);
+
+export const workspaceScopeVersion = ref(0);
+watch([filterOrgId, filterProjectId], () => {
+  workspaceScopeVersion.value += 1;
+}, { flush: "sync" });

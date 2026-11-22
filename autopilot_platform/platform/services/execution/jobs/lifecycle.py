@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import json as _json
 import time
 
@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from autopilot_platform.core.webhook_security import validate_webhook_url
-from autopilot_platform.core.constants import JobStatus
+from autopilot_platform.core.constants import JOB_LEASE_HEARTBEAT_CAPABILITY, JobStatus
 from autopilot_platform.core.job_platforms import (
     apply_deviceless_run_target,
     is_deviceless_platform,
@@ -51,6 +51,7 @@ from ..devices.scheduling import (
     reconcile_orphan_device_busy,
 )
 from ..resources.pools import runner_allowed_for_job
+from ..job_claims import lock_job_upload_claim, require_job_claim_generation
 from ....core.list_page import slice_page
 from ...shared.pagination import paginate
 
@@ -107,7 +108,7 @@ def _job_create_warnings(db: Session, row: JobRow) -> list[str]:
 
 
 def _deps_claim_gate(
-    db: Session, dep_ids: list[str]
+    db: Session, dep_ids: list[str], project_id: str
 ) -> tuple[str, str]:
     """依赖门禁：ready | waiting | blocked。
 
@@ -115,7 +116,7 @@ def _deps_claim_gate(
     """
     for dep_id in dep_ids:
         dep = db_get(db, JobRow, dep_id)
-        if dep is None:
+        if dep is None or not project_id or dep.project_id != project_id:
             return "blocked", msg.JOB_DEPENDENCY_NOT_FOUND.format(job_id=dep_id)
         st = str(dep.status or "")
         if st in _DEP_BAD:
@@ -137,10 +138,15 @@ def _fail_pending_dependents(db: Session, terminal_job_id: str) -> None:
             continue
         seen.add(cur)
         cur_row = db_get(db, JobRow, cur)
-        cur_status = str(getattr(cur_row, "status", None) or JobStatus.FAILED.value)
+        if cur_row is None or not cur_row.project_id:
+            continue
+        cur_status = str(cur_row.status or JobStatus.FAILED.value)
         pending = list(
             db.scalars(
-                select(JobRow).where(JobRow.status == JobStatus.PENDING.value)
+                select(JobRow).where(
+                    JobRow.status == JobStatus.PENDING.value,
+                    JobRow.project_id == cur_row.project_id,
+                )
             ).all()
         )
         for j in pending:
@@ -161,6 +167,7 @@ def create_job(
     auth=None,
     *,
     created_by: str | None = None,
+    commit: bool = True,
 ) -> JobOut:
     # 执行节点只领任务，不创建任务（运维 Token / 用户 JWT 可创建）
     if auth is not None and getattr(auth, "kind", "") == "runner":
@@ -282,9 +289,18 @@ def create_job(
     depends_on = _normalize_depends_on(list(body.depends_on or []))
     for dep_id in depends_on:
         dep = db_get(db, JobRow, dep_id)
-        if dep is None:
+        if dep is None or not project_id or dep.project_id != project_id:
+            # Hide jobs outside the project from the caller.
             raise LookupError(msg.JOB_DEPENDENCY_NOT_FOUND.format(job_id=dep_id))
-
+        if auth is not None and not can_access_resource(
+            db,
+            auth,
+            resource_type="job",
+            resource_id=dep_id,
+            project_id=project_id,
+            owner_username=dep.created_by or "",
+        ):
+            raise LookupError(msg.JOB_DEPENDENCY_NOT_FOUND.format(job_id=dep_id))
 
     # 纵深防御：即便绕过 JobCreate 校验，落库前再拦不安全 URL
     safe_webhook = validate_webhook_url((body.webhook_url or "").strip(), resolve=False)
@@ -314,7 +330,10 @@ def create_job(
     apply_deviceless_run_target(row)
     row.depends_on = depends_on
     db.add(row)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(row)
     out = job_to_out(row)
     warns = _job_create_warnings(db, row)
@@ -550,7 +569,7 @@ def claim_job(db: Session, runner_id: str) -> JobOut | None:
         # E2：depends_on 门禁（未就绪则跳过；前置失败则本任务失败）
         dep_ids = list(getattr(job, "depends_on", None) or [])
         if dep_ids:
-            gate, reason = _deps_claim_gate(db, dep_ids)
+            gate, reason = _deps_claim_gate(db, dep_ids, job.project_id)
             if gate == "waiting":
                 continue
             if gate == "blocked":
@@ -613,12 +632,28 @@ def claim_job(db: Session, runner_id: str) -> JobOut | None:
     return None
 
 
-def mark_job_running(db: Session, job_id: str, runner_id: str) -> JobOut:
+def _lock_current_runner_job(
+    db: Session, job_id: str, runner_id: str, claimed_at: datetime | None,
+    *, allow_expired_terminal: bool = False,
+) -> JobRow:
     row = db_get(db, JobRow, job_id)
     if row is None:
         raise LookupError(msg.JOB_NOT_FOUND)
     if row.runner_id != runner_id:
         raise PermissionError(msg.JOB_NOT_CLAIMED_BY_RUNNER)
+    if (allow_expired_terminal and claimed_at is None and row.status == JobStatus.FAILED.value
+            and row.claimed_at is None):
+        return row
+    generation = require_job_claim_generation(db, row, runner_id, claimed_at)
+    lock_job_upload_claim(db, job_id, runner_id, generation)
+    db.refresh(row)
+    return row
+
+
+def mark_job_running(
+    db: Session, job_id: str, runner_id: str, *, claimed_at: datetime | None = None
+) -> JobOut:
+    row = _lock_current_runner_job(db, job_id, runner_id, claimed_at)
     if row.status == JobStatus.CANCELLED.value:
         raise ValueError(msg.JOB_CANCELLED)
     if row.status not in (JobStatus.CLAIMED.value, JobStatus.RUNNING.value):
@@ -631,14 +666,11 @@ def mark_job_running(db: Session, job_id: str, runner_id: str) -> JobOut:
 
 
 def nack_job(
-    db: Session, job_id: str, runner_id: str, *, reason: str = ""
+    db: Session, job_id: str, runner_id: str, *,
+    reason: str = "", claimed_at: datetime | None = None,
 ) -> JobOut:
     """槽位冲突等资源暂不可用：CLAIMED → pending，清设备占用。不是业务失败。"""
-    row = db_get(db, JobRow, job_id)
-    if row is None:
-        raise LookupError(msg.JOB_NOT_FOUND)
-    if row.runner_id != runner_id:
-        raise PermissionError(msg.JOB_NOT_CLAIMED_BY_RUNNER)
+    row = _lock_current_runner_job(db, job_id, runner_id, claimed_at)
     if row.status == JobStatus.CANCELLED.value:
         raise ValueError(msg.JOB_CANCELLED)
     if row.status != JobStatus.CLAIMED.value:
@@ -659,18 +691,18 @@ def nack_job(
     return job_to_out(row)
 
 
-def complete_job(db: Session, job_id: str, runner_id: str, body: JobResultIn) -> JobOut:
-    row = db_get(db, JobRow, job_id)
-    if row is None:
-        raise LookupError(msg.JOB_NOT_FOUND)
-    if row.runner_id != runner_id:
-        raise PermissionError(msg.JOB_NOT_CLAIMED_BY_RUNNER)
+def complete_job(
+    db: Session, job_id: str, runner_id: str, body: JobResultIn, *,
+    claimed_at: datetime | None = None,
+) -> JobOut:
+    row = _lock_current_runner_job(db, job_id, runner_id, claimed_at, allow_expired_terminal=True)
     if row.status == JobStatus.CANCELLED.value:
         # 已取消：仍允许 Runner 回传结果，但保持 cancelled，并释放设备
         clear_device_busy(db, job_id)
         row.updated_at = utcnow()
-        if body.error:
-            row.error = (row.error or "") + f"; runner: {body.error}"
+        note = f"; runner: {body.error}" if body.error else ""
+        if note and not (row.error or "").endswith(note):
+            row.error = (row.error or "") + note
         db.commit()
         db.refresh(row)
         if (body.log or "").strip():
@@ -681,17 +713,6 @@ def complete_job(db: Session, job_id: str, runner_id: str, body: JobResultIn) ->
         return job_to_out(row)
     # reclaim / 其它终态：不再被 late complete 覆盖为 succeeded
     if row.status not in (JobStatus.CLAIMED.value, JobStatus.RUNNING.value):
-        clear_device_busy(db, job_id)
-        row.updated_at = utcnow()
-        if body.error:
-            row.error = (row.error or "") + f"; late-complete: {body.error}"
-        db.commit()
-        db.refresh(row)
-        if (body.log or "").strip():
-            try:
-                append_job_log(job_id, body.log or "", replace=True)
-            except _BEST_EFFORT_ERRS:
-                pass
         return job_to_out(row)
     if body.status not in (JobStatus.SUCCEEDED, JobStatus.FAILED):
         raise ValueError(msg.JOB_INVALID_RESULT_STATUS)
@@ -731,6 +752,9 @@ def complete_job(db: Session, job_id: str, runner_id: str, body: JobResultIn) ->
 
     if body.status == JobStatus.FAILED:
         _fail_pending_dependents(db, row.id)
+    from ..schedules.callbacks import on_job_finished
+
+    on_job_finished(db, row.id, passed=(body.status == JobStatus.SUCCEEDED), commit=False)
     db.commit()
     db.refresh(row)
     if (body.log or "").strip():
@@ -758,15 +782,6 @@ def complete_job(db: Session, job_id: str, runner_id: str, body: JobResultIn) ->
                 )
         except _BEST_EFFORT_ERRS:
             pass
-    try:
-        # 延迟：schedules.crud → jobs.creation → lifecycle 成环
-        from ..schedules.callbacks import on_job_finished
-
-        on_job_finished(
-            db, row.id, passed=(body.status == JobStatus.SUCCEEDED)
-        )
-    except _BEST_EFFORT_ERRS:
-        pass
     return out
 
 
@@ -774,6 +789,12 @@ def cancel_job(db: Session, job_id: str) -> JobOut:
     row = db_get(db, JobRow, job_id)
     if row is None:
         raise LookupError(msg.JOB_NOT_FOUND)
+    db.execute(
+        update(JobRow).where(JobRow.id == job_id)
+        .values(status=JobRow.status)
+        .execution_options(synchronize_session=False)
+    )
+    db.refresh(row)
     if row.status in (
         JobStatus.SUCCEEDED.value,
         JobStatus.FAILED.value,
@@ -786,19 +807,15 @@ def cancel_job(db: Session, job_id: str) -> JobOut:
     # claimed/running 的设备占用保留到 Runner complete ACK，避免旧进程尚未退出时
     # 同一物理设备被新任务并发领取。pending 任务本身没有设备占用。
     _fail_pending_dependents(db, row.id)
+    from ..schedules.callbacks import on_job_finished
+
+    on_job_finished(db, row.id, passed=False, commit=False)
     db.commit()
     db.refresh(row)
     out = job_to_out(row)
     _fire_job_webhook("job.cancelled", out, row)
     try:
         note_job_terminal(JobStatus.CANCELLED.value)
-    except _BEST_EFFORT_ERRS:
-        pass
-    try:
-        # 延迟：schedules.crud → jobs.creation → lifecycle 成环
-        from ..schedules.callbacks import on_job_finished
-
-        on_job_finished(db, row.id, passed=False)
     except _BEST_EFFORT_ERRS:
         pass
     return out
@@ -1018,7 +1035,7 @@ def _job_lost_device(db: Session, row: JobRow) -> bool:
 def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> list[str]:
     """Runner 已离线且超时的 claimed/running：手机已掉线则退回 pending，否则标失败。
 
-    已成功或已失败的任务不在此列。Runner 仍在线时只刷新 updated_at，不中断长任务。
+    支持任务心跳的节点以任务更新时间为准。旧节点继续使用节点在线状态。
     条件 UPDATE 领取，避免多实例重复回收与重复告警。
     """
     sec = job_stale_sec() if older_than_sec is None else max(0, int(older_than_sec))
@@ -1034,24 +1051,26 @@ def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> lis
         ).all()
     )
     ids: list[str] = []
+    from ..schedules.callbacks import on_job_finished
+
     touched = False
     now = utcnow()
     for row in rows:
         rid = (row.runner_id or "").strip()
         if rid:
             runner = db_get(db, RunnerRow, rid)
-            if runner is not None and is_online(runner.last_heartbeat_at):
+            if (runner is not None and JOB_LEASE_HEARTBEAT_CAPABILITY not in runner.capabilities
+                    and is_online(runner.last_heartbeat_at)):
                 row.updated_at = now
                 touched = True
                 continue
         err = (row.error or "") or f"reclaimed: stale >{sec}s"
         requeue = _job_lost_device(db, row)
-        values: dict = {"error": err, "updated_at": now}
+        values: dict = {"error": err, "updated_at": now, "claimed_at": None}
         if requeue:
             values.update(
                 status=JobStatus.PENDING.value,
                 runner_id=None,
-                claimed_at=None,
             )
         else:
             values["status"] = JobStatus.FAILED.value
@@ -1070,6 +1089,15 @@ def reclaim_stale_jobs(db: Session, *, older_than_sec: int | None = None) -> lis
         if int(getattr(result, "rowcount", 0) or 0) != 1:
             continue
         clear_device_busy(db, row.id)
+        if not requeue:
+            db.refresh(row)
+            _fail_pending_dependents(db, row.id)
+            on_job_finished(db, row.id, passed=False, commit=False)
+            _fire_job_webhook("job.failed", job_to_out(row), row)
+            try:
+                note_job_terminal(JobStatus.FAILED.value)
+            except _BEST_EFFORT_ERRS:
+                pass
         ids.append(row.id)
     if ids or touched:
         db.commit()

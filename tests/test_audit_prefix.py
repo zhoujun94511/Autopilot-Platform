@@ -9,16 +9,17 @@ from sqlalchemy.dialects import sqlite
 from autopilot_platform.platform.ops import audit as audit_svc
 
 
-def _compile(q) -> str:
-    return str(q.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": False}))
+def _compile_filter(q):
+    return q.compile(dialect=sqlite.dialect(), compile_kwargs={"literal_binds": True})
 
 
 def test_list_audits_prefix_uses_startswith():
     db = MagicMock()
     captured = {}
 
-    def _paginate(_db, q, *, _page, _page_size):
-        captured["sql"] = _compile(q)
+    def _paginate(_db, q, *, page, page_size):
+        assert (page, page_size) == (1, 20)
+        captured["sql"] = str(_compile_filter(q))
         return [], 0
 
     with patch(
@@ -26,16 +27,16 @@ def test_list_audits_prefix_uses_startswith():
         _paginate,
     ):
         audit_svc.list_audits(db, action="acl.", page=1, page_size=20)
-    sql = captured["sql"].lower()
-    assert "like" in sql or "startswith" in sql or "acl." in captured["sql"]
+    assert "audit_logs.action LIKE 'acl.' || '%'" in captured["sql"]
 
 
 def test_list_audits_exact_match():
     db = MagicMock()
     captured = {}
 
-    def _paginate(_db, q, *, _page, _page_size):
-        captured["sql"] = _compile(q)
+    def _paginate(_db, q, *, page, page_size):
+        assert (page, page_size) == (1, 20)
+        captured["sql"] = str(_compile_filter(q))
         return [], 0
 
     with patch(
@@ -43,4 +44,4 @@ def test_list_audits_exact_match():
         _paginate,
     ):
         audit_svc.list_audits(db, action="acl.grant", page=1, page_size=20)
-    assert "action" in captured["sql"].lower()
+    assert "audit_logs.action = 'acl.grant'" in captured["sql"]

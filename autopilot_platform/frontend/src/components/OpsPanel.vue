@@ -1,13 +1,14 @@
 <script setup lang="ts">
 defineOptions({ name: "OpsPanel" });
 
-import { computed, onActivated, onMounted, reactive, ref, watch } from "vue";
+import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { storeToRefs } from "pinia";
 import { useAuthStore } from "../stores/auth";
 import { useShellStore } from "../stores/shellStore";
 import { confirmDialog, notify } from "../composables/useNotify";
 import { useOpsStore } from "../stores/opsStore";
 import { useAdminStore } from "../stores/adminStore";
+import { useManualPageRefresh } from "../composables/useManualPageRefresh";
 import { api, apiErrorMessage } from "../api";
 import ApSelect from "./common/ApSelect.vue";
 import {
@@ -49,6 +50,8 @@ const loading = ref(false);
 const saving = ref(false);
 const exporting = ref(false);
 const importing = ref(false);
+const testing = ref<"alert" | "design" | null>(null);
+const configBusy = computed(() => loading.value || saving.value || exporting.value || importing.value);
 const error = ref("");
 const notice = ref("");
 const selectedNavId = ref("overview");
@@ -56,6 +59,7 @@ const config = ref<OpsConfigResponse | null>(null);
 const draft = reactive<Record<string, string>>({});
 const baseline = ref<Record<string, string>>({});
 const importInput = ref<HTMLInputElement | null>(null);
+const configMenu = ref<HTMLDetailsElement | null>(null);
 const aiProviders = ref<AiProviderInfo[]>([...FALLBACK_AI_PROVIDERS]);
 const baseUrlCustomized = ref(false);
 const skipProviderSync = ref(false);
@@ -186,23 +190,20 @@ const apiKeyConfigured = computed(() =>
   ),
 );
 
-const webhookConfigured = computed(() => {
-  const url = String(draft.MC_WEBHOOK_URL || baseline.value.MC_WEBHOOK_URL || "").trim();
-  return Boolean(url);
-});
+const webhookConfigured = computed(() => Boolean(baseline.value.MC_WEBHOOK_URL?.trim()));
 
 const healthRows = computed(() =>
   buildOpsHealthRows({
     apiKeyConfigured: apiKeyConfigured.value,
     webhookConfigured: webhookConfigured.value,
     provider:
-      config.value?.design_ai_summary?.provider || draft.AP_AI_PROVIDER || "—",
-    model: config.value?.design_ai_summary?.model || draft.AP_AI_MODEL || "—",
+      config.value?.design_ai_summary?.provider || baseline.value.AP_AI_PROVIDER || "—",
+    model: config.value?.design_ai_summary?.model || baseline.value.AP_AI_MODEL || "—",
     embedder:
       ops.value?.rag?.embedder_name ||
       ops.value?.rag?.active_embedder ||
       config.value?.design_ai_summary?.rag_embedder ||
-      draft.AP_RAG_EMBEDDER ||
+      baseline.value.AP_RAG_EMBEDDER ||
       "—",
     ragOk: Number(ops.value?.rag?.success_count ?? 0),
     ragFail: Number(ops.value?.rag?.failure_count ?? 0),
@@ -261,8 +262,10 @@ function applyFocusFromStore() {
 }
 
 async function load() {
+  if (configBusy.value || user.value?.role !== "admin") return;
   loading.value = true;
   error.value = "";
+  notice.value = "";
   try {
     await loadAiProviders();
     const out = await getOpsConfig();
@@ -278,6 +281,12 @@ async function load() {
   } finally {
     loading.value = false;
   }
+}
+
+async function refreshConfig() {
+  if (configBusy.value) return;
+  if (dirtyCount.value && !(await confirmDialog("刷新将丢弃未保存的修改。继续？"))) return;
+  await load();
 }
 
 function applyProviderDefaults(prevProviderId: string, nextProviderId: string) {
@@ -306,19 +315,19 @@ function onBaseUrlInput() {
   );
 }
 
-async function selectNav(id: string) {
+function selectNav(id: string) {
   if (id === selectedNavId.value) return;
-  if (
-    dirtyCount.value > 0 &&
-    !(await confirmDialog("当前有未保存修改，切换分类将保留草稿但不自动保存。继续？"))
-  ) {
-    return;
-  }
   selectedNavId.value = id;
 }
 
+function closeConfigMenu() {
+  if (!configMenu.value?.open) return;
+  configMenu.value.open = false;
+  configMenu.value.querySelector("summary")?.focus();
+}
+
 async function onSave() {
-  if (!config.value) return;
+  if (!config.value || configBusy.value) return;
   saving.value = true;
   error.value = "";
   notice.value = "";
@@ -350,13 +359,20 @@ async function onSave() {
 }
 
 function onReloadNav() {
+  if (configBusy.value) return;
+  skipProviderSync.value = true;
   for (const k of selectedKeys.value) {
     draft[k] = baseline.value[k] ?? "";
   }
+  if (selectedKeys.value.includes("AP_AI_BASE_URL")) onBaseUrlInput();
+  queueMicrotask(() => { skipProviderSync.value = false; });
+  error.value = "";
   notice.value = "已还原当前分类未保存修改";
 }
 
 async function onExport() {
+  if (configBusy.value) return;
+  closeConfigMenu();
   exporting.value = true;
   error.value = "";
   notice.value = "";
@@ -378,6 +394,8 @@ async function onExport() {
 }
 
 async function triggerImport() {
+  if (configBusy.value) return;
+  closeConfigMenu();
   if (
     dirtyCount.value > 0 &&
     !(await confirmDialog("导入将覆盖当前草稿并立即写入。继续？", {
@@ -393,7 +411,7 @@ async function onImportFile(ev: Event) {
   const input = ev.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = "";
-  if (!file) return;
+  if (!file || configBusy.value) return;
   importing.value = true;
   error.value = "";
   notice.value = "";
@@ -418,6 +436,8 @@ function copyMetricsUrl() {
 }
 
 async function onDesignWebhookTest() {
+  if (testing.value || configBusy.value) return;
+  testing.value = "design";
   try {
     const out = await api<{ ok: boolean }>("/api/v1/ops/design-webhook-test", {
       method: "POST",
@@ -427,6 +447,18 @@ async function onDesignWebhookTest() {
     });
   } catch (e) {
     notify(apiErrorMessage(e), "error");
+  } finally {
+    testing.value = null;
+  }
+}
+
+async function onAlertTest() {
+  if (testing.value || configBusy.value) return;
+  testing.value = "alert";
+  try {
+    await opsStore.onAlertTest();
+  } finally {
+    testing.value = null;
   }
 }
 
@@ -455,13 +487,6 @@ watch(
 );
 
 watch(
-  () => activeTab.value,
-  (tab) => {
-    if (tab === "ops") void load();
-  },
-);
-
-watch(
   opsFocusCategory,
   (v) => {
     if (activeTab.value === "ops" && v) {
@@ -470,14 +495,32 @@ watch(
   },
 );
 
-let _skipActivateReload = false;
+useManualPageRefresh("ops", refreshConfig);
+
+function onBeforeUnload(ev: BeforeUnloadEvent) {
+  if (dirtyCount.value > 0) {
+    ev.preventDefault();
+    ev.returnValue = "";
+  }
+}
+
+let skipInitialActivation = false;
 onMounted(() => {
-  _skipActivateReload = true;
+  skipInitialActivation = true;
+  window.addEventListener("beforeunload", onBeforeUnload);
   void load();
 });
+onUnmounted(() => {
+  window.removeEventListener("beforeunload", onBeforeUnload);
+});
 onActivated(() => {
-  if (_skipActivateReload) {
-    _skipActivateReload = false;
+  if (skipInitialActivation) {
+    skipInitialActivation = false;
+    return;
+  }
+  applyFocusFromStore();
+  if (dirtyCount.value) {
+    void opsStore.refreshOps();
     return;
   }
   void load();
@@ -485,17 +528,12 @@ onActivated(() => {
 </script>
 
 <template>
-  <section v-if="user?.role === 'admin'" class="config-center">
-    <header class="cc-header">
-      <div class="cc-header-copy">
-        <h2>配置中心</h2>
-        <p class="cc-lede">密钥不会完整显示。不想改就留空，保存后仍用原来的值。</p>
+  <section v-if="user?.role === 'admin'" class="page-stack data-page config-center" :aria-busy="loading || saving || importing">
+    <header class="page-hero">
+      <div class="page-hero-copy">
+        <h2>运维</h2>
       </div>
-      <div class="cc-header-actions">
-        <label class="cc-tech-toggle" title="显示环境变量名与字段说明">
-          <input v-model="showTechKeys" type="checkbox" />
-          显示技术键名
-        </label>
+      <div class="page-hero-actions">
         <input
           ref="importInput"
           type="file"
@@ -503,53 +541,46 @@ onActivated(() => {
           hidden
           @change="onImportFile"
         />
-        <button type="button" class="small" :disabled="loading || saving || exporting" @click="onExport">
-          {{ exporting ? "导出中…" : "导出" }}
-        </button>
-        <button type="button" class="small" :disabled="loading || saving || importing" @click="triggerImport">
-          {{ importing ? "导入中…" : "导入" }}
-        </button>
-        <button type="button" class="small" :disabled="loading || saving" @click="load">刷新</button>
-        <button
-          type="button"
-          class="primary"
-          :disabled="loading || saving || !config || dirtyCount === 0"
-          @click="onSave"
-        >
-          {{ saving ? "保存中…" : dirtyCount > 0 ? `保存（${dirtyCount}）` : "已保存" }}
-        </button>
+        <button type="button" class="small" :disabled="configBusy" @click="refreshConfig">刷新</button>
+        <details ref="configMenu" class="action-menu" @keydown.esc.stop.prevent="closeConfigMenu">
+          <summary class="small">{{ importing ? "正在导入…" : exporting ? "正在导出…" : "配置工具" }}</summary>
+          <div class="action-menu-panel">
+            <button type="button" :disabled="configBusy" @click="triggerImport">导入配置</button>
+            <button type="button" :disabled="configBusy" @click="onExport">导出配置</button>
+            <label class="cc-tech-toggle">
+              <input v-model="showTechKeys" type="checkbox" />
+              显示技术键名
+            </label>
+          </div>
+        </details>
       </div>
     </header>
 
-    <div v-if="error" class="msg bad">{{ error }}</div>
-    <div v-if="notice" class="msg ok">{{ notice }}</div>
+    <div v-if="error" class="msg bad" role="alert">{{ error }}</div>
+    <div v-if="notice" class="msg ok" role="status">{{ notice }}</div>
 
-    <div v-if="loading && !config" class="cc-loading">加载配置中…</div>
+    <p v-if="loading && !config" class="cc-loading" role="status">加载配置中…</p>
+    <p v-else-if="!config" class="cc-loading">配置暂不可用，可点击「刷新」重试。</p>
 
     <div v-else class="cc-layout">
-      <aside class="cc-sidebar">
-        <div class="cc-sidebar-title">分类</div>
-        <nav class="cc-cat-list" aria-label="配置分类">
-          <button
-            v-for="nav in navItems"
-            :key="nav.id"
-            type="button"
-            class="cc-cat-item"
-            :class="{ active: nav.id === selectedNavId }"
-            @click="selectNav(nav.id)"
-          >
-            <span class="cc-cat-text">
-              <span class="cc-cat-name">{{ nav.title }}</span>
-              <span class="cc-cat-desc">{{ nav.description }}</span>
-            </span>
-            <span v-if="dirtyForNav(nav) > 0" class="cc-dirty-dot" :title="`${dirtyForNav(nav)} 项未保存`">
-              {{ dirtyForNav(nav) }}
-            </span>
-          </button>
-        </nav>
-      </aside>
+      <nav class="cc-cat-list" aria-label="配置分类">
+        <button
+          v-for="nav in navItems"
+          :key="nav.id"
+          type="button"
+          class="cc-cat-item"
+          :aria-pressed="nav.id === selectedNavId"
+          aria-controls="ops-config-content"
+          @click="selectNav(nav.id)"
+        >
+          <span>{{ nav.title }}</span>
+          <span v-if="dirtyForNav(nav)" class="cc-dirty-dot" :aria-label="`${dirtyForNav(nav)} 项未保存`">
+            {{ dirtyForNav(nav) }}
+          </span>
+        </button>
+      </nav>
 
-      <div class="cc-main">
+      <div id="ops-config-content" class="cc-main">
         <!-- 配置健康 -->
         <OpsHealthOverview
           v-if="selectedNavId === 'overview'"
@@ -562,200 +593,134 @@ onActivated(() => {
         <!-- 可编辑分类 -->
         <template v-else>
           <div class="cc-panel-head">
-            <div>
-              <h3 class="cc-panel-title">{{ selectedNav?.title }}</h3>
-              <p class="cc-panel-sub">{{ selectedNav?.description }}</p>
-            </div>
-            <div class="cc-panel-meta">
-              <span class="cc-dirty-pill" :class="{ active: dirtyInNav > 0 }">
-                {{ dirtyInNav > 0 ? `${dirtyInNav} 项未保存` : "无未保存修改" }}
-              </span>
-            </div>
+            <h3 class="cc-panel-title">{{ selectedNav?.title }}</h3>
+            <span v-if="dirtyInNav" class="cc-draft">{{ dirtyInNav }} 项未保存</span>
           </div>
 
           <div class="cc-groups">
-            <template v-for="group in fieldGroups" :key="group.id">
-              <details
-                v-if="group.collapsed"
-                class="cc-card cc-details"
-                :class="{ 'cc-card--danger': group.danger }"
-              >
-                <summary class="cc-details-summary">
-                  <span>
-                    <span class="cc-card-title">{{ group.title }}</span>
-                    <span v-if="group.subtitle" class="cc-card-sub inline">{{ group.subtitle }}</span>
+            <component
+              :is="group.collapsed ? 'details' : 'section'"
+              v-for="group in fieldGroups"
+              :key="group.id"
+              class="cc-card"
+              :class="{ 'cc-details': group.collapsed, 'cc-card--danger': group.danger }"
+            >
+              <summary v-if="group.collapsed" class="cc-details-summary">
+                <span>
+                  <span class="cc-card-title">{{ group.title }}</span>
+                  <span v-if="group.subtitle" class="cc-card-sub">{{ group.subtitle }}</span>
+                </span>
+                <span v-if="group.danger" class="cc-danger-tag">谨慎</span>
+              </summary>
+              <header v-else class="cc-card-head">
+                <div>
+                  <h4 class="cc-card-title">{{ group.title }}</h4>
+                  <p v-if="group.subtitle" class="cc-card-sub">{{ group.subtitle }}</p>
+                </div>
+                <span v-if="group.danger" class="cc-danger-tag">谨慎</span>
+              </header>
+              <fieldset class="cc-fields" :disabled="configBusy">
+                <label
+                  v-for="key in group.keys"
+                  :key="key"
+                  class="cc-field"
+                  :title="CONFIG_KEY_HELPERS[key] || undefined"
+                >
+                  <span class="cc-field-label">
+                    <span>{{ CONFIG_KEY_LABELS[key] || key }}</span>
+                    <span v-if="sourceLabel(key)" class="cc-source">{{ sourceLabel(key) }}</span>
                   </span>
-                  <span v-if="group.danger" class="cc-danger-tag">谨慎</span>
-                </summary>
-                <div class="cc-fields">
-                  <label
-                    v-for="key in group.keys"
-                    :key="key"
-                    class="cc-field"
-                    :title="CONFIG_KEY_HELPERS[key] || undefined"
-                  >
-                    <span class="cc-field-label">
-                      <span>{{ CONFIG_KEY_LABELS[key] || key }}</span>
-                      <span v-if="sourceLabel(key)" class="cc-source">{{ sourceLabel(key) }}</span>
-                    </span>
-                    <ApSelect
-                      v-if="fieldKind(key, secretKeys) === 'select'"
-                      v-model="draft[key]"
-                      class="cc-control"
-                      :aria-label="CONFIG_KEY_LABELS[key] || key"
-                      :options="key === 'AP_AI_PROVIDER' ? providerSelectOptions : fieldOptions(key)"
-                    />
-                    <span v-else-if="fieldKind(key, secretKeys) === 'model_combo'" class="cc-combo">
-                      <input
-                        v-model="draft[key]"
-                        type="text"
-                        class="cc-control"
-                        list="ap-ai-model-options"
-                        :placeholder="currentAiProvider?.default_model || '模型名称'"
-                        autocomplete="off"
-                      />
-                    </span>
-                    <span v-else-if="fieldKind(key, secretKeys) === 'toggle'" class="cc-toggle-row">
-                      <input
-                        type="checkbox"
-                        :checked="isToggleOn(key)"
-                        @change="toggleValue(key, ($event.target as HTMLInputElement).checked)"
-                      />
-                      <span>{{ isToggleOn(key) ? "已启用" : "已关闭" }}</span>
-                    </span>
+
+                  <ApSelect
+                    v-if="fieldKind(key, secretKeys) === 'select'"
+                    v-model="draft[key]"
+                    class="cc-control"
+                    :disabled="configBusy"
+                    :aria-label="CONFIG_KEY_LABELS[key] || key"
+                    :options="key === 'AP_AI_PROVIDER' ? providerSelectOptions : fieldOptions(key)"
+                  />
+
+                  <span v-else-if="fieldKind(key, secretKeys) === 'model_combo'" class="cc-combo">
                     <input
-                      v-else-if="fieldKind(key, secretKeys) === 'password'"
-                      v-model="draft[key]"
-                      type="password"
-                      class="cc-control"
-                      :placeholder="
-                        config?.secret_configured?.[key] ? `${secretMask}（留空保持）` : '未配置'
-                      "
-                      autocomplete="new-password"
-                    />
-                    <input
-                      v-else-if="fieldKind(key, secretKeys) === 'number'"
-                      v-model="draft[key]"
-                      type="number"
-                      step="any"
-                      class="cc-control"
-                    />
-                    <input v-else v-model="draft[key]" type="text" class="cc-control" />
-                    <span v-if="showTechKeys && CONFIG_KEY_HELPERS[key]" class="cc-help">{{ CONFIG_KEY_HELPERS[key] }}</span>
-                    <code v-if="showTechKeys" class="cc-key">{{ key }}</code>
-                  </label>
-                </div>
-              </details>
-
-              <article v-else class="cc-card" :class="{ 'cc-card--danger': group.danger }">
-                <div class="cc-card-head">
-                  <div>
-                    <h4 class="cc-card-title">{{ group.title }}</h4>
-                    <p v-if="group.subtitle" class="cc-card-sub">{{ group.subtitle }}</p>
-                  </div>
-                  <span v-if="group.danger" class="cc-danger-tag">谨慎</span>
-                </div>
-
-                <div class="cc-fields">
-                  <label
-                    v-for="key in group.keys"
-                    :key="key"
-                    class="cc-field"
-                    :title="CONFIG_KEY_HELPERS[key] || undefined"
-                  >
-                    <span class="cc-field-label">
-                      <span>{{ CONFIG_KEY_LABELS[key] || key }}</span>
-                      <span v-if="sourceLabel(key)" class="cc-source">{{ sourceLabel(key) }}</span>
-                    </span>
-
-                    <ApSelect
-                      v-if="fieldKind(key, secretKeys) === 'select'"
-                      v-model="draft[key]"
-                      class="cc-control"
-                      :aria-label="CONFIG_KEY_LABELS[key] || key"
-                      :options="key === 'AP_AI_PROVIDER' ? providerSelectOptions : fieldOptions(key)"
-                    />
-
-                    <span v-else-if="fieldKind(key, secretKeys) === 'model_combo'" class="cc-combo">
-                      <input
-                        v-model="draft[key]"
-                        type="text"
-                        class="cc-control"
-                        list="ap-ai-model-options"
-                        :placeholder="currentAiProvider?.default_model || '模型名称'"
-                        autocomplete="off"
-                      />
-                    </span>
-
-                    <span v-else-if="fieldKind(key, secretKeys) === 'toggle'" class="cc-toggle-row">
-                      <input
-                        type="checkbox"
-                        :checked="isToggleOn(key)"
-                        @change="toggleValue(key, ($event.target as HTMLInputElement).checked)"
-                      />
-                      <span>{{ isToggleOn(key) ? "已启用" : "已关闭" }}</span>
-                    </span>
-
-                    <input
-                      v-else-if="fieldKind(key, secretKeys) === 'password'"
-                      v-model="draft[key]"
-                      type="password"
-                      class="cc-control"
-                      :placeholder="
-                        config?.secret_configured?.[key] ? `${secretMask}（留空保持）` : '未配置'
-                      "
-                      autocomplete="new-password"
-                    />
-
-                    <input
-                      v-else-if="fieldKind(key, secretKeys) === 'number'"
-                      v-model="draft[key]"
-                      type="number"
-                      step="any"
-                      class="cc-control"
-                    />
-
-                    <input
-                      v-else-if="key === 'AP_AI_BASE_URL'"
                       v-model="draft[key]"
                       type="text"
                       class="cc-control"
-                      :placeholder="currentAiProvider?.default_base_url || 'Base URL'"
-                      @input="onBaseUrlInput"
+                      list="ap-ai-model-options"
+                      :placeholder="currentAiProvider?.default_model || '模型名称'"
+                      autocomplete="off"
                     />
+                  </span>
 
-                    <input v-else v-model="draft[key]" type="text" class="cc-control" />
+                  <span v-else-if="fieldKind(key, secretKeys) === 'toggle'" class="cc-toggle-row">
+                    <input
+                      type="checkbox"
+                      :checked="isToggleOn(key)"
+                      @change="toggleValue(key, ($event.target as HTMLInputElement).checked)"
+                    />
+                    <span>{{ isToggleOn(key) ? "已启用" : "已关闭" }}</span>
+                  </span>
 
-                    <span v-if="showTechKeys && CONFIG_KEY_HELPERS[key]" class="cc-help">{{ CONFIG_KEY_HELPERS[key] }}</span>
-                    <code v-if="showTechKeys" class="cc-key">{{ key }}</code>
-                  </label>
-                </div>
+                  <input
+                    v-else-if="fieldKind(key, secretKeys) === 'password'"
+                    v-model="draft[key]"
+                    type="password"
+                    class="cc-control"
+                    :placeholder="
+                      config?.secret_configured?.[key] ? `${secretMask}（留空保持）` : '未配置'
+                    "
+                    autocomplete="new-password"
+                  />
 
-                <div
-                  v-if="group.id === 'alert' && draft.MC_ALERT_WEBHOOK_URL"
-                  class="cc-card-foot"
+                  <input
+                    v-else-if="fieldKind(key, secretKeys) === 'number'"
+                    v-model="draft[key]"
+                    type="number"
+                    step="any"
+                    class="cc-control"
+                  />
+
+                  <input
+                    v-else-if="key === 'AP_AI_BASE_URL'"
+                    v-model="draft[key]"
+                    type="text"
+                    class="cc-control"
+                    :placeholder="currentAiProvider?.default_base_url || 'Base URL'"
+                    @input="onBaseUrlInput"
+                  />
+
+                  <input v-else v-model="draft[key]" type="text" class="cc-control" />
+
+                  <span v-if="showTechKeys && CONFIG_KEY_HELPERS[key]" class="cc-help">{{ CONFIG_KEY_HELPERS[key] }}</span>
+                  <code v-if="showTechKeys" class="cc-key">{{ key }}</code>
+                </label>
+              </fieldset>
+
+              <div
+                v-if="group.id === 'alert' && draft.MC_ALERT_WEBHOOK_URL"
+                class="cc-card-foot"
+              >
+                <button type="button" class="small" :disabled="configBusy || Boolean(testing)" @click="onAlertTest">
+                  {{ testing === "alert" ? "正在发送…" : "发送测试告警" }}
+                </button>
+              </div>
+              <div
+                v-if="group.id === 'design_webhook'"
+                class="cc-card-foot design-webhook-foot"
+              >
+                <p class="cc-inline-help">
+                  在 IDE 启动接收服务后填写通知地址，例如 <code>http://127.0.0.1:8765/hooks/intent</code>。
+                </p>
+                <button
+                  v-if="draft.MC_DESIGN_WEBHOOK_URL"
+                  type="button"
+                  class="small"
+                  :disabled="configBusy || Boolean(testing)"
+                  @click="onDesignWebhookTest"
                 >
-                  <button type="button" class="small" @click="opsStore.onAlertTest">发送测试告警</button>
-                </div>
-                <div
-                  v-if="group.id === 'design_webhook'"
-                  class="cc-card-foot design-webhook-foot"
-                >
-                  <p class="cc-inline-help">
-                    审核通过后自动写入本机工程：先在 IDE 启动接收服务，再把通知地址填在这里（本机示例
-                    <code>http://127.0.0.1:8765/hooks/intent</code>）。
-                  </p>
-                  <button
-                    v-if="draft.MC_DESIGN_WEBHOOK_URL"
-                    type="button"
-                    class="small"
-                    @click="onDesignWebhookTest"
-                  >
-                    发送设计域测试事件
-                  </button>
-                </div>
-              </article>
-            </template>
+                  {{ testing === "design" ? "正在发送…" : "发送设计域测试事件" }}
+                </button>
+              </div>
+            </component>
 
             <datalist id="ap-ai-model-options">
               <option v-for="m in currentModelOptions" :key="m" :value="m" />
@@ -764,12 +729,11 @@ onActivated(() => {
             <article v-if="selectedNavId === 'platform_policy'" class="cc-card">
               <div class="cc-card-head">
                 <div>
-                  <h4 class="cc-card-title">Prometheus 抓取</h4>
-                  <p class="cc-card-sub">机器可读指标接口，勿在浏览器中当页面打开。</p>
+                  <h4 class="cc-card-title">Prometheus 抓取地址</h4>
                 </div>
               </div>
               <div class="cc-metrics-row">
-                <input :value="metricsScrapeUrl" readonly class="cc-control mono" :disabled="!metricsEnabled" />
+                <input :value="metricsScrapeUrl" readonly class="cc-control mono" :disabled="!metricsEnabled" aria-label="Prometheus 抓取地址" />
                 <button type="button" class="small" :disabled="!metricsEnabled" @click="copyMetricsUrl">
                   复制地址
                 </button>
@@ -777,261 +741,140 @@ onActivated(() => {
             </article>
           </div>
 
-          <footer class="cc-savebar">
-            <span class="cc-savebar-status">
-              {{ dirtyCount > 0 ? `共 ${dirtyCount} 项待保存` : "所有修改已同步" }}
-            </span>
-            <div class="cc-savebar-actions">
-              <button
-                type="button"
-                class="small"
-                :disabled="saving || dirtyInNav === 0"
-                @click="onReloadNav"
-              >
-                还原本分类
-              </button>
-              <button
-                type="button"
-                class="primary"
-                :disabled="saving || dirtyCount === 0"
-                @click="onSave"
-              >
-                {{ saving ? "保存中…" : "保存修改" }}
-              </button>
-            </div>
-          </footer>
         </template>
       </div>
+      <footer v-if="selectedNavId !== 'overview' || dirtyCount" class="cc-savebar">
+        <span v-if="dirtyCount" class="cc-draft" role="status">{{ dirtyCount }} 项待保存</span>
+        <div class="cc-savebar-actions">
+          <button
+            v-if="selectedNavId !== 'overview'"
+            type="button"
+            class="small"
+            :disabled="configBusy || dirtyInNav === 0"
+            @click="onReloadNav"
+          >
+            还原本分类
+          </button>
+          <button
+            type="button"
+            class="primary"
+            :disabled="configBusy || dirtyCount === 0"
+            @click="onSave"
+          >
+            {{ saving ? "保存中…" : "保存修改" }}
+          </button>
+        </div>
+      </footer>
     </div>
   </section>
 </template>
 
 <style scoped>
 .config-center {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
   min-height: 0;
-  height: 100%;
-  width: 100%;
-  max-width: none;
-}
-
-.cc-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  flex-wrap: wrap;
-}
-
-.cc-header-copy h2 {
-  margin: 0 0 0.35rem;
-  font-size: 1.25rem;
-}
-
-.cc-lede {
-  margin: 0;
-  max-width: 36rem;
-  color: var(--muted);
-  font-size: 0.88rem;
-  line-height: 1.5;
-}
-
-.cc-header-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
 }
 
 .cc-tech-toggle {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.78rem;
-  color: var(--muted);
-  margin-right: 0.25rem;
+  gap: 0.45rem;
+  padding: 0.4rem 0.65rem;
+  font-size: var(--font-size-body);
   cursor: pointer;
-  user-select: none;
 }
 
-.cc-tech-toggle input {
+.cc-tech-toggle input,
+.cc-toggle-row input {
   width: auto;
   margin: 0;
 }
 
 .cc-loading {
-  padding: 2rem;
+  margin: 0;
+  padding: 0.65rem 0;
   color: var(--muted);
-  text-align: center;
 }
 
 .cc-layout {
-  display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
-  gap: 1rem;
-  align-items: start;
-  min-height: 0;
-  flex: 1;
-}
-
-.cc-sidebar {
-  position: sticky;
-  top: 0.5rem;
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  padding: 0.85rem;
-}
-
-.cc-sidebar-title {
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 0.65rem;
+  min-width: 0;
 }
 
 .cc-cat-list {
   display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 1rem;
+  border-bottom: 1px solid var(--line);
 }
 
 .cc-cat-item {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  text-align: left;
-  padding: 0.65rem 0.7rem;
-  border-radius: 8px;
-  border: 1px solid var(--line);
-  background: var(--panel, var(--surface-primary, #fff));
-  color: var(--text);
-  cursor: pointer;
-  transition: var(--transition);
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
-}
-
-.cc-cat-item:hover {
-  background: var(--nav-hover, var(--action-hover));
-  border-color: var(--border-strong, var(--line));
-}
-
-.cc-cat-item.active {
-  background: var(--nav-active-bg);
-  border-color: var(--accent);
-  box-shadow: inset 0 0 0 1px rgba(21, 101, 192, 0.2);
-}
-
-.cc-cat-text {
-  display: flex;
-  flex-direction: column;
-  gap: 0.12rem;
-  min-width: 0;
-}
-
-.cc-cat-name {
-  font-size: 0.9rem;
-  font-weight: 600;
-}
-
-.cc-cat-desc {
-  font-size: 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.15rem;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
   color: var(--muted);
-  line-height: 1.35;
+  box-shadow: none;
+}
+
+.cc-cat-item:hover,
+.cc-cat-item[aria-pressed="true"] {
+  color: var(--accent-text, var(--accent));
+}
+
+.cc-cat-item[aria-pressed="true"] {
+  border-bottom-color: var(--accent);
+}
+
+.cc-dirty-dot,
+.cc-draft {
+  color: var(--warning-soft-fg);
+  font-size: var(--font-size-meta);
+  font-variant-numeric: tabular-nums;
 }
 
 .cc-dirty-dot {
-  flex-shrink: 0;
+  display: inline-block;
   min-width: 1.15rem;
-  height: 1.15rem;
-  padding: 0 0.28rem;
-  border-radius: 999px;
-  background: var(--warning-soft-bg, rgba(217, 153, 59, 0.2));
-  border: 1px solid var(--warning-soft-border, rgba(217, 153, 59, 0.45));
-  color: var(--warning-soft-fg, #d9993b);
-  font-size: 0.65rem;
-  font-weight: 700;
-  line-height: 1.15rem;
+  padding: 0.05rem 0.25rem;
   text-align: center;
+  border-radius: var(--radius-sm);
+  background: var(--warning-soft-bg);
 }
 
 .cc-main {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
+  padding-top: 1rem;
   min-width: 0;
 }
 
 .cc-panel-head {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
 .cc-panel-title {
-  margin: 0 0 0.25rem;
+  margin: 0;
   font-size: 1.05rem;
 }
 
-.cc-panel-sub {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.84rem;
-  line-height: 1.45;
-}
-
-.cc-dirty-pill {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.55rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  color: var(--muted);
-  background: var(--chip-bg);
-  white-space: nowrap;
-}
-
-.cc-dirty-pill.active {
-  border-color: var(--warning-soft-border);
-  background: var(--warning-soft-bg);
-  color: var(--warning-soft-fg);
-}
-
-button.small.linkish {
-  border: none;
-  background: transparent;
-  color: var(--accent-text, var(--accent));
-  text-decoration: underline;
-  padding: 0 0.15rem;
-  cursor: pointer;
-}
-
 .cc-groups {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
+  margin-top: 0.75rem;
 }
 
 .cc-card {
-  background: var(--surface-soft);
-  border: 1px solid var(--line-soft);
-  border-radius: 12px;
-  padding: 0.85rem 1rem;
+  min-width: 0;
+  padding: 1rem 0;
+  border-top: 1px solid var(--line-soft);
 }
 
 .cc-card--danger {
-  border-color: var(--warning-soft-border);
-  background: linear-gradient(
-    180deg,
-    var(--warning-soft-bg) 0%,
-    var(--surface-soft) 28%
-  );
+  border-top-color: var(--warning-soft-border);
 }
 
 .cc-details {
@@ -1039,36 +882,36 @@ button.small.linkish {
 }
 
 .cc-details-summary {
-  list-style: none;
-  cursor: pointer;
   display: flex;
-  justify-content: space-between;
   align-items: flex-start;
-  gap: 0.75rem;
-  padding: 0.85rem 1rem;
-  user-select: none;
+  gap: 0.65rem;
+  padding-block: 0.85rem;
+  cursor: pointer;
+  list-style: none;
 }
 
 .cc-details-summary::-webkit-details-marker {
   display: none;
 }
 
-.cc-details-summary .cc-card-title {
-  display: block;
+.cc-details-summary::before {
+  content: "›";
+  line-height: 1.45;
+  font-weight: 700;
+  color: var(--muted);
 }
 
-.cc-details-summary .cc-card-sub.inline {
-  display: block;
-  margin-top: 0.3rem;
+.cc-details[open] .cc-details-summary::before {
+  transform: rotate(90deg);
 }
 
-.cc-details[open] .cc-details-summary {
-  border-bottom: 1px solid var(--line-soft);
-  margin-bottom: 0;
+.cc-details-summary > span:first-of-type {
+  flex: 1;
+  min-width: 0;
 }
 
 .cc-details .cc-fields {
-  padding: 0.75rem 1rem 0.9rem;
+  padding-bottom: 1rem;
 }
 
 .cc-card-head {
@@ -1076,63 +919,52 @@ button.small.linkish {
   justify-content: space-between;
   align-items: flex-start;
   gap: 0.75rem;
-  margin-bottom: 0.85rem;
+  margin-bottom: 0.7rem;
 }
 
 .cc-card-title {
+  display: block;
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 700;
+  font-size: var(--font-size-body);
+  font-weight: 650;
 }
 
-.cc-card-sub {
-  margin: 0.3rem 0 0;
-  font-size: 0.8rem;
+.cc-card-sub,
+.cc-inline-help {
+  display: block;
+  margin: 0.25rem 0 0;
   color: var(--muted);
-  line-height: 1.4;
+  font-size: var(--font-size-meta);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .cc-danger-tag {
-  font-size: 0.68rem;
-  font-weight: 700;
-  padding: 0.15rem 0.45rem;
-  border-radius: 4px;
-  background: var(--warning-soft-bg);
-  border: 1px solid var(--warning-soft-border);
   color: var(--warning-soft-fg);
+  font-size: var(--font-size-meta);
+  white-space: nowrap;
 }
 
 .cc-card-foot {
-  margin-top: 0.85rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--line-soft);
-  display: flex;
-  justify-content: flex-end;
+  margin-top: 0.75rem;
 }
 
 .design-webhook-foot {
-  flex-direction: column;
-  align-items: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.65rem;
-}
-
-.cc-inline-help {
-  margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--muted);
-  white-space: normal;
-  overflow-wrap: break-word;
-}
-
-.cc-inline-help code {
-  font-size: 0.74rem;
 }
 
 .cc-fields {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(16rem, 22rem));
-  gap: 0.55rem 0.85rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr));
+  gap: 0.65rem 1rem;
+  max-width: 66rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
 .cc-field {
@@ -1144,130 +976,83 @@ button.small.linkish {
 
 .cc-field-label {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  font-size: var(--font-size-meta);
   font-weight: 600;
 }
 
-.cc-source {
-  font-size: 0.68rem;
-  font-weight: 500;
+.cc-source,
+.cc-help,
+.cc-key {
   color: var(--muted);
-  padding: 0.1rem 0.35rem;
-  border-radius: 4px;
-  background: var(--chip-bg);
-  border: 1px solid var(--line);
+  font-size: var(--font-size-meta);
+  font-weight: 400;
+  overflow-wrap: anywhere;
 }
 
-.cc-control {
+.cc-control,
+.cc-combo {
   width: 100%;
-  box-sizing: border-box;
 }
 
 .cc-toggle-row {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.85rem;
+  font-size: var(--font-size-body);
   color: var(--muted);
-  min-height: 2.1rem;
-}
-
-.cc-combo {
-  display: block;
-  width: 100%;
-}
-
-.cc-toggle-row input {
-  width: auto;
-  margin: 0;
-}
-
-.cc-help {
-  font-size: 0.75rem;
-  color: var(--muted);
-  line-height: 1.35;
-}
-
-.cc-key {
-  font-size: 0.68rem;
-  color: var(--muted);
-  opacity: 0.85;
+  min-height: var(--control-height);
 }
 
 .cc-metrics-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
+  max-width: 42rem;
 }
 
 .cc-metrics-row .cc-control {
-  flex: 1;
+  flex: 1 1 12rem;
   min-width: 0;
 }
 
 .cc-savebar {
   position: sticky;
   bottom: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-  padding: 0.85rem 1rem;
-  margin-top: 0.25rem;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--elevated);
-  box-shadow: var(--panel-shadow);
   z-index: 2;
-}
-
-.cc-savebar-status {
-  font-size: 0.82rem;
-  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-top: 0.25rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
 }
 
 .cc-savebar-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  align-items: center;
+  margin-inline-start: auto;
 }
 
 .msg.bad,
 .msg.ok {
   margin: 0;
-  padding: 0.65rem 0.85rem;
-  border-radius: 8px;
-  font-size: 0.85rem;
 }
 
-.msg.bad {
-  background: var(--danger-soft-bg);
-  border: 1px solid var(--danger-soft-border);
-  color: var(--danger-soft-fg);
-}
-
-.msg.ok {
-  background: var(--ok-soft-bg);
-  border: 1px solid var(--ok-soft-border);
-  color: var(--ok-soft-fg);
-}
-
-@media (max-width: 900px) {
-  .cc-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .cc-sidebar {
-    position: static;
-  }
-
+@media (max-width: 560px) {
   .cc-cat-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    column-gap: 0.75rem;
+  }
+
+  .cc-fields {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

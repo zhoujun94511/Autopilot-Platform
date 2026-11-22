@@ -105,10 +105,11 @@ export function apiListRemoteParticipants(
 export async function apiLeaveRemoteParticipant(
   sessionId: string,
   participantId: string,
+  bearer?: string,
 ): Promise<void> {
   await api(
     `/api/v1/device-remote-sessions/${encodeURIComponent(sessionId)}/participants/${encodeURIComponent(participantId)}`,
-    { method: "DELETE" },
+    { method: "DELETE", bearer },
   );
 }
 
@@ -122,9 +123,10 @@ export async function apiPromoteRemoteParticipant(
   );
 }
 
-export async function apiCloseRemoteSession(sessionId: string): Promise<void> {
+export async function apiCloseRemoteSession(sessionId: string, bearer?: string): Promise<void> {
   await api(`/api/v1/device-remote-sessions/${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
+    bearer,
   });
 }
 
